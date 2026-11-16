@@ -1,0 +1,5 @@
+{
+  "platforms": ["android", "ios"],
+  "android": { "modules": ["com.bodhin.ink.BodhinInkModule"] },
+  "ios": { "modules": ["BodhinInkModule"] }
+}
