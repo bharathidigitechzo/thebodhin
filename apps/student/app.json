@@ -38,7 +38,7 @@
     },
     "scheme": "bodhin",
     "splash": {
-      "image": "./assets/brand/logo-full.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#FBF7F0"
     },
@@ -52,6 +52,14 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": false
+      },
+      "eas": {
+        "projectId": "933923a0-d669-47e3-925e-5156b9679433"
+      }
     }
   }
 }
