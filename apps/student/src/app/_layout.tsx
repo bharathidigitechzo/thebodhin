@@ -1,6 +1,7 @@
 import React from 'react';
 import '@/api/growth2'; // registers round-2 paid-order hooks (affiliates, analytics)
 import { Stack, router, type ErrorBoundaryProps } from 'expo-router';
+import Head from 'expo-router/head';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from '@/theme/ThemeProvider';
@@ -16,6 +17,8 @@ export default function RootLayout() {
       <ThemeProvider>
         <AuthProvider>
           <StatusBar style="dark" />
+          {/* Default tab title: pages with their own <Seo> override it; when they leave, the title falls back here. */}
+          <Head><title>Bodhin</title></Head>
           <View style={{ flex: 1 }}>
             <SystemBanner />
             <View style={{ flex: 1 }}>

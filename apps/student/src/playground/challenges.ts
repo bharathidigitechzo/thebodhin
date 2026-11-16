@@ -148,3 +148,13 @@ INSERT INTO staff (name, dept, salary) VALUES
 
 export const challengesOf = (stackId: string) => CHALLENGES.filter((c) => c.stack === stackId);
 export const challengeOf = (id: string) => CHALLENGES.find((c) => c.id === id);
+
+/**
+ * The same challenge in another language, if that language has it
+ * (ids share the part after the first dash: js-sum ↔ py-sum ↔ java-sum, js-fizzbuzz ↔ py-fizzbuzz).
+ */
+export function twinChallenge(c: Challenge, stackId: string): Challenge | undefined {
+  if (c.stack === stackId) return c;
+  const task = c.id.slice(c.id.indexOf('-') + 1);
+  return CHALLENGES.find((x) => x.stack === stackId && x.id.slice(x.id.indexOf('-') + 1) === task);
+}

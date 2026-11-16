@@ -7,7 +7,8 @@ import { useTheme } from '@/theme/ThemeProvider';
 export function Waves() {
   const { c } = useTheme();
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    // overflow hidden: the arcs sit partly off-screen and must not widen the page (phones scrolled sideways).
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
       <LinearGradient colors={[c.ivoryDeep, c.ivory, c.ivory]} locations={[0, 0.35, 1]} style={StyleSheet.absoluteFill} />
       <View style={[styles.arc, { top: -260, left: -220, borderColor: c.accent, opacity: 0.22 }]} />
       <View style={[styles.arc, { top: -240, left: -250, borderColor: c.accent, opacity: 0.12, width: 560, height: 560 }]} />

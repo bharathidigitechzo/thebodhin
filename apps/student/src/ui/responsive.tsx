@@ -10,7 +10,8 @@ import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'reac
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
 import { useTheme } from '@/theme/ThemeProvider';
-import { educatorMembership, useAuth } from '@/store/auth';
+import { adminMembership, educatorMembership, useAuth } from '@/store/auth';
+import { canOpenAdmin, type AdminRole } from '@/core/admin';
 import { BrandLogo } from './Brand';
 import { Txt } from './Txt';
 
@@ -95,6 +96,9 @@ export function DesktopSidebar({ area, path }: { area: Area; path: string }) {
   const initials = (u?.name ?? '?').split(' ').filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   const areaLabel = area === 'educator' ? 'Teaching' : area === 'admin' ? 'Bodhin admin' : 'Learning';
   const active = activeHref(area, path);
+  const staffRole = (adminMembership(session)?.role ?? null) as AdminRole | null;
+  // Admin sidebar shows only the sections this staff role may open.
+  const items = area === 'admin' ? NAV.admin.filter(([href]) => canOpenAdmin(staffRole, href)) : NAV[area];
 
   return (
     <View style={[s.side, { backgroundColor: c.surface, borderRightColor: c.border }]} accessibilityRole="navigation">
@@ -103,7 +107,7 @@ export function DesktopSidebar({ area, path }: { area: Area; path: string }) {
       </View>
       <Txt variant="label" color={c.muted} style={s.area}>{areaLabel.toUpperCase()}</Txt>
       <View style={{ gap: 4 }}>
-        {NAV[area].map(([href, title, icon]) => {
+        {items.map(([href, title, icon]) => {
           const on = href === active;
           return (
             <Pressable

@@ -145,7 +145,7 @@ export default function SignIn() {
 
       <View style={[styles.demo, { backgroundColor: c.accentSoft }]}>
         <Txt variant="caption" color={c.inkSoft} center>
-          Student: arjun@demo.in · Educator: rajesh@demo.in · Tutor: meera@demo.in · Super Admin (web): admin@demo.in · password demo123
+          Student: arjun@demo.in · Educator: rajesh@demo.in · Tutor: meera@demo.in · Super Admin: admin@demo.in · password demo123
         </Txt>
       </View>
       <PoweredBy />

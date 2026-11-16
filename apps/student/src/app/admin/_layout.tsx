@@ -4,11 +4,11 @@
  */
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Redirect, Stack, router } from 'expo-router';
+import { Redirect, Stack, router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, admin } from '@/api/client';
-import { ROLE_LABEL } from '@/core/admin';
+import { ROLE_LABEL, canOpenAdmin } from '@/core/admin';
 import { adminMembership, useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Txt } from '@/ui/Txt';
@@ -19,13 +19,30 @@ import { OtpInput } from '@/ui/misc';
 export default function AdminLayout() {
   const { session, ready, signOut } = useAuth();
   const [, force] = useState(0);
+  const path = usePathname();
   if (!ready) return null;
   if (!session) return <Redirect href="/sign-in" />;
   if (!adminMembership(session)) return <Redirect href="/home" />;
   const me = admin.me(session.user.id);
   if (!me) return <Redirect href="/home" />;
   if (!me.verified) return <TwoStep userId={session.user.id} name={me.user.name} role={ROLE_LABEL[me.role]} onDone={() => force((n) => n + 1)} onCancel={() => { signOut(); router.replace('/sign-in'); }} />;
+  if (!canOpenAdmin(me.role, path)) return <NoAccess role={ROLE_LABEL[me.role]} />;
   return <Stack screenOptions={{ headerShown: false }} />;
+}
+
+/** Direct link to an admin page outside this staff role: explain instead of crashing. */
+function NoAccess({ role }: { role: string }) {
+  const { c } = useTheme();
+  return (
+    <SafeAreaView style={[styles.gate, { backgroundColor: c.ivory }]}>
+      <View style={styles.box}>
+        <View style={[styles.lock, { backgroundColor: c.primarySoft }]}><Ionicons name="lock-closed" size={28} color={c.primary} /></View>
+        <Txt variant="title" center>Not part of your role</Txt>
+        <Txt color={c.muted} center>Your {role} role doesn’t include this section. Ask a Super Admin if you need access.</Txt>
+        <Button title="Go to admin home" onPress={() => router.replace('/admin')} />
+      </View>
+    </SafeAreaView>
+  );
 }
 
 function TwoStep({ userId, name, role, onDone, onCancel }: { userId: string; name: string; role: string; onDone: () => void; onCancel: () => void }) {

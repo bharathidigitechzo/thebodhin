@@ -198,7 +198,7 @@ export function Skeleton({ h = 16, w = '100%', r = 8, style }: { h?: number; w?:
   return <Animated.View style={[{ height: h, width: w, borderRadius: r, backgroundColor: c.border, opacity: o }, style]} />;
 }
 
-export function ErrorState({ text, onRetry }: { text: string; onRetry: () => void }) {
+export function ErrorState({ text, onRetry, actionLabel = 'Try again' }: { text: string; onRetry: () => void; actionLabel?: string }) {
   const { c } = useTheme();
   useEffect(() => { haptic('warning'); }, [text]);
   return (
@@ -209,7 +209,7 @@ export function ErrorState({ text, onRetry }: { text: string; onRetry: () => voi
       </Txt>
       <Pressable onPress={onRetry} style={[styles.chip, { borderColor: c.primary }]} accessibilityRole="button">
         <Txt variant="label" color={c.primary}>
-          Try again
+          {actionLabel}
         </Txt>
       </Pressable>
     </View>

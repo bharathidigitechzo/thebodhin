@@ -41,6 +41,47 @@ export const ROLE_LABEL: Record<AdminRole, string> = { super_admin: 'Super Admin
 
 export const can = (role: AdminRole | null | undefined, perm: AdminPerm) => !!role && ROLE_PERMS[role].includes(perm);
 
+/**
+ * Which admin pages a role may open: path prefix → any one of these permissions.
+ * Longest prefix wins. Tabs, the desktop sidebar and the admin layout all read this list,
+ * so a hidden tab and a blocked direct link always agree.
+ */
+const ROUTE_PERMS: [prefix: string, perms: AdminPerm[]][] = [
+  ['/admin', ['overview']],
+  ['/admin/search', ['overview']],
+  ['/admin/more', ['overview']],
+  ['/admin/inbox', ['approvals.educators', 'approvals.courses', 'approvals.reports']],
+  ['/admin/review', ['approvals.educators', 'approvals.courses', 'approvals.reports']],
+  ['/admin/tenants', ['tenants.view']],
+  ['/admin/tenant', ['tenants.view']],
+  ['/admin/money', ['money.view', 'payouts.run', 'refunds']],
+  ['/admin/plans', ['plans.edit', 'config.edit']],
+  ['/admin/plan', ['plans.edit', 'config.edit']],
+  ['/admin/settings', ['plans.edit', 'config.edit']],
+  ['/admin/flags', ['plans.edit', 'config.edit']],
+  ['/admin/pilot', ['plans.edit', 'config.edit']],
+  ['/admin/live', ['plans.edit', 'config.edit']],
+  ['/admin/growth', ['plans.edit', 'config.edit', 'content.bodhin']],
+  ['/admin/content', ['content.bodhin']],
+  ['/admin/users', ['users.view']],
+  ['/admin/user', ['users.view']],
+  ['/admin/tickets', ['support.tickets']],
+  ['/admin/broadcast', ['broadcast']],
+  ['/admin/team', ['admins.manage']],
+  ['/admin/audit', ['audit.view']],
+];
+
+/** True when this role may open the admin page at `path` (e.g. "/admin/money"). */
+export function canOpenAdmin(role: AdminRole | null | undefined, path: string): boolean {
+  if (!role) return false;
+  const p = path.split('?')[0].replace(/\/+$/, '') || '/admin';
+  let best: [string, AdminPerm[]] | null = null;
+  for (const [prefix, perms] of ROUTE_PERMS) {
+    if ((p === prefix || p.startsWith(prefix + '/')) && (!best || prefix.length > best[0].length)) best = [prefix, perms];
+  }
+  return !!best && best[1].some((perm) => can(role, perm));
+}
+
 /** Every admin action is written to the audit log (who, what, on which record, before → after). */
 export interface AuditEntry {
   id: string;

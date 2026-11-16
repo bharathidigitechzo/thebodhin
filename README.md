@@ -34,7 +34,7 @@ Demo logins (password **demo123** for all):
 
 OTP in every flow: **123456** · Coupons: **BODHIN10** (Bodhin-wide), **DIWALI25** (Rajesh's workspace) · Failing card: `4000 0000 0000 0002`.
 Owners/tutors can switch to the learner view from *More → Switch to learner view* (and back from *Profile*).
-Reset demo data: clear the browser's localStorage (key `bodhin.mockdb.v24`).
+Reset demo data: clear the browser's localStorage (key `bodhin.mockdb.v26`).
 
 Try a tutor workspace (white-label branding) on web: add `?tenant=rajesh` to the URL.
 
