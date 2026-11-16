@@ -77,7 +77,7 @@ apps/student/
       assess/         Quizzes, exams, assignments: hub · new · [id] builder (setup, questions/rubric, results)
       grading, grade/[id]   Grading queue + rubric grading      doubts   Doubts inbox
       earnings, subscription, payments-setup, team, workspace, coupons   Business & workspace settings
-    admin/          Super Admin portal (web only — admin.thebodhin.com; 2-step gate in admin/_layout)
+    admin/          Super Admin portal (web at admin.thebodhin.com + Android/iOS app; 2-step gate in admin/_layout)
       (tabs)/         Home (Command Center) · Inbox (approvals) · Tenants · Money · More
       review/[kind]/[id]   Educator application / course listing review (phone)
       tenant/[id]     Workspace 360 + actions        search   Global search with quick-look
@@ -156,7 +156,7 @@ All numbers (commission, fee, hold days, payout day, trial) live in `PlatformCon
 
 ### Super Admin portal
 
-Web portal only (no app-store build). On phones it behaves like an app (bottom tabs, bottom sheets; "Add to Home Screen");
+Available on the web (admin.thebodhin.com) and inside the Android/iOS app: staff sign in with their admin login and pass the same 2-step check. On phones it behaves like an app (bottom tabs, bottom sheets; "Add to Home Screen");
 on laptops it shows a side rail and list + detail side by side. Every screen is at most two taps from the Command Center.
 
 | Module | What it controls |

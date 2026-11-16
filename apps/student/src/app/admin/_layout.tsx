@@ -1,9 +1,9 @@
 /**
- * Super Admin portal — web only (admin.thebodhin.com). Not part of the store apps.
+ * Super Admin portal — web (admin.thebodhin.com) and the Android/iOS apps.
  * Gate: signed in → Bodhin staff role → 2-step code (12 h). Then tabs + stack screens.
  */
 import React, { useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Redirect, Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +22,6 @@ export default function AdminLayout() {
   if (!ready) return null;
   if (!session) return <Redirect href="/sign-in" />;
   if (!adminMembership(session)) return <Redirect href="/home" />;
-  if (Platform.OS !== 'web') return <WebOnly onSignOut={() => { signOut(); router.replace('/sign-in'); }} />;
   const me = admin.me(session.user.id);
   if (!me) return <Redirect href="/home" />;
   if (!me.verified) return <TwoStep userId={session.user.id} name={me.user.name} role={ROLE_LABEL[me.role]} onDone={() => force((n) => n + 1)} onCancel={() => { signOut(); router.replace('/sign-in'); }} />;
@@ -58,20 +57,6 @@ function TwoStep({ userId, name, role, onDone, onCancel }: { userId: string; nam
         {err ? <Txt variant="caption" color={c.danger} center>{err}</Txt> : <Txt variant="caption" color={c.muted} center>Demo code: 123456 · valid for 12 hours on this device</Txt>}
         <Button title="Verify" loading={busy} disabled={code.length !== 6} onPress={() => go()} />
         <Button title="Use a different account" variant="ghost" onPress={onCancel} />
-      </View>
-    </SafeAreaView>
-  );
-}
-
-function WebOnly({ onSignOut }: { onSignOut: () => void }) {
-  const { c } = useTheme();
-  return (
-    <SafeAreaView style={[styles.gate, { backgroundColor: c.ivory }]}>
-      <View style={styles.box}>
-        <Ionicons name="desktop-outline" size={44} color={c.primary} style={{ alignSelf: 'center' }} />
-        <Txt variant="title" center>Admin portal is web-only</Txt>
-        <Txt color={c.muted} center>Open admin.thebodhin.com in your phone or laptop browser. Tip: “Add to Home Screen” makes it open like an app.</Txt>
-        <Button title="Sign out" variant="outline" onPress={onSignOut} />
       </View>
     </SafeAreaView>
   );
