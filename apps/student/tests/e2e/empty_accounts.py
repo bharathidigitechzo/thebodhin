@@ -4,10 +4,11 @@ Usage: python3 empty_accounts.py http://localhost:8765/bodhin-preview.html"""
 import sys, asyncio, re
 from playwright.async_api import async_playwright
 
-LEARNER = ['/home', '/explore', '/learning', '/live', '/profile', '/certificates', '/payments', '/downloads', '/my-purchases', '/notifications', '/community', '/refer', '/playground', '/help']
+LEARNER = ['/home', '/explore', '/learning', '/live', '/profile', '/certificates', '/payments', '/downloads', '/my-purchases', '/notifications', '/community', '/refer', '/playground', '/help', '/quizzes', '/assignments', '/mentorship']
 EDU = ['/educator/home', '/educator/courses', '/educator/batches', '/educator/live', '/educator/more', '/edu/timetable', '/edu/earnings', '/edu/analytics',
        '/edu/grow', '/edu/leads', '/edu/doubts', '/edu/grading', '/edu/coupons', '/edu/subscription', '/edu/workspace', '/edu/team', '/edu/showcase', '/edu/products',
-       '/edu/webinars', '/edu/bookings', '/edu/bundles', '/edu/affiliates', '/edu/emi', '/edu/broadcasts', '/edu/automations', '/edu/community', '/edu/site', '/edu/schedule', '/edu/batch-new', '/edu/assess']
+       '/edu/webinars', '/edu/bookings', '/edu/bundles', '/edu/affiliates', '/edu/emi', '/edu/broadcasts', '/edu/automations', '/edu/community', '/edu/site', '/edu/schedule', '/edu/batch-new', '/edu/assess',
+       '/edu/certificates', '/edu/mentorship', '/edu/students', '/edu/account']
 PROBE = r"""() => { const t = document.body.innerText || ''; return { len: t.trim().length, crashed: /Something went wrong|Unexpected error|Render Error/.test(t),
   broken: (t.match(/\bundefined\b|\bNaN\b|\[object Object\]|Invalid Date|Infinity|₹NaN|-0%/g) || []).slice(0, 4), snip: t.trim().slice(0, 120).replace(/\s+/g, ' ') }; }"""
 

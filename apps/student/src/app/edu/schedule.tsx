@@ -1,6 +1,6 @@
 /**
- * Schedule a live class (one screen, thumb-first): batch → title → when → instructor & mode →
- * class settings → notify. Enforces live room-hours limit and same-batch clashes (server-side in real API).
+ * Schedule a live class (one screen, thumb-first): for a batch or for a whole course → title → when →
+ * instructor & mode → class settings → notify. A whole-course class reaches every learner who bought the course. Enforces live room-hours limit and same-batch clashes (server-side in real API).
  */
 import React, { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, batchForm, educator, liveAdmin } from '@/api/client';
+import { courseLive } from '@/api/academy';
 import { fmtTime } from '@/core/batch';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -36,7 +37,7 @@ function nextSlot() {
 }
 
 export default function ScheduleClass() {
-  const { batchId: pre } = useLocalSearchParams<{ batchId?: string }>();
+  const { batchId: pre, courseId: preCourse } = useLocalSearchParams<{ batchId?: string; courseId?: string }>();
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -44,6 +45,10 @@ export default function ScheduleClass() {
   const batches = useMemo(() => liveAdmin.hostableBatches(userId), [userId]);
   const team = useMemo(() => batchForm.team(userId), [userId]);
   const [batchId, setBatchId] = useState(pre && batches.some((b) => b.id === pre) ? pre : batches[0]?.id ?? '');
+  const courses = useMemo(() => courseLive.courses(userId), [userId]);
+  const [target, setTarget] = useState<'batch' | 'course'>(preCourse || !batches.length ? 'course' : 'batch');
+  const [courseId, setCourseId] = useState(preCourse && courses.some((x) => x.id === preCourse) ? preCourse : courses[0]?.id ?? '');
+  const bodhin = ctx?.tenant.id === 't_bodhin';
   const [pickBatch, setPickBatch] = useState(false);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -74,6 +79,11 @@ export default function ScheduleClass() {
     setErr(null);
     setBusy(true);
     try {
+      if (target === 'course') {
+        await courseLive.schedule(userId, { courseId, title, startsAt: startsAt.toISOString(), durationMin: dur, notifyNow });
+        router.replace(bodhin ? '/admin/classes' : '/educator/live');
+        return;
+      }
       await liveAdmin.schedule(userId, { batchId, title, description: desc, startsAt: startsAt.toISOString(), durationMin: dur, instructorId, mode, settings, notifyNow, reminders });
       router.replace({ pathname: '/edu/batch/[id]', params: { id: batchId, tab: 'schedule' } });
     } catch (e) {
@@ -83,11 +93,11 @@ export default function ScheduleClass() {
     }
   };
 
-  if (!batches.length) {
+  if (!batches.length && !courses.length) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: c.ivory, padding: 20, justifyContent: 'center', gap: 16 }}>
-        <Banner tone="info" text="Live classes belong to a batch. Create a batch first, then schedule its classes." />
-        <Button title="Create a batch" onPress={() => router.replace('/edu/batch-new')} />
+        <Banner tone="info" text="Create a course (or a batch) first, then schedule its live classes." />
+        <Button title="Create a course" onPress={() => router.replace('/edu/new-course')} />
       </SafeAreaView>
     );
   }
@@ -96,13 +106,28 @@ export default function ScheduleClass() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         <View style={styles.top}>
-          <IconButton icon="close" label="Close" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/educator/live'))} />
+          <IconButton icon="close" label="Close" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace(bodhin ? '/admin/classes' : '/educator/live'))} />
           <Txt variant="heading" style={{ flex: 1 }}>Schedule live class</Txt>
         </View>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.inner}>
-              <Card title="Batch">
+              <Card title="Who is it for">
+                <View style={styles.chips}>
+                  <Chip label="Everyone who bought a course" icon="layers-outline" active={target === 'course'} onPress={() => setTarget('course')} />
+                  {batches.length > 0 && <Chip label="One batch" icon="people-outline" active={target === 'batch'} onPress={() => setTarget('batch')} />}
+                </View>
+                {target === 'course' && (
+                  <>
+                    <View style={styles.chips}>
+                      {courses.map((x) => <Chip key={x.id} label={x.title.slice(0, 30)} active={courseId === x.id} onPress={() => setCourseId(x.id)} />)}
+                    </View>
+                    {err?.field === 'course' && <Txt variant="caption" color={c.danger}>{err.msg}</Txt>}
+                    <Txt variant="caption" color={c.muted}>Shows in every buyer’s Live tab and timetable; they get a notification with the time.</Txt>
+                  </>
+                )}
+              </Card>
+              {target === 'batch' && <Card title="Batch">
                 <Pressable onPress={() => setPickBatch(true)} style={[styles.pick, { borderColor: err?.field === 'batch' ? c.danger : c.border, backgroundColor: c.surfaceMuted }]} accessibilityRole="button" accessibilityLabel={`Batch: ${batch?.name ?? 'choose'}`}>
                   <Ionicons name="people-outline" size={18} color={c.inkSoft} />
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -111,7 +136,7 @@ export default function ScheduleClass() {
                   </View>
                   <Ionicons name="chevron-down" size={18} color={c.muted} />
                 </Pressable>
-              </Card>
+              </Card>}
 
               <Card title="Class details">
                 <TextField label="Class title" placeholder="e.g. Google Ads – Search campaigns" value={title} onChangeText={setTitle} error={err?.field === 'title' ? err.msg : undefined} maxLength={80} />
@@ -130,7 +155,7 @@ export default function ScheduleClass() {
                 </Txt>
               </Card>
 
-              <Card title="Instructor & mode">
+              {target === 'batch' && <Card title="Instructor & mode">
                 <View style={styles.chips}>
                   {instructors.map((u) => (
                     <Pressable key={u.id} onPress={() => setInstructorId(u.id)} style={[styles.person, { borderColor: instructorId === u.id ? c.primary : c.border, backgroundColor: instructorId === u.id ? c.primarySoft : c.surface }]} accessibilityRole="radio" accessibilityState={{ checked: instructorId === u.id }}>
@@ -146,9 +171,9 @@ export default function ScheduleClass() {
                 {mode === 'online' && hours && (
                   <Txt variant="caption" color={hours.level === 'ok' ? c.muted : c.warning}>Uses ~{dur / 60} live room-hour{dur > 60 ? 's' : ''} · {hours.used} of {hours.limit ?? '∞'} h used this month</Txt>
                 )}
-              </Card>
+              </Card>}
 
-              {mode === 'online' && (
+              {mode === 'online' && target === 'batch' && (
                 <Card title="Class settings">
                   {SETTINGS.map((s) => {
                     const disabled = s.k === 'saveToCourse' && !settings.record;
@@ -171,7 +196,7 @@ export default function ScheduleClass() {
                   <Ionicons name="notifications-outline" size={20} color={c.inkSoft} />
                   <View style={{ flex: 1 }}>
                     <Txt variant="bodyStrong">Notify now</Txt>
-                    <Txt variant="caption" color={c.muted}>App notification to the {batch ? 'batch' : ''} students</Txt>
+                    <Txt variant="caption" color={c.muted}>App notification to {target === 'course' ? 'everyone who bought the course' : 'the batch students'}</Txt>
                   </View>
                   <Switch value={notifyNow} onValueChange={setNotifyNow} accessibilityLabel="Notify now" trackColor={{ true: c.primary, false: c.borderStrong }} thumbColor="#fff" />
                 </View>

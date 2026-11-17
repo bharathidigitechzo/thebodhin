@@ -1,6 +1,7 @@
 /** Certificate designer: layout, wording, signer, logo, QR, accent — with a live preview. */
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { router } from 'expo-router';
 import { certDesignApi } from '@/api/growth2';
 import { certErrors, type CertTemplate } from '@/core/growth2';
 import { useAuth } from '@/store/auth';
@@ -36,6 +37,14 @@ export default function CertDesigner() {
         <View style={shared.chips}>{[undefined, '#D99A1E', '#0F6E5A', '#B91C1C', '#6D28D9'].map((col) => <Chip key={col ?? 'brand'} label={col ?? 'Brand colour'} active={t.accent === col} onPress={() => setT({ ...t, accent: col })} />)}</View>
         <ToggleRow title="Show academy logo" value={t.showLogo} onChange={(v) => setT({ ...t, showLogo: v })} />
         <ToggleRow title="Show verification QR" sub="Employers scan it to check the certificate is real" value={t.showQr} onChange={(v) => setT({ ...t, showQr: v })} />
+      </Card>
+      <Card title="Background design">
+        <View style={shared.chips}>
+          <Chip label="None (layout colours)" active={!t.bgId} onPress={() => setT({ ...t, bgId: undefined, bg: undefined })} />
+          {d.designs.map((x) => <Chip key={x.id} label={x.name.slice(0, 24)} active={t.bgId === x.id} onPress={() => setT({ ...t, bgId: x.id, bg: x.dataUrl })} />)}
+        </View>
+        <Txt variant="caption" color={c.muted}>Upload your own artwork in Certificates → Templates. The learner’s name, course, date and ID are printed on top.</Txt>
+        <Button title="Upload or manage designs" iconLeft="cloud-upload-outline" size="md" variant="outline" onPress={() => router.push('/edu/certificates')} />
       </Card>
       <Card title="Wording">
         <TextField label="Title" value={t.title} onChangeText={(v) => setT({ ...t, title: v })} error={fe('title')} />

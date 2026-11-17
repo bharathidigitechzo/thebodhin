@@ -21,9 +21,10 @@ export default function ChannelScreen() {
   const [text, setText] = useState('');
   const [reply, setReply] = useState<{ to: string; text: string } | null>(null);
   if (!d) return <Page title="Channel" err={err} fallback="/community" />;
+  const back = d.staff ? '/edu/community' : '/community';
   const act = async (fn: () => unknown) => { await a.run(fn); load(); };
   return (
-    <Page title={`# ${d.ch.name}`} sub={d.academy} fallback="/community">
+    <Page title={`# ${d.ch.name}`} sub={d.academy} fallback={back}>
       {a.general && <Banner text={a.general} />}
       {d.canPost ? (
         <Card>

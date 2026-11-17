@@ -1,6 +1,6 @@
 /**
  * Educator area — same app, same login. Shown to owners and tutors.
- * Fixed 5 tabs: Home · Courses · Batches · Live · More (bottom bar on phones, side rail ≥ 900px).
+ * Fixed 5 tabs: Dashboard · Courses · Live classes · Batches · More (same order as core/nav.ts) (bottom bar on phones, side rail ≥ 900px).
  */
 import React from 'react';
 import { Redirect, Tabs } from 'expo-router';
@@ -13,10 +13,10 @@ import { auth } from '@/api/client';
 import { useAppTabs } from '@/ui/responsive';
 
 const TABS = [
-  ['home', 'Home', 'grid'],
+  ['home', 'Dashboard', 'grid'],
   ['courses', 'Courses', 'layers'],
+  ['live', 'Live classes', 'radio'],
   ['batches', 'Batches', 'people'],
-  ['live', 'Live', 'radio'],
   ['more', 'More', 'menu'],
 ] as const;
 

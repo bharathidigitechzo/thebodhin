@@ -16,7 +16,7 @@ export function certHtml(d: CertData) {
 @page{size:A4 landscape;margin:0}
 *{box-sizing:border-box}
 body{margin:0;font-family:Helvetica,Arial,sans-serif;color:#111827;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.page{width:297mm;height:210mm;padding:9mm;background:#FFFDF8;border:3mm solid ${minimal ? '#E5E7EB' : ac};position:relative}
+.page{width:297mm;height:210mm;padding:9mm;background:#FFFDF8${d.t.bg ? ` url('${d.t.bg.replace(/'/g, '%27')}') center/cover no-repeat` : ''};border:3mm solid ${minimal ? '#E5E7EB' : ac};position:relative}
 .band{position:absolute;left:0;top:0;bottom:0;width:8mm;background:${primary}}
 .inner{height:100%;padding:12mm 16mm;${minimal ? '' : `border:0.4mm solid ${ac}55;`}display:flex;flex-direction:column;justify-content:space-between;text-align:center}
 .top{display:flex;justify-content:space-between;align-items:center;color:#6B7280;font-size:11pt}

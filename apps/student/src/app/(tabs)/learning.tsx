@@ -13,6 +13,7 @@ import { layout, radius } from '@/theme/tokens';
 import { TwoTone, Txt } from '@/ui/Txt';
 import { AppHeader, Chip, ErrorState, Pill, ProgressBar, Skeleton, useAsync } from '@/ui/kit';
 import { CourseArt, openCourse } from '@/ui/course';
+import { Assessments } from '@/ui/assessList';
 
 type Seg = 'courses' | 'assessments';
 type Kind = 'all' | 'quiz' | 'exam' | 'assignment';
@@ -105,83 +106,6 @@ function Courses({ data, loading, error, reload }: { data: HomeData | null; load
         ))}
         </Grid>
       )}
-    </View>
-  );
-}
-
-type AsData = Awaited<ReturnType<typeof assessments.list>>;
-const STATUS: Record<AssessStatus, { label: string; tone: 'warning' | 'info' | 'success' | 'neutral' | 'live' }> = {
-  pending: { label: 'Pending', tone: 'warning' },
-  in_progress: { label: 'Draft saved', tone: 'info' },
-  overdue: { label: 'Overdue', tone: 'live' },
-  scheduled: { label: 'Scheduled', tone: 'info' },
-  submitted: { label: 'Submitted', tone: 'success' },
-  graded: { label: 'Graded', tone: 'success' },
-  completed: { label: 'Completed', tone: 'success' },
-};
-
-function Assessments({ data, error, reload }: { data: AsData | null; error: string | null; reload: () => void }) {
-  const { c } = useTheme();
-  const [kind, setKind] = useState<Kind>('all');
-  const rows = useMemo(() => (data?.rows ?? []).filter((r) => kind === 'all' || r.a.kind === kind), [data, kind]);
-  if (error) return <ErrorState text={error} onRetry={reload} />;
-  if (!data) return <View style={{ gap: 12, marginTop: 14 }}><Skeleton h={80} r={18} /><Skeleton h={100} r={18} /></View>;
-
-  const stats = [
-    ['clipboard-outline', data.stats.total, 'Total', c.primary],
-    ['checkmark-circle-outline', data.stats.done, 'Done', c.success],
-    ['trophy-outline', `${data.stats.avg}%`, 'Avg score', c.accent],
-    ['time-outline', data.stats.pending, 'Pending', c.danger],
-  ] as const;
-
-  const open = (r: AsData['rows'][number]) => {
-    if (r.a.kind === 'assignment') return router.push({ pathname: '/assignment/[id]', params: { id: r.a.id } });
-    if (r.status === 'completed' && r.best) return router.push({ pathname: '/result/[id]', params: { id: r.best.id } });
-    router.push({ pathname: '/quiz/[lessonId]', params: { lessonId: r.a.id } });
-  };
-
-  return (
-    <View style={{ gap: 12, marginTop: 14 }}>
-      <View style={[styles.stats, { backgroundColor: c.surface, borderColor: c.border }]}>
-        {stats.map(([icon, v, l, col]) => (
-          <View key={l} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
-            <Ionicons name={icon} size={22} color={col} />
-            <Txt variant="heading">{v}</Txt>
-            <Txt variant="caption" color={c.muted}>{l}</Txt>
-          </View>
-        ))}
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ flexGrow: 0 }}>
-        {([['all', 'All'], ['quiz', 'Quizzes'], ['exam', 'Exams'], ['assignment', 'Assignments']] as const).map(([k, l]) => (
-          <Chip key={k} label={l} active={kind === k} onPress={() => setKind(k)} />
-        ))}
-      </ScrollView>
-      {rows.map((r) => {
-        const st = STATUS[r.status];
-        const icon = r.a.kind === 'quiz' ? 'help-circle' : r.a.kind === 'exam' ? 'school' : 'document-text';
-        const tint = r.a.kind === 'quiz' ? ['#EEF2FF', '#3B5BDB'] : r.a.kind === 'exam' ? ['#F1ECFC', '#7C3AED'] : [c.warningBg, c.warning];
-        const meta =
-          r.a.kind === 'assignment'
-            ? r.status === 'graded' ? `Score ${r.sub?.grade?.pct}%` : r.a.dueAt ? `Due ${new Date(r.a.dueAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : ''
-            : r.status === 'scheduled' ? `Opens ${new Date(r.a.opensAt!).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : `${r.a.questionIds?.length} questions · ${r.a.durationMin} min${r.best ? ` · Best ${r.best.scorePct}%` : ''}`;
-        const cta = { pending: r.a.kind === 'assignment' ? 'Submit' : r.a.kind === 'exam' ? 'Start exam' : 'Start quiz', in_progress: 'Continue', overdue: 'Submit late', scheduled: 'View', submitted: 'View', graded: 'Feedback', completed: 'Result' }[r.status];
-        return (
-          <Pressable key={r.a.id} onPress={() => open(r)} style={({ pressed }) => [styles.as, { backgroundColor: c.surface, borderColor: r.status === 'overdue' ? c.danger : c.border }, pressed && { opacity: 0.92 }]} accessibilityRole="button" accessibilityLabel={`${r.a.title}, ${st.label}`}>
-            <View style={[styles.asIcon, { backgroundColor: tint[0] }]}>
-              <Ionicons name={icon} size={24} color={tint[1]} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-              <Pill text={st.label} tone={st.tone} />
-              <Txt variant="bodyStrong" numberOfLines={2}>{r.a.title}</Txt>
-              <Txt variant="caption" color={c.muted} numberOfLines={1}>{r.course.title}</Txt>
-              <Txt variant="caption" color={r.status === 'overdue' ? c.danger : c.inkSoft} numberOfLines={1} style={{ fontWeight: '600' }}>{meta}</Txt>
-            </View>
-            <View style={[styles.cta, { backgroundColor: ['pending', 'in_progress', 'overdue'].includes(r.status) ? c.primary : c.surfaceMuted }]}>
-              <Txt variant="caption" color={['pending', 'in_progress', 'overdue'].includes(r.status) ? '#fff' : c.primary} style={{ fontWeight: '700' }}>{cta}</Txt>
-            </View>
-          </Pressable>
-        );
-      })}
     </View>
   );
 }

@@ -269,10 +269,17 @@ export const affiliatesApi = {
 };
 
 /* ───────────── Certificate designer ───────────── */
+/** Uploaded designs live in certificate management (api/academy.ts → db.academy.certDesigns). */
+const designsOf = (tenantId: string) => ((db as unknown as { academy?: { certDesigns: { id: string; tenantId: string; name: string; dataUrl: string }[] } }).academy?.certDesigns ?? []).filter((d) => d.tenantId === tenantId);
+const withBg = (t: CertTemplate): CertTemplate => {
+  const { bg: _bg, ...rest } = t;
+  const d = t.bgId ? designsOf(t.tenantId).find((x) => x.id === t.bgId) : undefined;
+  return d ? { ...rest, bg: d.dataUrl } : { ...rest, bgId: undefined };
+};
 export const certDesignApi = {
   get(userId: string) {
     const ctx = ctxOf(userId, 'certificate_designer');
-    return { ctx, t: { ...r().certTemplates.find((x) => x.tenantId === ctx.tenant.id)! }, branding: ctx.tenant.branding };
+    return { ctx, t: withBg({ ...r().certTemplates.find((x) => x.tenantId === ctx.tenant.id)! }), branding: ctx.tenant.branding, designs: designsOf(ctx.tenant.id) };
   },
   save(userId: string, t: CertTemplate) {
     const ctx = ctxOf(userId, 'certificate_designer', true);
@@ -280,7 +287,9 @@ export const certDesignApi = {
     if (e.length) throw new ApiError(e[0].field, e[0].msg, e[0].field);
     const R = r();
     const i = R.certTemplates.findIndex((x) => x.tenantId === ctx.tenant.id);
-    R.certTemplates[i] = { ...t, tenantId: ctx.tenant.id, updatedAt: now() };
+    const { bg: _bg, ...plain } = t;
+    if (plain.bgId && !designsOf(ctx.tenant.id).some((x) => x.id === plain.bgId)) throw new ApiError('design', 'That design was removed. Pick another or none.');
+    R.certTemplates[i] = { ...plain, tenantId: ctx.tenant.id, updatedAt: now() };
     persist();
   },
   /** Everything the certificate page needs: learner, course, academy template (Bodhin default if the academy has no designer). */
@@ -290,7 +299,7 @@ export const certDesignApi = {
     const co = cert.courseId ? courseOf(cert.courseId) : undefined;
     const tenant = co ? tenantById(co.tenantId) : undefined;
     const custom = tenant && tenantHas(tenant.id, 'certificate_designer') ? r().certTemplates.find((x) => x.tenantId === tenant.id) : undefined;
-    const t: CertTemplate = custom ?? defaultCert(tenant?.id ?? 'bodhin', cert.tutor, cert.issuedAt);
+    const t: CertTemplate = custom ? withBg(custom) : defaultCert(tenant?.id ?? 'bodhin', cert.tutor, cert.issuedAt);
     return { cert, t, learner: userName(userId), academy: tenant?.branding.displayName ?? 'Bodhin', branding: tenant?.branding ?? null, verify: verifyUrl(cert.id) };
   },
 };

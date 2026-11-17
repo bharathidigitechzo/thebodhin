@@ -22,6 +22,11 @@ import { BottomSheet, Chip, IconButton, Pill } from '@/ui/kit';
 import { Banner, Checkbox } from '@/ui/misc';
 import { CourseArt } from '@/ui/course';
 import { STATE_META } from '@/ui/courseState';
+import { askOwnerToPublish, categoriesApi } from '@/api/academy';
+import { mediaError } from '@/core/academy';
+import { pickImage, pickVideo } from '@/ui/pickMedia';
+import { VideoPreview } from '@/ui/VideoPreview';
+import { haptic } from '@/ui/haptics';
 
 const STEPS = ['Details', 'Content', 'Pricing', 'Publish'] as const;
 const LANGS = ['English', 'Tamil', 'Hindi', 'Telugu', 'Malayalam', 'Kannada'];
@@ -71,7 +76,7 @@ export default function CourseBuilder() {
   /** Save fields this role may change for the current step. */
   const save = (silent = false) => {
     try {
-      const base: Partial<Course> = { title: c.title, subtitle: c.subtitle, description: c.description, categoryId: c.categoryId, level: c.level, language: c.language, art: c.art, outcomes: c.outcomes.filter((o) => o.trim()) };
+      const base: Partial<Course> = { title: c.title, subtitle: c.subtitle, description: c.description, categoryId: c.categoryId, level: c.level, language: c.language, art: c.art, intro: c.intro, outcomes: c.outcomes.filter((o) => o.trim()) };
       const pricing: Partial<Course> = owner ? { priceInr: c.priceInr, compareAtInr: c.compareAtInr, offerEndsAt: c.offerEndsAt, format: c.format, accessMonths: c.accessMonths, drip: c.drip, ...(meta.state === 'draft' ? { visibility: c.visibility } : {}) } : {};
       const saved = courseAdmin.update(userId, c.id, { ...base, ...pricing });
       setC(saved);
@@ -227,18 +232,82 @@ export default function CourseBuilder() {
 /* ───────── Step 1: Details ───────── */
 function Details({ c, set }: { c: Course; set: (p: Partial<Course>) => void }) {
   const { c: t } = useTheme();
-  const cats = catalog.allCategories().filter((k) => k.id !== 'all');
+  const { session } = useAuth();
+  const userId = session?.user.id ?? '';
+  const [cats, setCats] = useState(() => categoriesApi.forCourse(userId));
+  const [catOpen, setCatOpen] = useState(false);
+  const [other, setOther] = useState<string | null>(null);
+  const [catErr, setCatErr] = useState<string | null>(null);
+  const [mediaErr, setMediaErr] = useState<{ cover?: string; video?: string }>({});
   const outcomes = c.outcomes.length ? c.outcomes : [''];
+  const current = cats.find((k) => k.id === c.categoryId);
+  const saveOther = async () => {
+    try {
+      const k = await categoriesApi.add(userId, other ?? '');
+      setCats(categoriesApi.forCourse(userId));
+      set({ categoryId: k.id });
+      setOther(null);
+      setCatErr(null);
+      haptic('success');
+    } catch (e) { setCatErr((e as ApiError).message); haptic('error'); }
+  };
+  const chooseCover = async () => {
+    const f = await pickImage();
+    if (!f) return;
+    const e = mediaError('cover', f);
+    if (e) { setMediaErr({ ...mediaErr, cover: e }); haptic('error'); return; }
+    setMediaErr({ ...mediaErr, cover: undefined });
+    set({ art: { ...c.art, image: f.uri } });
+  };
+  const chooseVideo = async () => {
+    const f = await pickVideo();
+    if (!f) return;
+    const e = mediaError('video', f);
+    if (e) { setMediaErr({ ...mediaErr, video: e }); haptic('error'); return; }
+    setMediaErr({ ...mediaErr, video: undefined });
+    set({ intro: { name: f.name, sizeMb: Math.round(((f.sizeBytes ?? 0) / 1048576) * 10) / 10, uri: f.uri, mime: f.mime ?? undefined, at: new Date().toISOString() } });
+  };
   return (
     <>
       <Section icon="information-circle-outline" title="Course details" sub="This is what learners see first.">
         <TextField label="Course title *" placeholder="e.g. Digital Marketing & AI Mastery" value={c.title} onChangeText={(v) => set({ title: v.slice(0, 100) })} hint={`${c.title.length} / 100`} />
         <TextField label="Subtitle" placeholder="One line on what learners achieve" value={c.subtitle} onChangeText={(v) => set({ subtitle: v.slice(0, 150) })} hint={`${c.subtitle.length} / 150`} />
         <Field label="Category *">
-          <View style={styles.wrap}>
-            {cats.map((k) => <Chip key={k.id} label={k.name} icon={k.icon as any} active={c.categoryId === k.id} onPress={() => set({ categoryId: k.id })} />)}
-          </View>
+          <Pressable onPress={() => setCatOpen(true)} accessibilityRole="button" accessibilityLabel={`Category: ${current?.name ?? 'choose a category'}`} style={[styles.select, { borderColor: t.border, backgroundColor: t.surface }]}>
+            <Ionicons name={((current?.icon ?? 'apps') + '-outline') as keyof typeof Ionicons.glyphMap} size={20} color={current ? t.primary : t.muted} />
+            <Txt style={{ flex: 1 }} color={current ? t.ink : t.muted}>{current?.name ?? 'Choose a category'}</Txt>
+            <Ionicons name="chevron-down" size={18} color={t.muted} />
+          </Pressable>
+          {other !== null && (
+            <View style={{ gap: 8 }}>
+              <TextField label="New category name" placeholder="e.g. Spoken Tamil, Drone pilot training" value={other} onChangeText={(v) => { setOther(v.slice(0, 40)); setCatErr(null); }} error={catErr ?? undefined} />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Button title="Save category" size="md" style={{ flex: 1 }} onPress={saveOther} />
+                <Button title="Cancel" size="md" variant="outline" style={{ flex: 1 }} onPress={() => { setOther(null); setCatErr(null); }} />
+              </View>
+              <Txt variant="caption" color={t.muted}>Saved categories stay in this list for your future courses.</Txt>
+            </View>
+          )}
         </Field>
+        <BottomSheet open={catOpen} onClose={() => setCatOpen(false)} title="Choose a category">
+          <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 4 }}>
+            {cats.map((k) => {
+              const on = c.categoryId === k.id;
+              return (
+                <Pressable key={k.id} onPress={() => { set({ categoryId: k.id }); setOther(null); setCatOpen(false); haptic('select'); }} accessibilityRole="radio" accessibilityState={{ checked: on }} accessibilityLabel={k.name} style={[styles.option, { backgroundColor: on ? t.primarySoft : 'transparent' }]}>
+                  <Ionicons name={(k.icon + '-outline') as keyof typeof Ionicons.glyphMap} size={20} color={on ? t.primary : t.inkSoft} />
+                  <Txt style={{ flex: 1 }} variant={on ? 'bodyStrong' : 'body'}>{k.name}</Txt>
+                  {k.own && <Pill text="Yours" tone="info" />}
+                  {on && <Ionicons name="checkmark" size={20} color={t.primary} />}
+                </Pressable>
+              );
+            })}
+            <Pressable onPress={() => { setOther(''); setCatOpen(false); }} accessibilityRole="button" accessibilityLabel="Other: add a new category" style={styles.option}>
+              <Ionicons name="add-circle-outline" size={20} color={t.primary} />
+              <Txt style={{ flex: 1 }} color={t.primary} variant="bodyStrong">Other… add a new category</Txt>
+            </Pressable>
+          </ScrollView>
+        </BottomSheet>
         <Field label="Level *">
           <View style={styles.wrap}>
             {(Object.keys(LEVEL_LABEL) as Level[]).map((l) => <Chip key={l} label={LEVEL_LABEL[l]} active={c.level === l} onPress={() => set({ level: l })} />)}
@@ -257,6 +326,11 @@ function Details({ c, set }: { c: Course; set: (p: Partial<Course>) => void }) {
 
       <Section icon="image-outline" title="Cover" sub="Shown on cards and the course page.">
         <CourseArt course={c} height={150} rounded={18} showTitle />
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          <Button title={c.art.image ? 'Replace image' : 'Upload cover image'} iconLeft="cloud-upload-outline" size="md" variant={c.art.image ? 'outline' : 'primary'} style={{ flexGrow: 1 }} onPress={chooseCover} />
+          {c.art.image && <Button title="Remove image" iconLeft="trash-outline" size="md" variant="outline" style={{ flexGrow: 1 }} onPress={() => set({ art: { ...c.art, image: undefined } })} />}
+        </View>
+        {mediaErr.cover ? <Banner text={mediaErr.cover} /> : <Txt variant="caption" color={t.muted}>JPG, PNG or WebP, up to 5 MB. 1280 × 720 looks best. {c.art.image ? 'Colour and icon below are used if you remove the image.' : 'No image? Pick a colour and icon below.'}</Txt>}
         <Field label="Colour">
           <View style={styles.wrap}>
             {COVER_PRESETS.map((p) => {
@@ -284,7 +358,21 @@ function Details({ c, set }: { c: Course; set: (p: Partial<Course>) => void }) {
             })}
           </View>
         </Field>
-        <Txt variant="caption" color={t.muted}>Custom image upload (1280 × 720, JPG/PNG/WebP, max 5 MB) connects to media storage in production.</Txt>
+      </Section>
+
+      <Section icon="videocam-outline" title="Intro video" sub="A short preview on the course page (optional).">
+        {c.intro ? (
+          <View style={{ gap: 8 }}>
+            <VideoPreview uri={c.intro.uri} name={c.intro.name} sizeMb={c.intro.sizeMb} />
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              <Button title="Replace video" iconLeft="swap-horizontal" size="md" variant="outline" style={{ flexGrow: 1 }} onPress={chooseVideo} />
+              <Button title="Remove video" iconLeft="trash-outline" size="md" variant="outline" style={{ flexGrow: 1 }} onPress={() => set({ intro: undefined })} />
+            </View>
+          </View>
+        ) : (
+          <Button title="Upload intro video" iconLeft="cloud-upload-outline" size="md" onPress={chooseVideo} />
+        )}
+        {mediaErr.video ? <Banner text={mediaErr.video} /> : <Txt variant="caption" color={t.muted}>MP4, MOV, WebM or MKV, up to 2 GB. Lesson videos are added in Content.</Txt>}
       </Section>
 
       <Section icon="flag-outline" title="What learners will get" sub="Add 3–6 outcomes. Start each with a verb.">
@@ -566,11 +654,15 @@ function Receive({ label, sub, amount, tone }: { label: string; sub: string; amo
 
 function OwnerOnly() {
   const { c: t } = useTheme();
+  const { session } = useAuth();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [sent, setSent] = useState<string | null>(null);
   return (
     <View style={{ alignItems: 'center', gap: 10, paddingVertical: 40 }}>
       <Ionicons name="lock-closed-outline" size={36} color={t.muted} />
       <Txt variant="bodyStrong">Managed by the workspace owner</Txt>
       <Txt color={t.muted} center>Pricing, listing and publishing are set by the owner. You can keep editing details and lessons.</Txt>
+      {sent ? <Banner tone="success" text={sent} /> : <Button title="Ask owner to publish" iconLeft="paper-plane-outline" size="md" variant="outline" onPress={async () => { try { await askOwnerToPublish(session?.user.id ?? '', id); setSent('Sent. The owner will review and publish it.'); haptic('success'); } catch (e) { setSent((e as ApiError).message); } }} />}
     </View>
   );
 }
@@ -595,6 +687,10 @@ function Publish({ c, meta, owner, goStep, agree, setAgree }: { c: Course; meta:
           <Pill text={c.priceInr ? inr(c.priceInr) : 'Free'} tone="info" />
         </View>
         <Button title="Preview as a student" variant="outline" iconLeft="eye-outline" size="md" onPress={() => router.push({ pathname: '/course/[id]', params: { id: c.id } })} />
+      </Section>
+
+      <Section icon="radio-outline" title="Live classes for this course" sub="Everyone who buys it sees them in Live and gets a notification.">
+        <Button title="Schedule a live class" iconLeft="calendar-outline" size="md" variant="outline" disabled={!c.title} onPress={() => router.push({ pathname: '/edu/schedule', params: { courseId: c.id } })} />
       </Section>
 
       <Section icon="checkmark-done-outline" title="Publishing checklist" sub={`${doneCount} of ${list.length} complete`}>
@@ -688,6 +784,8 @@ const styles = StyleSheet.create({
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, borderWidth: 1, minHeight: 58 },
   check: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
   where: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  select: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, minHeight: 52 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, minHeight: 48, borderRadius: 12 },
   bar: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopWidth: 1, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, alignItems: 'center' },
   barInner: { width: '100%', maxWidth: layout.contentMaxWidth, flexDirection: 'row', alignItems: 'center', gap: 10 },
   round: { width: 54, height: 54, borderRadius: 27, borderWidth: 1.2, alignItems: 'center', justifyContent: 'center' },

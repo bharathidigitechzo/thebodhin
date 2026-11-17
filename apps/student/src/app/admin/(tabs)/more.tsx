@@ -14,7 +14,7 @@ import { Group, Row } from '@/ui/ListRow';
 
 export default function AdminMore() {
   const { c } = useTheme();
-  const { session, signOut } = useAuth();
+  const { session, setMode, signOut } = useAuth();
   const userId = session?.user.id ?? '';
   const me = admin.me(userId);
   const [out, setOut] = useState(false);
@@ -48,6 +48,12 @@ export default function AdminMore() {
             {can(r, 'content.bodhin') && (
               <Group title="Bodhin content" icon="sparkles-outline">
                 <Row icon="layers-outline" title="Bodhin’s own courses" sub="Sold by Bodhin, 100% to Bodhin" onPress={() => router.push('/admin/content')} />
+                <Row icon="add-circle-outline" title="Create course" sub="Same course builder as educators" onPress={() => router.push('/edu/new-course')} />
+                <Row icon="help-circle-outline" title="Quizzes & assignments" sub="Create, assign to a course, see results" onPress={() => router.push('/edu/assess')} />
+                <Row icon="radio-outline" title="Live classes for Bodhin courses" sub="Schedule, notify buyers, go live, cancel" onPress={() => router.push('/admin/classes')} />
+                <Row icon="person-circle-outline" title="1:1 mentorship" sub="Requests from learners · accept or decline" onPress={() => router.push('/edu/mentorship')} />
+                <Row icon="ribbon-outline" title="Certificate management" sub="Approve certificates · templates and designs" onPress={() => router.push('/edu/certificates')} />
+                <Row icon="school-outline" title="Students" sub="Enrolled students by course · progress, quizzes, assignments" onPress={() => router.push('/edu/students')} />
                 <Row icon="star-outline" title="Marketplace curation" sub="Featured, banners, categories, Bodhin coupons" onPress={() => router.push('/admin/content')} />
                 <Row icon="play-circle-outline" title="Showcase videos" sub="Educator videos on Bodhin’s site & ads" onPress={() => router.push('/admin/growth')} />
               </Group>
@@ -65,6 +71,9 @@ export default function AdminMore() {
                 {can(r, 'audit.view') && <Row icon="list-outline" title="Audit log" sub="Every admin action, before → after" onPress={() => router.push('/admin/audit')} />}
               </Group>
             )}
+            <Group title="View" icon="swap-horizontal-outline">
+              <Row icon="school-outline" title="Switch to learner view" sub="See Bodhin as a student, with the same login" onPress={() => { setMode('learner'); router.replace('/home'); }} />
+            </Group>
             <Group title="This device" icon="phone-portrait-outline">
               <Row icon="add-circle-outline" title="Install as app" sub="Browser menu → Add to Home Screen. Opens full-screen like an app." />
               <Row icon="log-out-outline" title="Sign out" danger onPress={() => setOut(true)} />

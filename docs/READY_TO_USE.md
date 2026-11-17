@@ -113,3 +113,7 @@ Bugs found and fixed:
 4. A locked (trial-ended) educator crashed the course editor and batch screens. Viewing is now allowed while locked; every change is still blocked.
 5. A newly approved educator stayed a "learner" until they signed out. Roles now refresh when Profile or the educator area opens.
 6. `/application-status` with an unfinished application was blank. It now opens the application form.
+
+## Change request (Nov 16)
+
+The team's list (certificate approval at 75% + quiz, Quizzes / Assignments / Certificates sections, 1:1 mentorship, admin course, live, certificate and student management, Create course for tutors, Community announcements, timetable reminders, category "Other", cover image and video upload, navigation that never disappears, Switch dashboard) is built and tested. See **docs/CHANGE_REQUEST_NOV16.md** and migration `0010_academy_workflows.sql`.

@@ -5,7 +5,7 @@
  */
 import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useLayout } from '@/ui/responsive';
+import { ModuleGrid, useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
@@ -54,7 +54,10 @@ export default function EducatorHome() {
                 <Skeleton h={180} r={18} />
               </View>
             ) : (
-              <Body data={data} twoCol={twoCol} />
+              <>
+                {!isDesktop && <View style={{ marginTop: 12 }}><ModuleGrid area="educator" title="Your modules" compact /></View>}
+                <Body data={data} twoCol={twoCol} />
+              </>
             )}
           </View>
         </ScrollView>
@@ -70,11 +73,12 @@ export default function EducatorHome() {
         <View style={{ gap: 8 }}>
           {(
             [
-              ['layers', 'New course', 'Recorded, live or hybrid', () => router.push({ pathname: '/edu/course/[id]', params: { id: courseAdmin.create(userId) } }), data?.ctx.role === 'owner'],
+              ['layers', 'Create course', 'Recorded, live or hybrid', () => router.push('/edu/new-course'), true],
               ['people', 'New batch', 'Group students with a schedule', () => router.push('/edu/batch-new'), data?.ctx.ent.has('batches') && data?.ctx.role === 'owner'],
               ['help-circle', 'Quiz or assignment', 'Test students or collect their work', () => router.push('/edu/assess/new'), true],
               ['radio', 'Schedule live class', 'Pick a batch, date and time', () => router.push('/edu/schedule'), true],
-              ['megaphone', 'Announcement', 'Message a batch or all students', () => router.navigate('/educator/batches'), true],
+              ['megaphone', 'Announcement', 'Post to your community and notify students', () => router.push({ pathname: '/edu/community', params: { compose: '1' } }), data?.ctx.ent.has('community')],
+              ['alarm', 'Reminder', 'Course update, quiz, deadline …', () => router.push('/edu/timetable'), true],
               ['person-add', 'Invite students', 'By link, file or one by one', () => router.navigate({ pathname: '/educator/batches', params: { seg: 'students' } }), data?.ctx.role === 'owner'],
             ] as const
           )

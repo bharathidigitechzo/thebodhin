@@ -38,7 +38,7 @@
     },
     "scheme": "bodhin",
     "splash": {
-      "image": "./assets/brand/logo-full.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#FBF7F0"
     },

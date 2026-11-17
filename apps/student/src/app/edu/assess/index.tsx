@@ -2,7 +2,7 @@
 import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { assessAdmin } from '@/api/client';
 import type { AssessKind } from '@/core/assess';
@@ -21,7 +21,9 @@ export default function AssessHub() {
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
   const [data, setData] = useState<Data | null>(null);
-  const [kind, setKind] = useState<AssessKind | 'all'>('all');
+  const params = useLocalSearchParams<{ kind?: string }>();
+  const [kind, setKind] = useState<AssessKind | 'all'>(params.kind === 'quiz' || params.kind === 'assignment' || params.kind === 'exam' ? params.kind : 'all');
+  React.useEffect(() => { if (params.kind === 'quiz' || params.kind === 'assignment' || params.kind === 'exam') setKind(params.kind); }, [params.kind]);
   const [courseId, setCourseId] = useState<string | null>(null);
   useFocusEffect(useCallback(() => { assessAdmin.list(userId).then(setData); }, [userId]));
 

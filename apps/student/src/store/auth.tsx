@@ -26,7 +26,7 @@ export function coursesHome(session: Session | null) {
 /** Where a signed-in user lands. One login: role decides the area. */
 export function homePath(session: Session | null, mode: Mode | null) {
   if (!session) return '/sign-in';
-  if (adminMembership(session)) return '/admin';
+  if (adminMembership(session) && mode !== 'learner') return '/admin';
   const edu = educatorMembership(session);
   return edu && mode !== 'learner' ? '/educator/home' : '/home';
 }

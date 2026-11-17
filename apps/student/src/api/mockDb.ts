@@ -47,6 +47,9 @@ interface Db {
   invoices: Invoice[];
   invites: TeamInvite[];
   certificates: { id: string; userId: string; courseId?: string; title: string; program: string; issuedAt: string; weeks: number; tutor: string }[];
+  certificateRequests: { id: string; userId: string; studentName: string; studentEmail: string; courseId: string; courseTitle: string; tenantId: string; tutorId?: string; progressPct: number; quizPassed: boolean; status: 'pending' | 'approved' | 'rejected'; reason?: string; requestedAt: string; decidedAt?: string; decidedBy?: string }[];
+  mentorshipBookings: { id: string; studentId: string; studentName: string; studentEmail: string; tutorId: string; tutorName: string; courseId: string; courseTitle: string; tenantId: string; requestedDate: string; timeSlot: string; topic: string; status: 'pending' | 'accepted' | 'rejected'; reason?: string; createdAt: string }[];
+  timetableReminders: { id: string; tenantId: string; courseId?: string; batchId?: string; type: 'live' | 'quiz' | 'assignment' | 'reminder'; title: string; date: string; time: string; instructorId: string; note?: string; status: 'scheduled' | 'completed' }[];
   tickets: { id: string; userId: string; category: string; subject: string; body: string; status: 'open' | 'in_progress' | 'resolved'; createdAt: string; replies: { by: string; text: string; at: string }[] }[];
   notifications: { id: string; userId: string; kind: 'live' | 'grade' | 'course' | 'payment' | 'qa' | 'system'; title: string; body: string; at: string; read: boolean; link?: { pathname: string; params?: Record<string, string> } }[];
   settings: Record<string, { push: Record<'live' | 'assignments' | 'course' | 'offers', boolean>; wifiOnly: boolean; quality: 'auto' | 'sd' | 'hd'; language: 'en' | 'ta' }>;
@@ -175,10 +178,21 @@ const seed = (): Db => mergeExtras({
     { id: 'sub_meta', userId: 'u_arjun', assessmentId: 'asg_meta', status: 'draft', files: [], note: 'Brand: local organic store. Working on creatives.', updatedAt: daysAgo(0.3) },
   ],
   certificates: [
-    { id: 'BODHIN-DM-AI-2026-0487', userId: 'u_arjun', title: 'Digital Marketing Fundamentals', program: 'Job Ready Program', issuedAt: daysAgo(6), weeks: 6, tutor: 'Rajesh Kumar' },
-    { id: 'BODHIN-SEO-2026-0412', userId: 'u_arjun', title: 'SEO & Content Strategy', program: 'Certification Course', issuedAt: daysAgo(15), weeks: 4, tutor: 'Rajesh Kumar' },
+    { id: 'BODHIN-DM-AI-2026-0487', userId: 'u_arjun', courseId: 'c_dm_ai', title: 'Digital Marketing Fundamentals', program: 'Job Ready Program', issuedAt: daysAgo(6), weeks: 6, tutor: 'Rajesh Kumar' },
+    { id: 'BODHIN-SEO-2026-0412', userId: 'u_arjun', courseId: 'c_dm_ai', title: 'SEO & Content Strategy', program: 'Certification Course', issuedAt: daysAgo(15), weeks: 4, tutor: 'Rajesh Kumar' },
     { id: 'BODHIN-GA-2026-0298', userId: 'u_arjun', title: 'Google Analytics Basics', program: 'Short Course', issuedAt: daysAgo(48), weeks: 2, tutor: 'Rajesh Kumar' },
     { id: 'BODHIN-EXL-2026-0177', userId: 'u_arjun', title: 'Excel Essentials', program: 'Short Course', issuedAt: daysAgo(80), weeks: 2, tutor: 'Arun Prakash' },
+  ],
+  certificateRequests: [
+    { id: 'creq_1', userId: 'u_arjun', studentName: 'Arjun Kumar', studentEmail: 'arjun@demo.in', courseId: 'c_python_ai', courseTitle: 'Python & AI for Marketers', tenantId: 't_rajesh', tutorId: 'u_rajesh', progressPct: 84, quizPassed: true, status: 'pending', requestedAt: daysAgo(0.5) },
+  ],
+  mentorshipBookings: [
+    { id: 'mb_1', studentId: 'u_arjun', studentName: 'Arjun Kumar', studentEmail: 'arjun@demo.in', tutorId: 'u_rajesh', tutorName: 'Rajesh Kumar', courseId: 'c_dm_ai', courseTitle: 'Digital Marketing & AI Mastery', tenantId: 't_rajesh', requestedDate: '2026-11-20', timeSlot: '11:00 AM - 11:45 AM', topic: '1:1 Guidance on Google Ads Campaign Scaling', status: 'pending', createdAt: daysAgo(0.8) },
+  ],
+  timetableReminders: [
+    { id: 'tr_1', tenantId: 't_rajesh', courseId: 'c_dm_ai', type: 'quiz', title: 'Module 3 AI Tools Quiz Due', date: '2026-11-18', time: '18:00', instructorId: 'u_rajesh', note: 'All students must submit before live session 4', status: 'scheduled' },
+    { id: 'tr_2', tenantId: 't_rajesh', courseId: 'c_dm_ai', type: 'assignment', title: 'Ad Campaign Rubric Evaluation Due', date: '2026-11-21', time: '23:59', instructorId: 'u_meera', note: 'Grade submitted student ad copies', status: 'scheduled' },
+    { id: 'tr_3', tenantId: 't_rajesh', courseId: 'c_dm_ai', type: 'reminder', title: 'Upload New Lesson Resources', date: '2026-11-19', time: '10:00', instructorId: 'u_rajesh', note: 'Add Meta Ads cheat sheet PDF to Module 4', status: 'scheduled' },
   ],
   tickets: [
     { id: 'BOD-4587', userId: 'u_arjun', category: 'Live Classes', subject: 'Unable to access live class recording', body: 'The recording for Oct 27 shows a spinner.', status: 'resolved', createdAt: daysAgo(7), replies: [{ by: 'Bodhin Support', text: 'Fixed — the recording finished processing. Please try again.', at: daysAgo(6.8) }] },

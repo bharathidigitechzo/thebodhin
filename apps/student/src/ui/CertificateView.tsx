@@ -1,6 +1,6 @@
 /** One certificate layout used by the designer preview and the learner's certificate page (print = PDF on web). */
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CertTemplate } from '@/core/growth2';
 import { Txt } from './Txt';
@@ -9,7 +9,8 @@ export function CertificateView({ t, learner, course, academy, date, certId, pri
   const ac = t.accent ?? accent;
   const modern = t.layout === 'modern', minimal = t.layout === 'minimal';
   return (
-    <View style={[styles.page, { borderColor: minimal ? '#E5E7EB' : ac, backgroundColor: '#FFFDF8' }]} accessibilityLabel={`Certificate for ${learner}, ${course}`}>
+    <View style={[styles.page, { borderColor: minimal ? '#E5E7EB' : ac, backgroundColor: '#FFFDF8' }, t.bg ? { overflow: 'hidden' } : null]} accessibilityLabel={`Certificate for ${learner}, ${course}`}>
+      {t.bg ? <Image source={{ uri: t.bg }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors /> : null}
       {modern && <View style={[styles.band, { backgroundColor: primary }]} />}
       <View style={[styles.inner, !minimal && { borderColor: `${ac}55`, borderWidth: 1 }]}>
         <View style={styles.top}>

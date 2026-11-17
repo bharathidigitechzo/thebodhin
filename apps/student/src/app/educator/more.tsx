@@ -11,11 +11,13 @@ import { TwoTone, Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { AppHeader, Avatar, BottomSheet, Pill } from '@/ui/kit';
 import { Group, Row } from '@/ui/ListRow';
+import { ModuleGrid, SwitchDashboardSheet, dashboardsOf } from '@/ui/responsive';
 
 
 export default function More() {
   const { c } = useTheme();
-  const { session, setMode, signOut } = useAuth();
+  const { session, signOut } = useAuth();
+  const [switching, setSwitching] = useState(false);
   const userId = session?.user.id ?? '';
   const ctx = educator.context(userId);
   const [logout, setLogout] = useState(false);
@@ -30,6 +32,7 @@ export default function More() {
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.inner}>
             <AppHeader profileHref="/educator/more" />
+            <ModuleGrid area="educator" />
             <View style={[styles.me, { backgroundColor: c.surface, borderColor: c.border }]}>
               <Avatar name={session.user.name} size={56} color={c.primaryDeep} />
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -63,10 +66,13 @@ export default function More() {
               <Row icon="document-text-outline" title="Grade assignments" sub="Rubric scoring, oldest first" onPress={() => router.push('/edu/grading')} />
               <Row icon="help-circle-outline" title="Quizzes & assignments" sub="Create, publish and see results" onPress={() => router.push('/edu/assess')} />
               <Row icon="chatbubbles-outline" title="Student doubts" sub="Lesson questions waiting for you" onPress={() => router.push('/edu/doubts')} />
-              <Row icon="grid-outline" title="Timetable" sub="All batches week by week · clashes flagged" onPress={() => router.push('/edu/timetable')} />
+              <Row icon="grid-outline" title="Timetable" sub="Live meetings and your teaching reminders" onPress={() => router.push('/edu/timetable')} />
+              <Row icon="person-circle-outline" title="1:1 mentorship" sub="Requests from your students · accept or decline" onPress={() => router.push('/edu/mentorship')} />
+              <Row icon="school-outline" title="Students" sub="Enrolled students by course · progress, quizzes, assignments" onPress={() => router.push('/edu/students')} />
+              {owner && <Row icon="ribbon-outline" title="Certificates" sub="Approve certificates · templates and designs" onPress={() => router.push('/edu/certificates')} />}
               <Row icon="sparkles-outline" title="Smart board" sub="Handwriting in any language turns neat" onPress={() => router.push('/edu/board')} />
-              {ctx.ent.has('community') && <Row icon="people-outline" title="Community" sub={owner ? 'Channels & moderation' : 'Talk with your students'} onPress={() => router.push(owner ? '/edu/community' : '/community')} />}
-              <Row icon="megaphone-outline" title="Announcements" sub="Open a batch → Updates" onPress={() => router.navigate('/educator/batches')} />
+              {ctx.ent.has('community') && <Row icon="people-outline" title="Community" sub={owner ? 'Channels & moderation' : 'Talk with your students'} onPress={() => router.push('/edu/community')} />}
+              <Row icon="megaphone-outline" title="Announcements" sub="Post to your community or a batch" onPress={() => router.push({ pathname: '/edu/community', params: { compose: '1' } })} />
             </Group>
 
             {owner && (
@@ -78,7 +84,8 @@ export default function More() {
             )}
 
             <Group title="Account" icon="person-outline">
-              <Row icon="swap-horizontal-outline" title="Switch to learner view" sub="See Bodhin as a student, with the same login" onPress={() => { setMode('learner'); router.replace('/home'); }} />
+              <Row icon="person-circle-outline" title="Profile & account" sub="Name, email, password, notifications" onPress={() => router.push('/edu/account')} />
+              {dashboardsOf(session).length > 1 && <Row icon="swap-horizontal-outline" title="Switch dashboard" sub="Open another dashboard you have access to" onPress={() => setSwitching(true)} />}
               <Row icon="notifications-outline" title="Notifications" onPress={() => router.push('/notifications')} />
               <Row icon="help-buoy-outline" title="Help center" onPress={() => router.push('/help')} />
               <Row icon="log-out-outline" title="Log out" danger onPress={() => setLogout(true)} />
@@ -88,6 +95,7 @@ export default function More() {
         </ScrollView>
       </SafeAreaView>
 
+      <SwitchDashboardSheet open={switching} onClose={() => setSwitching(false)} current="educator" />
       <BottomSheet
         open={logout}
         onClose={() => setLogout(false)}

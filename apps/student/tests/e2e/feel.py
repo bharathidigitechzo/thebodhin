@@ -118,7 +118,7 @@ async def main():
             t = await body()
             ok('valid' in t.lower() or 'verified' in t.lower() or 'genuine' in t.lower(), f'Public verify page confirms it ({cert})')
         else:
-            ok(True, 'Course without certificate: no certificate button (correct)')
+            ok('Certificate status' in t and ('with your educator' in t or 'Check Certificates' in t), 'Certificate waits for educator approval → “Certificate status” shown (approval flow: change_request.py)')
         # 7. not found
         await go('/checkout/does-not-exist', 1600)
         ok('Course not found' in await body(), 'Bad course link → friendly "Course not found", not a blank screen')

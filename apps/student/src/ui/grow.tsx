@@ -33,6 +33,20 @@ export function useData<T>(fn: (userId: string) => T) {
   return { d, err, load, userId };
 }
 
+/** Same as useData for API calls that return a promise (reloads whenever the screen comes into focus). */
+export function useDataAsync<T>(fn: (userId: string) => Promise<T>) {
+  const { session } = useAuth();
+  const userId = session?.user.id ?? '';
+  const [d, setD] = useState<T | null>(null);
+  const [err, setErr] = useState<ApiError | null>(null);
+  const load = useCallback(() => {
+    fn(userId).then((x) => { setD(x); setErr(null); }).catch((e) => setErr(e instanceof ApiError ? e : new ApiError('error', 'Something went wrong.')));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+  useFocusEffect(load);
+  return { d, err, load, userId };
+}
+
 export function Page({ title, sub, err, children, footer, fallback = '/edu/grow', wide }: { title: string; sub?: string; err?: ApiError | null; children?: React.ReactNode; footer?: React.ReactNode; fallback?: string; wide?: boolean }) {
   const { c } = useTheme();
   const { isDesktop } = useLayout();

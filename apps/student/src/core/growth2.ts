@@ -94,6 +94,10 @@ export interface CertTemplate {
   showLogo: boolean;
   showQr: boolean;
   accent?: string;
+  /** Uploaded background design (id from certificate management; the image itself is resolved by the API). */
+  bgId?: string;
+  /** Resolved background image for rendering (filled by the API, never stored). */
+  bg?: string;
   updatedAt: string;
 }
 export const defaultCert = (tenantId: string, signName: string, now: string): CertTemplate => ({ tenantId, layout: 'classic', title: 'Certificate of Completion', line: 'has successfully completed', signName, signTitle: 'Founder & Lead Educator', showLogo: true, showQr: true, updatedAt: now });

@@ -63,7 +63,10 @@ export interface Course {
   outcomes: string[];
   projects: number;
   certificate: boolean;
-  art: { from: string; to: string; icon: string };
+  /** Cover: gradient + icon, or an uploaded image (image wins when set). */
+  art: { from: string; to: string; icon: string; image?: string };
+  /** Intro video shown on the course page (uploaded by the educator). */
+  intro?: { name: string; sizeMb: number; uri: string; mime?: string; at: string };
   modules: Module[];
   publishedAt: string;
   /** Lifecycle. Undefined = published (seed data). Draft courses are visible only in the builder. */

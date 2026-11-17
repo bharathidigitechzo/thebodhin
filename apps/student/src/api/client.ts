@@ -58,6 +58,13 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Extension points for modules that live in their own files (api/academy.ts registers these on import).
+ * progress: a learner's course progress or quiz result changed. certSync: issue/queue certificates for a learner.
+ */
+export const academyHooks: { progress: ((userId: string, courseId: string) => void)[]; certSync?: (userId: string) => void } = { progress: [] };
+const fireProgress = (userId: string, courseId: string) => academyHooks.progress.forEach((f) => { try { f(userId, courseId); } catch (e) { console.warn('progress hook failed', e); /* never block the learner */ } });
+
 /** POC only: the OTP every verification accepts. */
 export const DEMO_OTP = '123456';
 
@@ -575,6 +582,7 @@ export const player = {
     if (!done && has) e.completedLessonIds = e.completedLessonIds.filter((x) => x !== lessonId);
     e.lastActiveAt = new Date().toISOString();
     persist();
+    if (done && !has) fireProgress(userId, courseId);
   },
 
   isBookmarked: (userId: string, lessonId: string) => db.bookmarks.some((b) => b.userId === userId && b.lessonId === lessonId),
@@ -849,6 +857,7 @@ export const assessments = {
     // Passing a curriculum quiz completes that lesson.
     if (a.lessonId && s.scorePct >= a.passPct) player.setComplete(userId, a.courseId, a.lessonId, true);
     persist();
+    fireProgress(userId, a.courseId);
     return t;
   },
 
@@ -987,7 +996,7 @@ export const payments = {
 };
 
 /** BODHIN-<COURSE>-<YEAR>-<6 random> — unique, unguessable, safe in a URL. */
-function newCertId(courseId: string) {
+export function newCertId(courseId: string) {
   const code = courseId.replace(/^c_/, '').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'CRS';
   for (;;) {
     const id = `BODHIN-${code}-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -998,6 +1007,11 @@ function newCertId(courseId: string) {
 export const certificates = {
   /** Seeded certificates + one auto-issued for every completed course that offers a certificate. */
   list(userId: string) {
+    // Approval workflow (api/academy.ts): eligible learners are queued for the educator / Bodhin team, auto-mode academies issue at once.
+    if (academyHooks.certSync) {
+      academyHooks.certSync(userId);
+      return db.certificates.filter((c) => c.userId === userId).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
+    }
     const issued = db.certificates.filter((c) => c.userId === userId);
     const auto = db.enrollments
       .filter((e) => e.userId === userId)
@@ -1013,7 +1027,8 @@ export const certificates = {
   /** Public verification (anyone with the ID). Real: GET thebodhin.com/cert/<id>. */
   async verify(id: string) {
     await wait(500);
-    const all = [...new Set(db.users.map((u) => u.id))].flatMap((u) => certificates.list(u));
+    // Only issued (approved) certificates verify; a pending or rejected request is not a certificate.
+    const all = academyHooks.certSync ? db.certificates : [...new Set(db.users.map((u) => u.id))].flatMap((u) => certificates.list(u));
     const c = all.find((x) => x.id.toUpperCase() === id.trim().toUpperCase());
     if (!c) return { valid: false as const };
     return { valid: true as const, name: db.users.find((u) => u.id === c.userId)?.name ?? 'Learner', title: c.title, issuedAt: c.issuedAt };
@@ -1314,10 +1329,10 @@ export const courseAdmin = {
     return { course: r.course, role: r.ctx.role, state: courseState(r.course), ctx: r.ctx };
   },
 
-  /** Creates an empty draft and returns its id (owners only). */
+  /** Creates an empty draft and returns its id. Owners and tutors (a tutor's course is assigned to them; publishing follows the same rules). */
   create(userId: string) {
     const ctx = educator.context(userId);
-    if (!ctx || ctx.role !== 'owner') throw new ApiError('forbidden', 'Only the workspace owner can create courses.');
+    if (!ctx) throw new ApiError('forbidden', 'Only educators can create courses.');
     if (ctx.locked) throw new ApiError('locked', `${ctx.gate.title}. ${ctx.gate.message}`);
     const tutor = ensureTutorProfile(ctx.tenant.id, userId);
     const id = uid('c');
@@ -1327,6 +1342,7 @@ export const courseAdmin = {
       priceInr: 0, rating: 0, ratingCount: 0, students: 0, visibility: 'private', moderation: 'approved', outcomes: [], projects: 0, certificate: true,
       art: { ...cover, icon: 'school' }, modules: [{ id: uid('m'), title: 'Module 1', lessons: [] }], publishedAt: '', status: 'draft', language: 'English', accessMonths: 12, drip: { enabled: false, everyDays: 7 },
     });
+    if (ctx.role === 'tutor') { db.tutorAssignments.push({ userId, courseId: id }); persist(); }
     return id;
   },
 

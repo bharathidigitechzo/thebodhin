@@ -13,6 +13,57 @@ import { Button } from '@/ui/Button';
 import { TextField } from '@/ui/TextField';
 import { BottomSheet, IconButton, Pill, ProgressBar } from '@/ui/kit';
 import { BrandLogo } from '@/ui/Brand';
+import { certApprovals } from '@/api/academy';
+import { CERT_MIN_PCT } from '@/core/academy';
+import { useAsync } from '@/ui/kit';
+import { Banner } from '@/ui/misc';
+import { ApiError } from '@/api/client';
+import { useFocusEffect } from 'expo-router';
+
+/** Certificates on their way: waiting for approval, not approved (with the reason), and what is still missing. */
+function CertStatus({ userId }: { userId: string }) {
+  const { c } = useTheme();
+  const q = useAsync(() => certApprovals.mine(userId), [userId]);
+  useFocusEffect(React.useCallback(() => { q.reload(); }, [q.reload])); // eslint-disable-line react-hooks/exhaustive-deps
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
+  const d = q.data;
+  if (!d || (!d.pending.length && !d.rejected.length && !d.inProgress.length)) return null;
+  return (
+    <View style={{ gap: 10 }}>
+      {msg && <Banner tone={msg.ok ? 'success' : 'danger'} text={msg.t} />}
+      {d.pending.map((w) => (
+        <View key={w.course.id} style={[styles.status, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <Ionicons name="hourglass-outline" size={22} color={c.warning} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt variant="bodyStrong" numberOfLines={2}>{w.course.title}</Txt>
+            <Txt variant="caption" color={c.muted}>Waiting for your educator’s approval. You’ll get a notification.</Txt>
+          </View>
+          <Pill text="In review" tone="warning" />
+        </View>
+      ))}
+      {d.rejected.map((w) => (
+        <View key={w.course.id} style={[styles.status, { backgroundColor: c.surface, borderColor: c.border, alignItems: 'flex-start' }]}>
+          <Ionicons name="alert-circle-outline" size={22} color={c.danger} />
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Txt variant="bodyStrong" numberOfLines={2}>{w.course.title}</Txt>
+            <Txt variant="caption" color={c.inkSoft}>Not approved: {w.request?.reason}</Txt>
+            <Button title="Ask again" size="md" variant="outline" onPress={async () => { try { await certApprovals.requestAgain(userId, w.course.id); setMsg({ ok: true, t: 'Sent again to your educator.' }); q.reload(); } catch (e) { setMsg({ ok: false, t: e instanceof ApiError ? e.message : 'Could not send.' }); } }} />
+          </View>
+        </View>
+      ))}
+      {d.inProgress.map((w) => (
+        <View key={w.course.id} style={[styles.status, { backgroundColor: c.surface, borderColor: c.border, alignItems: 'flex-start' }]}>
+          <Ionicons name="ribbon-outline" size={22} color={c.primary} />
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Txt variant="bodyStrong" numberOfLines={2}>{w.course.title}</Txt>
+            <ProgressBar pct={w.eligibility.progressPct} />
+            {w.eligibility.missing.map((m) => <Txt key={m} variant="caption" color={c.muted}>• {m}</Txt>)}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 type Cert = ReturnType<typeof certificates.list>[number];
 type Tab = 'certificates' | 'badges' | 'verify';
@@ -73,9 +124,10 @@ export default function Certificates() {
               ))}
             </View>
 
+            {tab === 'certificates' && <CertStatus userId={userId} />}
             {tab === 'certificates' &&
               (list.length === 0 ? (
-                <Txt color={c.muted} center style={{ paddingVertical: 30 }}>Complete a course to earn your first certificate.</Txt>
+                <Txt color={c.muted} center style={{ paddingVertical: 30 }}>Finish {CERT_MIN_PCT}% of a course and pass its quiz. Your educator approves it, then it appears here to view and download.</Txt>
               ) : (
                 list.map((cert) => (
                   <Pressable key={cert.id} onPress={() => setView(cert)} style={[styles.cert, { backgroundColor: c.surface, borderColor: c.border }]} accessibilityRole="button" accessibilityLabel={`Certificate: ${cert.title}`}>
@@ -218,6 +270,7 @@ function Verify() {
 }
 
 const styles = StyleSheet.create({
+  status: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.lg, borderWidth: 1 },
   scroll: { paddingHorizontal: 20, paddingBottom: 40, alignItems: 'center' },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   summary: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderRadius: 22 },

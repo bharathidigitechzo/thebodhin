@@ -15,6 +15,36 @@ import { TwoTone, Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { AppHeader, BottomSheet, ErrorState, Pill, Skeleton, useAsync } from '@/ui/kit';
 import { WeekTimetable } from '@/ui/WeekTimetable';
+import { mentorship } from '@/api/academy';
+
+/** 1:1 mentorship: confirmed sessions (join when it's time) and a way to book one. */
+function MentorCard({ userId }: { userId: string }) {
+  const { c } = useTheme();
+  const list = mentorship.learnerSessions(userId);
+  return (
+    <View style={{ gap: 10 }}>
+      <Txt variant="label" color={c.muted} style={{ marginTop: 6 }}>1:1 MENTORSHIP</Txt>
+      {list.map(({ r, course, mentor, label }) => (
+        <View key={r.id} style={[styles.mentor, { backgroundColor: c.surface, borderColor: label === 'Live now' ? c.danger : c.border }]}>
+          <Ionicons name={label === 'Live now' ? 'videocam' : 'person-circle-outline'} size={26} color={label === 'Live now' ? c.danger : c.primary} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt variant="bodyStrong" numberOfLines={1}>{mentor}</Txt>
+            <Txt variant="caption" color={c.muted} numberOfLines={1}>{course.title} · {new Date(r.startsAt!).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</Txt>
+          </View>
+          {label === 'Live now' ? <Button title="Join" size="md" onPress={() => router.push({ pathname: '/mentor-room/[id]', params: { id: r.id } })} /> : <Pill text="Confirmed" tone="success" />}
+        </View>
+      ))}
+      <Pressable onPress={() => router.push('/mentorship')} style={[styles.cal, { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Book a 1:1 mentorship">
+        <Ionicons name="person-add-outline" size={26} color={c.primary} />
+        <View style={{ flex: 1 }}>
+          <Txt variant="bodyStrong">Book a 1:1 with your tutor</Txt>
+          <Txt variant="caption" color={c.inkSoft}>Pick a time and what you need help with. Your tutor confirms it.</Txt>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={c.muted} />
+      </Pressable>
+    </View>
+  );
+}
 
 type Data = Awaited<ReturnType<typeof liveTab.schedule>>;
 type Row = Data['upcoming'][number];
@@ -70,6 +100,7 @@ export default function Live() {
                     {rows.map((r) => <UpcomingRow key={r.session.id} row={r} userId={userId} onJoin={() => join(r.session.id)} onChange={reload} />)}
                   </View>
                 ))}
+                <MentorCard userId={userId} />
                 <Pressable onPress={() => setCalOpen(true)} style={[styles.cal, { backgroundColor: c.primarySoft }]} accessibilityRole="button">
                   <Ionicons name={data.calendarSync ? 'checkmark-circle' : 'calendar-outline'} size={28} color={data.calendarSync ? c.success : c.primary} />
                   <View style={{ flex: 1 }}>
@@ -261,6 +292,7 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  mentor: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.lg, borderWidth: 1 },
   scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 30 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth },
   seg: { flexDirection: 'row', padding: 4, borderRadius: radius.pill },

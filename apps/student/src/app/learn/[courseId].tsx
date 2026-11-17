@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, certificates, downloads, notes as notesApi, player, questions as qaApi } from '@/api/client';
+import { certApprovals } from '@/api/academy';
 import { Celebrate } from '@/ui/celebrate';
 import { haptic } from '@/ui/haptics';
 import { allLessons, type Lesson } from '@/core/catalog';
@@ -98,6 +99,7 @@ export default function Player() {
   if (enrolled && completed.size === total && doneBefore.current < total && !finished) { doneBefore.current = total; setTimeout(() => setFinished(true), 0); }
   if (completed.size < total) doneBefore.current = Math.min(doneBefore.current, completed.size);
   const cert = finished && course.certificate ? certificates.list(userId).find((x) => x.courseId === course.id) : null;
+  const certReq = finished && course.certificate && !cert ? certApprovals.statusFor(userId, course.id) : null;
   const moduleNo = course.modules.indexOf(module) + 1;
   const lessonNo = module.lessons.indexOf(lesson) + 1;
   const downloaded = downloads.has(userId, lesson.id);
@@ -383,6 +385,11 @@ export default function Player() {
           <Txt color={c.inkSoft} center>{total} of {total} lessons done.{cert ? ' Your certificate is ready.' : ''}</Txt>
           {cert ? (
             <Button title="View certificate" iconLeft="ribbon-outline" style={{ alignSelf: 'stretch' }} onPress={() => { setFinished(false); router.push({ pathname: '/certificate/[id]', params: { id: cert.id } }); }} />
+          ) : course.certificate ? (
+            <>
+              <Txt variant="caption" color={c.muted} center>{certReq?.status === 'pending' ? 'Your certificate is with your educator for approval. We’ll notify you.' : 'Check Certificates to see what’s left for your certificate (quiz and approval).'}</Txt>
+              <Button title="Certificate status" iconLeft="ribbon-outline" variant="outline" style={{ alignSelf: 'stretch' }} onPress={() => { setFinished(false); router.push('/certificates'); }} />
+            </>
           ) : null}
           <Button title="Rate this course" variant="outline" style={{ alignSelf: 'stretch' }} onPress={() => { setFinished(false); router.push({ pathname: '/course/[id]', params: { id: course.id } }); }} />
         </View>

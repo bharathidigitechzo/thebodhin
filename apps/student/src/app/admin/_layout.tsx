@@ -55,6 +55,7 @@ function TwoStep({ userId, name, role, onDone, onCancel }: { userId: string; nam
         <Txt color={c.muted} center>{name} · {role}. Enter the 6-digit code from your authenticator app.</Txt>
         <OtpInput value={code} onChange={(v) => { setCode(v); if (v.length === 6) go(v); }} error={!!err} />
         {err ? <Txt variant="caption" color={c.danger} center>{err}</Txt> : <Txt variant="caption" color={c.muted} center>Demo code: 123456 · valid for 12 hours on this device</Txt>}
+        <Button title="⚡ Auto-fill 123456 & Verify" variant="outline" size="md" loading={busy} onPress={() => { setCode('123456'); go('123456'); }} />
         <Button title="Verify" loading={busy} disabled={code.length !== 6} onPress={() => go()} />
         <Button title="Use a different account" variant="ghost" onPress={onCancel} />
       </View>

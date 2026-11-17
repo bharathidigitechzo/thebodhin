@@ -40,6 +40,23 @@ export default function SignIn() {
     }
   }
 
+  async function fillAndLogin(id: string) {
+    setIdentifier(id);
+    setPassword('demo123');
+    setErrors({});
+    setBusy('form');
+    try {
+      const sess = await auth.signIn(id, 'demo123');
+      setSession(sess);
+      router.replace(homePath(sess, null) as any);
+    } catch (err) {
+      const a = err as ApiError;
+      setErrors(a.field ? { [a.field]: a.message } : { form: a.message });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function social(p: 'google' | 'apple') {
     setBusy(p);
     try {
@@ -143,10 +160,28 @@ export default function SignIn() {
         </View>
       </View>
 
-      <View style={[styles.demo, { backgroundColor: c.accentSoft }]}>
-        <Txt variant="caption" color={c.inkSoft} center>
-          Student: arjun@demo.in · Educator: rajesh@demo.in · Tutor: meera@demo.in · Super Admin (web): admin@demo.in · password demo123
+      <View style={[styles.demo, { backgroundColor: c.accentSoft, borderColor: c.border, borderWidth: 1 }]}>
+        <Txt variant="caption" color={c.ink} center style={{ fontWeight: '700', marginBottom: 8 }}>
+          ⚡ 1-Tap Demo Quick Fill (password: demo123)
         </Txt>
+        <View style={styles.demoChips}>
+          <Pressable onPress={() => fillAndLogin('admin@demo.in')} style={[styles.demoChip, { backgroundColor: c.primary }]} accessibilityRole="button">
+            <Ionicons name="shield-checkmark" size={13} color="#fff" />
+            <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Super Admin</Txt>
+          </Pressable>
+          <Pressable onPress={() => fillAndLogin('rajesh@demo.in')} style={[styles.demoChip, { backgroundColor: '#0F6E5A' }]} accessibilityRole="button">
+            <Ionicons name="business" size={13} color="#fff" />
+            <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Educator</Txt>
+          </Pressable>
+          <Pressable onPress={() => fillAndLogin('meera@demo.in')} style={[styles.demoChip, { backgroundColor: '#7C3AED' }]} accessibilityRole="button">
+            <Ionicons name="person" size={13} color="#fff" />
+            <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Tutor</Txt>
+          </Pressable>
+          <Pressable onPress={() => fillAndLogin('arjun@demo.in')} style={[styles.demoChip, { backgroundColor: '#D97706' }]} accessibilityRole="button">
+            <Ionicons name="school" size={13} color="#fff" />
+            <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Student</Txt>
+          </Pressable>
+        </View>
       </View>
       <PoweredBy />
     </Screen>
@@ -160,5 +195,7 @@ const styles = StyleSheet.create({
   link: { minHeight: 44, justifyContent: 'center' },
   social: { flexDirection: 'row', gap: 12 },
   footRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, minHeight: 32, flexWrap: 'wrap', columnGap: 14 },
-  demo: { marginTop: 14, borderRadius: 12, padding: 10, marginBottom: 8 },
+  demo: { marginTop: 14, borderRadius: 16, padding: 12, marginBottom: 8 },
+  demoChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+  demoChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12 },
 });

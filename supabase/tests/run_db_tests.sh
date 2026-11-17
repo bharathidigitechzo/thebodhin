@@ -4,5 +4,6 @@ set -e
 PORT=${1:-5499}; HERE=$(cd "$(dirname "$0")/.." && pwd)
 P="psql -q -v ON_ERROR_STOP=1 -h /tmp -p $PORT -U postgres"
 $P -d postgres -c "drop database if exists bodhin" -c "create database bodhin" 2>&1 | grep -v NOTICE || true
-for f in tests/supabase_shim.sql migrations/0001_tables.sql migrations/0002_rules.sql migrations/0003_security.sql seed.sql migrations/0004_refunds_and_listing.sql migrations/0005_live.sql migrations/0006_playground.sql migrations/0007_growth.sql migrations/0008_scale.sql migrations/0009_launch_rules.sql; do $P -d bodhin -f "$HERE/$f" 2>&1 | grep -v NOTICE || true; done
+for f in tests/supabase_shim.sql migrations/0001_tables.sql migrations/0002_rules.sql migrations/0003_security.sql seed.sql migrations/0004_refunds_and_listing.sql migrations/0005_live.sql migrations/0006_playground.sql migrations/0007_growth.sql migrations/0008_scale.sql migrations/0009_launch_rules.sql migrations/0010_academy_workflows.sql; do $P -d bodhin -f "$HERE/$f" 2>&1 | grep -v NOTICE || true; done
 python3 "$HERE/tests/db_test.py" "host=/tmp port=$PORT user=postgres dbname=bodhin"
+python3 "$HERE/tests/academy_db_test.py" "host=/tmp port=$PORT user=postgres dbname=bodhin"

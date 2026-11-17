@@ -1,13 +1,13 @@
 /** Profile hub: account, learning records, settings, support. */
 import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useLayout } from '@/ui/responsive';
+import { ModuleGrid, SwitchDashboardSheet, dashboardsOf, useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, account, auth } from '@/api/client';
-import { educatorMembership, useAuth } from '@/store/auth';
+import { adminMembership, educatorMembership, useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout, radius } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
@@ -25,8 +25,10 @@ export default function Profile() {
   const [vib, setVib] = React.useState(hapticsEnabled());
   const { isDesktop, pad } = useLayout();
   const { c, tenant, brand } = useTheme();
-  const { session, setSession, signOut, setMode, refresh } = useAuth();
+  const { session, setSession, setMode, signOut, refresh } = useAuth();
+  const [switching, setSwitching] = useState(false);
   const edu = educatorMembership(session);
+  const adm = adminMembership(session);
   const user = session!.user;
   const sum = useAsync(() => account.summary(user.id), [user.id]);
   useFocusEffect(useCallback(() => { sum.reload(); refresh(); }, [sum.reload, refresh])); // eslint-disable-line react-hooks/exhaustive-deps
@@ -70,7 +72,7 @@ export default function Profile() {
                 </Pressable>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                <Pill text="Student" tone="gold" icon="school" />
+                <Pill text={adm ? 'Admin' : edu ? 'Educator' : 'Student'} tone="gold" icon={adm ? 'shield-checkmark' : 'school'} />
                 <Txt variant="caption" color="rgba(255,255,255,0.75)">Member since {new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</Txt>
               </View>
               <View style={{ marginTop: 14, gap: 6 }}>
@@ -99,7 +101,18 @@ export default function Profile() {
               </View>
             )}
 
-            {!edu && (
+            {adm && (
+              <Pressable onPress={() => { setMode(null as any); router.replace('/admin'); }} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button">
+                <Ionicons name="shield-checkmark" size={22} color={c.accent} />
+                <View style={{ flex: 1 }}>
+                  <Txt variant="bodyStrong" color="#fff">Switch to Admin Portal</Txt>
+                  <Txt variant="caption" color="rgba(255,255,255,0.75)">Command Center, tenants & platform controls</Txt>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#fff" />
+              </Pressable>
+            )}
+
+            {!edu && !adm && (
               <Pressable onPress={() => router.push(auth.getApplication(user.id) && auth.getApplication(user.id)!.status !== 'draft' ? '/application-status' : '/apply')} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button">
                 <Ionicons name="school-outline" size={22} color={c.accent} />
                 <View style={{ flex: 1 }}>
@@ -109,19 +122,23 @@ export default function Profile() {
                 <Ionicons name="chevron-forward" size={20} color="#fff" />
               </Pressable>
             )}
-            {edu && (
-              <Pressable onPress={() => { setMode('educator'); router.replace('/educator/home'); }} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button">
+            {dashboardsOf(session).length > 1 && (
+              <Pressable onPress={() => setSwitching(true)} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button" accessibilityLabel="Switch dashboard">
                 <Ionicons name="swap-horizontal" size={22} color={c.accent} />
                 <View style={{ flex: 1 }}>
-                  <Txt variant="bodyStrong" color="#fff">Switch to Educator</Txt>
-                  <Txt variant="caption" color="rgba(255,255,255,0.75)">Manage your workspace with the same login</Txt>
+                  <Txt variant="bodyStrong" color="#fff">Switch dashboard</Txt>
+                  <Txt variant="caption" color="rgba(255,255,255,0.75)">{edu ? 'Educator dashboard with the same login' : 'Another dashboard with the same login'}</Txt>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#fff" />
               </Pressable>
             )}
+            <ModuleGrid area="learner" exclude={['home', 'explore', 'learning', 'live', 'profile']} title="Your sections" compact />
+            <SwitchDashboardSheet open={switching} onClose={() => setSwitching(false)} current="learner" />
 
             <Group title="Learning" icon="school-outline">
               <Row icon="card-outline" title="Payments & enrollments" sub="Orders, invoices and access dates" onPress={() => router.push('/payments')} />
+              <Row icon="help-circle-outline" title="Quizzes & assignments" sub="From the courses you bought" onPress={() => router.push('/quizzes')} />
+              <Row icon="person-circle-outline" title="1:1 mentorship" sub="Book time with your tutor" onPress={() => router.push('/mentorship')} />
               <Row icon="ribbon-outline" title="Certificates & achievements" sub="Download, share and verify" onPress={() => router.push('/certificates')} />
               <Row icon="code-slash-outline" title="Code Playground" sub="Practise any language, run challenges" onPress={() => router.push('/playground')} />
               <Row icon="chatbubbles-outline" title="Community" sub="Channels with your batchmates and tutors" onPress={() => router.push('/community')} />

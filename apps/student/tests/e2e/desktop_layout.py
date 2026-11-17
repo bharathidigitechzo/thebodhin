@@ -67,9 +67,9 @@ async def main():
     await pg.keyboard.press('Escape'); await pg.wait_for_timeout(400)
     if await pg.get_by_text('Add student block').count():
       await pg.get_by_role('button', name='Close').last.evaluate('e=>e.click()'); await pg.wait_for_timeout(800)
-    print('switch elements:', await pg.get_by_text('Switch to learning').count(), await pg.get_by_label('Switch to learning').count(), flush=True)
-    # switch area from sidebar
-    await pg.get_by_label('Switch to learning').first.click(); await pg.wait_for_timeout(2000)
+    # switch area from sidebar: Switch dashboard → Student dashboard (Nov 16: one switcher for every role)
+    await pg.get_by_label('Switch dashboard').first.click(); await pg.wait_for_timeout(800)
+    await pg.get_by_role('button', name='Student dashboard', exact=False).first.click(); await pg.wait_for_timeout(2000)
     t = await body()
     ok('Hello, Rajesh' in t or 'LEARNING' in t, 'sidebar switch to learning works')
     pass

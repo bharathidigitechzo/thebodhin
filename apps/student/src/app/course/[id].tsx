@@ -21,6 +21,7 @@ import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { Avatar, ErrorState, IconButton, Pill, ProgressBar, ProgressRing, Skeleton, useAsync } from '@/ui/kit';
 import { BadgeFor, CourseArt, Price, Rating } from '@/ui/course';
+import { VideoPreview } from '@/ui/VideoPreview';
 import { ReviewSheet } from '@/ui/ReviewSheet';
 import { BottomSheet } from '@/ui/kit';
 
@@ -479,6 +480,12 @@ function Overview({ course }: { course: Course }) {
         <Txt variant="heading">About this course</Txt>
         <Txt color={c.inkSoft}>{course.description}</Txt>
       </View>
+      {course.intro && (
+        <View style={{ gap: 6 }}>
+          <Txt variant="heading">Intro video</Txt>
+          <VideoPreview uri={course.intro.uri} name={course.intro.name} />
+        </View>
+      )}
       <View style={styles.stats}>
         {stats.map((s) => (
           <View key={s.l} style={[styles.stat, { backgroundColor: c.surface, borderColor: c.border }]}>

@@ -18,18 +18,19 @@ LEARNER = ['/home', '/explore', '/search', '/learning', '/live', '/profile', '/c
            '/checkout/c_neet_bot', f'/checkout/{X}', '/quiz/dm_m1_l5', '/assignment/asg_content', f'/assignment/{X}', f'/result/{X}',
            '/certificates', '/certificate/BODHIN-DM-AI-2026-0487', f'/certificate/{X}', '/downloads', '/payments', '/notifications',
            '/my-purchases', '/refer', '/help', '/community', f'/community/{X}', '/playground', '/playground/python', '/live-room/ls_now',
-           '/apply', '/application-status', '/educator-soon']
+           '/apply', '/application-status', '/educator-soon', '/quizzes', '/assignments', '/mentorship', f'/mentor-room/{X}']
 EDU = ['/educator/home', '/educator/courses', '/educator/batches', '/educator/live', '/educator/more',
        '/edu/course/c_dm_ai', f'/edu/course/{X}', '/edu/batch/b_dm_wk', f'/edu/batch/{X}', '/edu/batch-new', '/edu/schedule', '/edu/timetable',
        '/edu/host/ls_now', '/edu/prejoin/ls_now', '/edu/summary/s_b_dm_wk_1', f'/edu/summary/{X}', '/edu/grading', '/edu/grade/sub_content',
        '/edu/student/p_0', '/edu/assess', '/edu/assess/new', '/edu/assess/asg_content', '/edu/doubts', '/edu/earnings', '/edu/coupons',
        '/edu/subscription', '/edu/payments-setup', '/edu/workspace', '/edu/team', '/edu/board', '/edu/grow', '/edu/leads', f'/edu/lead/{X}',
        '/edu/automations', '/edu/broadcasts', '/edu/emi', '/edu/webinars', '/edu/bookings', '/edu/products', '/edu/site', '/edu/community',
-       '/edu/bundles', '/edu/affiliates', '/edu/certificate', '/edu/analytics', '/edu/intl', '/edu/embed', '/edu/showcase', '/edu/lesson']
+       '/edu/bundles', '/edu/affiliates', '/edu/certificate', '/edu/analytics', '/edu/intl', '/edu/embed', '/edu/showcase', '/edu/lesson',
+       '/edu/certificates', '/edu/mentorship', '/edu/students', '/edu/account', f'/edu/channel/{X}']
 ADMIN = ['/admin', '/admin/inbox', '/admin/money', '/admin/tenants', '/admin/more', '/admin/users', '/admin/user/u_arjun', f'/admin/user/{X}',
          '/admin/tenant/t_rajesh', f'/admin/tenant/{X}', '/admin/plans', '/admin/plan/growth', '/admin/review/course/c_neet_bot',
          f'/admin/review/educator/{X}', '/admin/content', '/admin/flags', '/admin/settings', '/admin/audit', '/admin/team', '/admin/tickets',
-         '/admin/broadcast', '/admin/search', '/admin/growth', '/admin/live']
+         '/admin/broadcast', '/admin/search', '/admin/growth', '/admin/live', '/admin/classes']
 
 CHECK = r"""
 () => {

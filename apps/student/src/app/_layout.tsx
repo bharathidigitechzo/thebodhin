@@ -1,5 +1,6 @@
 import React from 'react';
 import '@/api/growth2'; // registers round-2 paid-order hooks (affiliates, analytics)
+import '@/api/academy'; // certificate approvals, mentorship, course-wide live classes (registers progress hooks)
 import { Stack, router, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
