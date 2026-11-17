@@ -8,7 +8,7 @@ import { useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ApiError, catalog, commerce } from '@/api/client';
+import { ApiError, catalog, commerce, enrollment as enrollmentApi } from '@/api/client';
 import { emiApi } from '@/api/growth';
 import { intlApi, track, upsellApi } from '@/api/growth2';
 import { fmtMoney, type Currency } from '@/core/growth2';
@@ -57,6 +57,10 @@ export default function Checkout() {
   const quote = useMemo(() => (data ? commerce.quote(data.course.id, coupon) : null), [data, coupon]);
   if (!data) return <NotFound title="Course not found" text="This course may have been removed or the link is old." action="Browse courses" fallback="/explore" />;
   if (!quote || !session || !route) return null;
+  // Already bought: say so on arrival instead of after the learner fills in payment details.
+  if (!order && enrollmentApi.get(session.user.id, data.course.id)) {
+    return <NotFound title="You already have this course" text="It’s in My Learning. No need to pay again." action="Go to course" fallback={`/course/${data.course.id}`} />;
+  }
   const { course, tutor } = data;
   const emi = emiApi.offer(course.id, coupon);
   const upsell = upsellApi.offer(course.id, session.user.id);

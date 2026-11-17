@@ -14,6 +14,7 @@ import { adminMembership, educatorMembership, useAuth } from '@/store/auth';
 import type { Session } from '@/core/types';
 import { educator } from '@/api/client';
 import { TAB_ROOTS, activeKey, navFor, primaryOf, type NavArea, type NavRole } from '@/core/nav';
+import { canOpenAdmin, type AdminRole } from '@/core/admin';
 import { haptic } from './haptics';
 import { BrandLogo } from './Brand';
 import { Txt } from './Txt';
@@ -68,7 +69,9 @@ export function useNav(areaArg?: Area) {
   const area = areaArg ?? areaOf(path, session);
   const role = navRoleOf(session, area);
   const off = role === 'owner' || role === 'tutor' ? educator.context(session?.user.id ?? '')?.tenant.disabledModules ?? [] : [];
-  const items = navFor(role, { modulesOff: off });
+  // Admin: show only the sections this staff role may open (same rule as the admin tabs and the admin layout).
+  const staffRole = (adminMembership(session)?.role ?? null) as AdminRole | null;
+  const items = navFor(role, { modulesOff: off }).filter((it) => role !== 'admin' || canOpenAdmin(staffRole, it.href));
   return { area, role, items, path };
 }
 

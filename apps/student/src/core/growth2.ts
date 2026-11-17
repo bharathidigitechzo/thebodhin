@@ -86,7 +86,7 @@ export function attribute(clicks: AffiliateClick[], visitorId: string, tenantId:
 /* ───────────── Certificate designer ───────────── */
 export interface CertTemplate {
   tenantId: string;
-  layout: 'classic' | 'modern' | 'minimal';
+  layout: 'classic' | 'modern' | 'minimal' | 'custom';
   title: string; // "Certificate of Completion"
   line: string; // "has successfully completed"
   signName: string;
@@ -99,12 +99,34 @@ export interface CertTemplate {
   /** Resolved background image for rendering (filled by the API, never stored). */
   bg?: string;
   updatedAt: string;
+  certifyText?: string; // "This is to certify that"
+  signName2?: string;
+  signTitle2?: string;
+  showDate?: boolean;
+  badgeText?: string;
+  customBackgroundUri?: string;
+  customBackgroundName?: string;
+  customSignatureUri?: string;
+  customSignatureName?: string;
 }
-export const defaultCert = (tenantId: string, signName: string, now: string): CertTemplate => ({ tenantId, layout: 'classic', title: 'Certificate of Completion', line: 'has successfully completed', signName, signTitle: 'Founder & Lead Educator', showLogo: true, showQr: true, updatedAt: now });
+export const defaultCert = (tenantId: string, signName: string, now: string): CertTemplate => ({
+  tenantId,
+  layout: 'classic',
+  title: 'Certificate of Completion',
+  certifyText: 'This is to certify that',
+  line: 'has successfully completed',
+  signName,
+  signTitle: 'Founder & Lead Educator',
+  showLogo: true,
+  showQr: true,
+  showDate: true,
+  badgeText: 'Verified Completion',
+  updatedAt: now,
+});
 export function certErrors(t: CertTemplate) {
   const e: { field: string; msg: string }[] = [];
-  if (t.title.trim().length < 5 || t.title.length > 40) e.push({ field: 'title', msg: 'Title: 5–40 characters.' });
-  if (t.line.length > 60) e.push({ field: 'line', msg: 'Line: up to 60 characters.' });
+  if (t.title.trim().length < 3 || t.title.length > 50) e.push({ field: 'title', msg: 'Title: 3–50 characters.' });
+  if (t.line.length > 100) e.push({ field: 'line', msg: 'Line: up to 100 characters.' });
   if (t.signName.trim().length < 2 || t.signName.length > 40) e.push({ field: 'signName', msg: 'Signer name: 2–40 characters.' });
   if (t.signTitle.length > 40) e.push({ field: 'signTitle', msg: 'Signer title: up to 40 characters.' });
   if (t.accent && !/^#[0-9a-f]{6}$/i.test(t.accent)) e.push({ field: 'accent', msg: 'Colour like #0B3B73.' });

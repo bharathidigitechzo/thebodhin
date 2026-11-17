@@ -73,6 +73,19 @@ async function main() {
   ok(db.notifications.some((n) => n.userId === L3 && /Diwali/.test(n.title)), 'new learner receives broadcast');
   await throws(() => api.broadcastAdmin.send('u_fin', { audience: 'all_students', title: 'x title', body: 'x body text' }), 'finance cannot broadcast');
 
+  /* ── Which admin pages each staff role may open (tabs, sidebar and direct links share this list) ── */
+  const R = await import('@/core/admin');
+  const open = (role: Parameters<typeof R.canOpenAdmin>[0], p: string) => R.canOpenAdmin(role, p);
+  for (const p of ['/admin', '/admin/inbox', '/admin/money', '/admin/tenant/t_rajesh', '/admin/audit', '/admin/team', '/admin/plans']) ok(open('super_admin', p), `super admin opens ${p}`);
+  ok(open('finance', '/admin/money') && open('finance', '/admin/audit') && open('finance', '/admin/tenants'), 'finance opens money, audit, tenants');
+  ok(!open('finance', '/admin/inbox') && !open('finance', '/admin/review/application/app_ramya') && !open('finance', '/admin/users'), 'finance blocked from inbox, reviews, users');
+  ok(open('moderator', '/admin/inbox') && open('moderator', '/admin/content'), 'moderator opens inbox and Bodhin content');
+  ok(!open('moderator', '/admin/money') && !open('moderator', '/admin/audit'), 'moderator blocked from money and audit');
+  ok(open('support', '/admin/users') && open('support', '/admin/user/u_arjun') && open('support', '/admin/tickets'), 'support opens users and tickets');
+  ok(!open('support', '/admin/money') && !open('support', '/admin/inbox') && !open('support', '/admin/settings'), 'support blocked from money, inbox, settings');
+  ok(open('support', '/admin/') && open('support', '/admin/more?x=1'), 'trailing slash and query string handled');
+  ok(!open(null, '/admin'), 'no role opens nothing');
+
   console.log(`\nPASS ${pass}  FAIL ${fail}`);
   fails.forEach((f) => console.log('  ✗ ' + f));
 }

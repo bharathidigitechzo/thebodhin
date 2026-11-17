@@ -2651,7 +2651,7 @@ export const doubts = {
 
 function ownerOrThrow(userId: string, allowLocked = false) {
   const ctx = ctxOrThrow(userId, allowLocked);
-  if (ctx.role !== 'owner') throw new ApiError('forbidden', 'Only the workspace owner can change this.');
+  if (ctx.role !== 'owner') throw new ApiError('forbidden', 'Only the workspace owner can see or change this.');
   return ctx;
 }
 const tenantRow = (id: string) => db.tenants.find((t) => t.id === id)!;

@@ -9,10 +9,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, playground } from '@/api/client';
-import { challengeOf, type Challenge } from '@/playground/challenges';
+import { challengeOf, twinChallenge, type Challenge } from '@/playground/challenges';
 import { gradeDom, gradeIo, gradeSql, summary, validateProject, ISSUE_TEXT, PLAYGROUND_LIMITS, type TestResult } from '@/playground/checks';
 import { browserCapable, observeDom, previewDoc, runInBrowser, stopAll } from '@/playground/runners';
-import { stackOf, type PFile } from '@/playground/stacks';
+import { GROUPS, STACKS, stackOf, type PFile, type Stack } from '@/playground/stacks';
 import type { RunResult } from '@/playground/types';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -61,6 +61,7 @@ function Workspace() {
   const [toast, setToast] = useState<string | null>(null);
   const [runsLeft, setRunsLeft] = useState<number | null>(null);
   const [won, setWon] = useState<number | null>(null);
+  const [langOpen, setLangOpen] = useState(false);
   const solvedBefore = useRef(challenge ? playground.overview(userId).solved.includes(challenge.id) : false);
 
   useEffect(() => () => stopAll(), []);
@@ -88,6 +89,15 @@ function Workspace() {
   const flash = (t: string) => {
     setToast(t);
     setTimeout(() => setToast(null), 2200);
+  };
+  // Language picker: keep the same challenge where the new language has it, else open a blank workspace.
+  const edited = JSON.stringify(files) !== JSON.stringify(saved ? saved.files : starter);
+  const switchTo = (s: Stack) => {
+    setLangOpen(false);
+    if (s.id === stack.id) return;
+    stopAll();
+    const twin = challenge ? twinChallenge(challenge, s.id) : undefined;
+    router.replace((twin ? `/playground/${s.id}?challenge=${twin.id}` : `/playground/${s.id}`) as never);
   };
   const file = files[Math.min(active, files.length - 1)];
   const webLike = stack.runner === 'web' || stack.runner === 'react';
@@ -307,7 +317,20 @@ function Workspace() {
               <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/playground'))} />
               <View style={{ flex: 1 }}>
                 <Txt variant="heading" numberOfLines={1}>{challenge ? challenge.title : saved?.title ?? stack.name}</Txt>
-                <Txt variant="caption" color={c.muted}>{stack.name}{challenge ? ` · ${challenge.level} · ${challenge.points} pts` : ''}</Txt>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Pressable
+                    onPress={() => setLangOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Language: ${stack.name}. Change language`}
+                    hitSlop={8}
+                    style={[styles.langChip, { borderColor: c.border, backgroundColor: c.surface }]}
+                  >
+                    <Ionicons name={stack.icon as keyof typeof Ionicons.glyphMap} size={14} color={c.primary} />
+                    <Txt variant="label" color={c.primary}>{stack.name}</Txt>
+                    <Ionicons name="chevron-down" size={14} color={c.primary} />
+                  </Pressable>
+                  {challenge ? <Txt variant="caption" color={c.muted}>{challenge.level} · {challenge.points} pts</Txt> : null}
+                </View>
               </View>
               {onServer && <Pill text={runsLeft !== null ? `${runsLeft} server runs left` : 'Runs on server'} icon="cloud-outline" tone="info" />}
             </View>
@@ -349,6 +372,46 @@ function Workspace() {
         <TextField label="Project name" value={title} onChangeText={setTitle} placeholder={`${stack.name} project`} maxLength={80} />
         <Txt variant="caption" color={c.muted}>You can keep up to {PLAYGROUND_LIMITS.savedProjects} projects.</Txt>
       </BottomSheet>
+
+      <BottomSheet open={langOpen} onClose={() => setLangOpen(false)} title="Choose a language">
+        {edited && (
+          <Txt variant="caption" color={c.warning}>Your changes here aren’t carried over. Tap Save first if you want to keep them.</Txt>
+        )}
+        {GROUPS.map((g) => {
+          const items = STACKS.filter((s) => s.group === g);
+          if (!items.length) return null;
+          return (
+            <View key={g} style={{ gap: 6 }}>
+              <Txt variant="label" color={c.muted} style={{ letterSpacing: 0.6 }}>{g.toUpperCase()}</Txt>
+              {items.map((s) => {
+                const current = s.id === stack.id;
+                const twin = challenge ? twinChallenge(challenge, s.id) : undefined;
+                const sub = challenge ? (twin ? `Same challenge: ${twin.title}` : 'Opens a blank editor (no matching challenge)') : s.blurb;
+                return (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => switchTo(s)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: current }}
+                    accessibilityLabel={`${s.name}${current ? ', current language' : ''}`}
+                    style={[styles.langRow, { borderColor: current ? c.primary : c.border, backgroundColor: current ? c.primarySoft : c.surface }]}
+                  >
+                    <View style={[styles.langIcon, { backgroundColor: s.color + '22' }]}>
+                      <Ionicons name={s.icon as keyof typeof Ionicons.glyphMap} size={18} color={c.ink} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Txt variant="bodyStrong">{s.name}</Txt>
+                      <Txt variant="caption" color={c.muted} numberOfLines={1}>{sub}</Txt>
+                    </View>
+                    {s.runner === 'remote' && <Pill text="Server" tone="info" />}
+                    {current && <Ionicons name="checkmark-circle" size={20} color={c.primary} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+          );
+        })}
+      </BottomSheet>
     </View>
   );
 }
@@ -364,6 +427,9 @@ const styles = StyleSheet.create({
   win: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, borderWidth: 1, flexWrap: 'wrap' },
   seg: { flexDirection: 'row', padding: 4, borderRadius: radius.pill },
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: radius.pill },
+  langChip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 10, minHeight: 32 },
+  langRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 12, minHeight: 56 },
+  langIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   table: { borderWidth: 1, borderRadius: 12, overflow: 'hidden', alignSelf: 'flex-start' },
   cell: { minWidth: 110, paddingHorizontal: 12, paddingVertical: 8 },
 });

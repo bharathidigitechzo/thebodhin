@@ -73,7 +73,7 @@ function ctxOf(userId: string, feature?: Feature, ownerOnly = false) {
   const ctx = educator.context(userId);
   if (!ctx) throw new ApiError('forbidden', 'Only educators can use this.');
   if (ctx.locked) throw new ApiError('locked', `${ctx.gate.title}. ${ctx.gate.message}`);
-  if (ownerOnly && ctx.role !== 'owner') throw new ApiError('forbidden', 'Only the workspace owner can change this.');
+  if (ownerOnly && ctx.role !== 'owner') throw new ApiError('forbidden', 'Only the workspace owner can see or change this.');
   if (feature && !ctx.ent.has(feature)) throw new ApiError('plan', `${FEATURE_PLAN[feature] ?? 'This feature'} — upgrade in Subscription & usage.`);
   return ctx;
 }

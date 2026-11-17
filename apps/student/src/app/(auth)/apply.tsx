@@ -85,10 +85,10 @@ export default function Apply() {
       <TextField label="Academy name" icon="business-outline" placeholder="e.g. Udhay Maths Academy" value={f.workspaceName} onChangeText={set('workspaceName')} error={errors.workspaceName} returnKeyType="next" onSubmitEditing={() => refs.subjects.current?.focus()} hint="Shown to students. Your web address comes after approval." />
       <TextField ref={refs.subjects} label="Subjects you teach" icon="book-outline" placeholder="e.g. Maths, Physics" value={f.subjects} onChangeText={set('subjects')} error={errors.subjects} returnKeyType="next" onSubmitEditing={() => refs.experience.current?.focus()} hint="Separate with commas." />
       <View style={styles.row}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <TextField ref={refs.experience} label="Experience (years)" icon="ribbon-outline" placeholder="5" keyboardType="number-pad" value={f.experienceYears} onChangeText={set('experienceYears')} error={errors.experienceYears} returnKeyType="next" onSubmitEditing={() => refs.city.current?.focus()} />
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <TextField ref={refs.students} label="Students planned" icon="people-outline" placeholder="100" keyboardType="number-pad" value={f.plannedStudents} onChangeText={set('plannedStudents')} error={errors.plannedStudents} hint="A rough 6-month goal." />
         </View>
       </View>

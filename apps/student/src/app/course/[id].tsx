@@ -71,7 +71,7 @@ export default function CoursePage() {
   if (!data) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: c.ivory, padding: 20 }}>
-        <ErrorState text="This course is not available." onRetry={() => router.replace('/explore')} />
+        <ErrorState text="This course is not available." actionLabel="Browse courses" onRetry={() => router.replace('/explore')} />
       </SafeAreaView>
     );
   }

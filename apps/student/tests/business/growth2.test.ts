@@ -101,7 +101,7 @@ const mkUser = (id, name, phone = '+919000000099') => { db.users.push({ id, name
 
   /* certificates */
   const cd = certDesignApi.get(OWNER);
-  throws(() => certDesignApi.save(OWNER, { ...cd.t, title: 'x' }), /5–40/, 'cert title validated');
+  throws(() => certDesignApi.save(OWNER, { ...cd.t, title: 'x' }), /3–50/, 'cert title validated');
   certDesignApi.save(OWNER, { ...cd.t, layout: 'modern', signName: 'Rajesh Kumar' });
   ok(certDesignApi.get(OWNER).t.layout === 'modern', 'design saved');
   throws(() => certDesignApi.save(TUTOR, cd.t), /owner/, 'tutor cannot change design');

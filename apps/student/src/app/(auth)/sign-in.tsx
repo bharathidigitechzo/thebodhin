@@ -161,8 +161,11 @@ export default function SignIn() {
       </View>
 
       <View style={[styles.demo, { backgroundColor: c.accentSoft, borderColor: c.border, borderWidth: 1 }]}>
-        <Txt variant="caption" color={c.ink} center style={{ fontWeight: '700', marginBottom: 8 }}>
+        <Txt variant="caption" color={c.ink} center style={{ fontWeight: '700' }}>
           ⚡ 1-Tap Demo Quick Fill (password: demo123)
+        </Txt>
+        <Txt variant="caption" color={c.inkSoft} center style={{ marginBottom: 8 }}>
+          Student: arjun@demo.in · Educator: rajesh@demo.in · Tutor: meera@demo.in · Super Admin: admin@demo.in
         </Txt>
         <View style={styles.demoChips}>
           <Pressable onPress={() => fillAndLogin('admin@demo.in')} style={[styles.demoChip, { backgroundColor: c.primary }]} accessibilityRole="button">

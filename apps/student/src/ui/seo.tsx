@@ -1,8 +1,13 @@
 /** Page title, description and share-preview tags for public pages (web). On phones this renders nothing. */
 import React from 'react';
 import Head from 'expo-router/head';
+import { useIsFocused } from 'expo-router';
 
 export function Seo({ title, description, path, image }: { title: string; description: string; path: string; image?: string }) {
+  // Stack screens stay mounted underneath the next page; only the focused one may own the tab title,
+  // otherwise e.g. "Free video lessons…" from /watch sticks to the player, quiz and live room.
+  const focused = useIsFocused();
+  if (!focused) return null;
   const url = `https://thebodhin.com${path}`;
   const img = image ?? 'https://thebodhin.com/og/bodhin-share.png';
   const t = title.length > 60 ? `${title.slice(0, 57)}…` : title;
