@@ -1521,9 +1521,10 @@ export const courseAdmin = {
   setListing(userId: string, id: string, visibility: Course['visibility']) {
     const r = canManage(userId, id);
     if (!r || r.ctx.role !== 'owner') throw new ApiError('forbidden', 'Only the workspace owner can change listing.');
+    const bodhinOwn = r.course.tenantId === db.platformConfig.bodhinTenantId;
     const wasApprovedPublic = r.course.visibility !== 'private' && r.course.moderation === 'approved';
     let moderation = r.course.moderation;
-    if (visibility === 'private') moderation = 'approved';
+    if (visibility === 'private' || bodhinOwn) moderation = 'approved';
     else if (!wasApprovedPublic && isPublished(r.course)) moderation = 'pending';
     return saveCourse({ ...r.course, visibility, moderation });
   },

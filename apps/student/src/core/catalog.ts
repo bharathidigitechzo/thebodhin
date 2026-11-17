@@ -32,6 +32,7 @@ export interface Lesson {
   description?: string;
   resources?: { name: string; sizeMb: number }[];
   completion?: 'watch_90' | 'manual';
+  videoUrl?: string;
 }
 
 export interface Module {

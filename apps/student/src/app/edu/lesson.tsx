@@ -34,8 +34,14 @@ export default function LessonEditor() {
   const [title, setTitle] = useState(existing?.title ?? '');
   const [desc, setDesc] = useState(existing?.description ?? '');
   const [kind, setKind] = useState<Kind>(existing?.type === 'pdf' ? 'pdf' : 'video');
-  const [file, setFile] = useState<{ name: string; sizeMb: number; durationSec?: number } | null>(
-    existing && (existing.durationSec || existing.sizeMb) ? { name: existing.type === 'pdf' ? `${existing.title}.pdf` : `${existing.title}.mp4`, sizeMb: existing.sizeMb ?? Math.round((existing.durationSec ?? 600) / 2.2), durationSec: existing.durationSec } : null,
+  const [videoUrl, setVideoUrl] = useState(existing?.videoUrl ?? '');
+  const [file, setFile] = useState<{ name: string; sizeMb: number; durationSec?: number; videoUrl?: string } | null>(
+    existing && (existing.durationSec || existing.sizeMb || existing.videoUrl) ? {
+      name: existing.type === 'pdf' ? `${existing.title}.pdf` : `${existing.title}.mp4`,
+      sizeMb: existing.sizeMb ?? Math.round((existing.durationSec ?? 600) / 2.2),
+      durationSec: existing.durationSec ?? 600,
+      videoUrl: existing.videoUrl,
+    } : null,
   );
   const [progress, setProgress] = useState<number | null>(null);
   const [resources, setResources] = useState(existing?.resources ?? []);
@@ -62,11 +68,20 @@ export default function LessonEditor() {
     const want = purpose === 'main' ? kind : 'pdf';
     let name = '';
     let sizeMb = 0;
+    let pickedUrl: string | undefined = undefined;
     try {
       const r = await DocumentPicker.getDocumentAsync({ type: want === 'video' ? 'video/*' : 'application/pdf', copyToCacheDirectory: false });
       if (r.canceled) return;
       name = r.assets[0].name;
       sizeMb = Math.max(0.2, Math.round(((r.assets[0].size ?? 0) / 1048576) * 10) / 10);
+      if (want === 'video') {
+        const asset = r.assets[0] as any;
+        if (typeof window !== 'undefined' && asset?.file) {
+          pickedUrl = URL.createObjectURL(asset.file);
+        } else if (asset?.uri) {
+          pickedUrl = asset.uri;
+        }
+      }
     } catch {
       // Picker unavailable in some preview frames → use a sample file so the flow can be tested.
       name = want === 'video' ? `${(title || 'lesson').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mp4` : 'lesson-notes.pdf';
@@ -82,7 +97,9 @@ export default function LessonEditor() {
     setProgress(0);
     try {
       const res = await courseAdmin.upload(userId, want, name, sizeMb, setProgress);
-      setFile({ name: res.fileName, sizeMb: res.sizeMb, durationSec: res.durationSec });
+      const activeUrl = pickedUrl || videoUrl || undefined;
+      setFile({ name: res.fileName, sizeMb: res.sizeMb, durationSec: res.durationSec, videoUrl: activeUrl });
+      if (pickedUrl) setVideoUrl(pickedUrl);
     } catch (e) {
       setErr({ field: 'file', msg: (e as ApiError).message });
     } finally {
@@ -94,16 +111,18 @@ export default function LessonEditor() {
     setBusy(true);
     setErr(null);
     try {
+      const finalVideoUrl = videoUrl.trim() || file?.videoUrl || undefined;
       courseAdmin.saveLesson(userId, course.id, moduleId, {
         id: existing?.id,
         title,
         description: desc.trim() || undefined,
         type: kind,
-        durationSec: kind === 'video' ? file?.durationSec : undefined,
+        durationSec: kind === 'video' ? (file?.durationSec || 600) : undefined,
         sizeMb: kind === 'pdf' ? file?.sizeMb : undefined,
         preview,
         resources,
         completion: kind === 'video' ? completion : 'manual',
+        videoUrl: kind === 'video' ? finalVideoUrl : undefined,
       });
       if (andNext) router.replace({ pathname: '/edu/lesson', params: { courseId: course.id, moduleId } });
       else router.back();
@@ -189,6 +208,22 @@ export default function LessonEditor() {
                   <Txt variant="bodyStrong">{kind === 'video' ? 'Choose video' : 'Choose PDF'}</Txt>
                   <Txt variant="caption" color={t.muted}>{kind === 'video' ? 'MP4, MOV or WEBM · up to 2 GB' : 'PDF · up to 50 MB'}</Txt>
                 </Pressable>
+              )}
+              {kind === 'video' && (
+                <View style={{ marginTop: 10 }}>
+                  <TextField
+                    label="Online Video or YouTube URL (optional)"
+                    placeholder="e.g. https://www.youtube.com/watch?v=... or .mp4 link"
+                    value={videoUrl}
+                    onChangeText={(v) => {
+                      setVideoUrl(v);
+                      if (v.trim() && !file) {
+                        setFile({ name: 'Web Video', sizeMb: 25, durationSec: 300, videoUrl: v.trim() });
+                      }
+                    }}
+                    hint="You can upload a video file above, or paste an MP4 URL or YouTube link here."
+                  />
+                </View>
               )}
               {err?.field === 'file' && <Banner text={err.msg} />}
               <Txt variant="caption" color={space.ok ? t.muted : t.danger}>
