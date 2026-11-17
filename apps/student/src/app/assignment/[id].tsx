@@ -15,6 +15,7 @@ import { Button } from '@/ui/Button';
 import { TextField } from '@/ui/TextField';
 import { IconButton, Pill, ProgressBar } from '@/ui/kit';
 import { Banner, NotFound } from '@/ui/misc';
+import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
 
 type Tab = 'details' | 'submission' | 'feedback';
 const fmtDue = (iso: string) => new Date(iso).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -27,7 +28,8 @@ export default function AssignmentScreen() {
   const found = assessments.get(id);
   const [sub, setSub] = useState<Submission | null>(() => assessments.submission(userId, id));
   const [tab, setTab] = useState<Tab>(sub?.status === 'graded' ? 'feedback' : sub ? 'submission' : 'details');
-  const [files, setFiles] = useState(sub?.files ?? []);
+  const [files, setFiles] = useState<PreviewFile[]>(sub?.files ?? []);
+  const [previewDoc, setPreviewDoc] = useState<PreviewFile | null>(null);
   const [mode, setMode] = useState<'file' | 'link'>(sub?.link ? 'link' : 'file');
   const [link, setLink] = useState(sub?.link ?? '');
   const [note, setNote] = useState(sub?.note ?? '');
@@ -49,11 +51,19 @@ export default function AssignmentScreen() {
       const f = r.assets[0];
       const ext = (f.name.split('.').pop() ?? '').toUpperCase();
       if (a.accepts && !a.accepts.includes(ext)) return setMsg({ tone: 'danger', text: `${f.name} is not an accepted type. Use ${a.accepts.join(', ')}.` });
-      setFiles([{ name: f.name, sizeMb: Math.max(0.1, Math.round(((f.size ?? 0) / 1048576) * 10) / 10) }]);
+      let uri = f.uri;
+      if (typeof window !== 'undefined' && (f as any).file instanceof Blob) {
+        uri = URL.createObjectURL((f as any).file);
+      }
+      const newFile: PreviewFile = { name: f.name, sizeMb: Math.max(0.1, Math.round(((f.size ?? 0) / 1048576) * 10) / 10), uri };
+      setFiles([newFile]);
+      setPreviewDoc(newFile);
       setMsg(null);
     } catch {
       // Picker unavailable (some preview frames) → attach a sample so the flow can be tested.
-      setFiles([{ name: `${a.title.toLowerCase().replace(/[^a-z]+/g, '-')}.pdf`, sizeMb: 3.8 }]);
+      const sample: PreviewFile = { name: `${a.title.toLowerCase().replace(/[^a-z]+/g, '-')}.pdf`, sizeMb: 3.8 };
+      setFiles([sample]);
+      setPreviewDoc(sample);
     }
   };
 
@@ -131,14 +141,14 @@ export default function AssignmentScreen() {
                 {!!a.resources?.length && (
                   <Section icon="folder-open-outline" title="Resources">
                     {a.resources.map((r) => (
-                      <View key={r.name} style={[styles.res, { borderColor: c.border }]}>
+                      <Pressable key={r.name} onPress={() => setPreviewDoc({ name: r.name, uri: undefined })} style={[styles.res, { borderColor: c.border }]} accessibilityRole="button" accessibilityLabel={`View resource ${r.name}`}>
                         <Ionicons name={r.kind === 'pdf' ? 'document-text' : 'link'} size={22} color={r.kind === 'pdf' ? c.danger : c.info} />
                         <View style={{ flex: 1 }}>
                           <Txt variant="label">{r.name}</Txt>
-                          <Txt variant="caption" color={c.muted}>{r.kind === 'pdf' ? `PDF · ${r.size}` : 'External link'}</Txt>
+                          <Txt variant="caption" color={c.muted}>{r.kind === 'pdf' ? `PDF · ${r.size}` : 'External link'} · tap to view</Txt>
                         </View>
-                        <Ionicons name={r.kind === 'pdf' ? 'download-outline' : 'open-outline'} size={20} color={c.primary} />
-                      </View>
+                        <Ionicons name={r.kind === 'pdf' ? 'eye-outline' : 'open-outline'} size={20} color={c.primary} />
+                      </Pressable>
                     ))}
                   </Section>
                 )}
@@ -166,11 +176,14 @@ export default function AssignmentScreen() {
                   files.length ? (
                     files.map((f) => (
                       <View key={f.name} style={[styles.file, { backgroundColor: c.surface, borderColor: c.border }]}>
-                        <View style={[styles.fileIcon, { backgroundColor: c.dangerBg }]}><Txt variant="caption" color={c.danger} style={{ fontWeight: '800' }}>{(f.name.split('.').pop() ?? '').toUpperCase()}</Txt></View>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Txt variant="label" numberOfLines={1}>{f.name}</Txt>
-                          <Txt variant="caption" color={c.muted}>{f.sizeMb} MB</Txt>
-                        </View>
+                        <Pressable onPress={() => setPreviewDoc(f)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                          <View style={[styles.fileIcon, { backgroundColor: c.dangerBg }]}><Txt variant="caption" color={c.danger} style={{ fontWeight: '800' }}>{(f.name.split('.').pop() ?? '').toUpperCase()}</Txt></View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Txt variant="label" numberOfLines={1}>{f.name}</Txt>
+                            <Txt variant="caption" color={c.muted}>{f.sizeMb} MB · tap to view PDF</Txt>
+                          </View>
+                        </Pressable>
+                        <IconButton icon="eye-outline" label={`View ${f.name}`} onPress={() => setPreviewDoc(f)} />
                         {!locked && <IconButton icon="close" label={`Remove ${f.name}`} onPress={() => setFiles([])} />}
                       </View>
                     ))
@@ -214,6 +227,20 @@ export default function AssignmentScreen() {
                       </View>
                     ))}
                   </Section>
+                  {!!sub.files?.length && (
+                    <Section icon="document-text-outline" title="Your submitted files">
+                      {sub.files.map((f) => (
+                        <Pressable key={f.name} onPress={() => setPreviewDoc(f)} style={[styles.file, { backgroundColor: c.surface, borderColor: c.border }]}>
+                          <View style={[styles.fileIcon, { backgroundColor: c.dangerBg }]}><Txt variant="caption" color={c.danger} style={{ fontWeight: '800' }}>{(f.name.split('.').pop() ?? '').toUpperCase()}</Txt></View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Txt variant="label" numberOfLines={1}>{f.name}</Txt>
+                            <Txt variant="caption" color={c.muted}>{f.sizeMb} MB · tap to view PDF</Txt>
+                          </View>
+                          <IconButton icon="eye-outline" label={`View ${f.name}`} onPress={() => setPreviewDoc(f)} />
+                        </Pressable>
+                      ))}
+                    </Section>
+                  )}
                 </View>
               ) : (
                 <View style={{ alignItems: 'center', gap: 8, paddingVertical: 30 }}>
@@ -239,6 +266,14 @@ export default function AssignmentScreen() {
           </View>
         )}
       </SafeAreaView>
+
+      <PdfPreviewModal
+        open={!!previewDoc}
+        onClose={() => setPreviewDoc(null)}
+        file={previewDoc}
+        studentName={session?.user.name}
+        assignmentTitle={a.title}
+      />
     </View>
   );
 }

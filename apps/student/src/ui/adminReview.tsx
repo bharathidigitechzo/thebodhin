@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { ApiError, approvals } from '@/api/client';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Txt } from './Txt';
@@ -12,6 +13,8 @@ import { Banner } from './misc';
 import { CourseArt } from './course';
 import { ToggleRow } from './section';
 import { ago } from './admin';
+import { VideoPreview } from './VideoPreview';
+import type { Lesson } from '@/core/catalog';
 
 const REJECT_EDU = ['ID proof is missing or unclear.', 'Please share a sample teaching video (5–10 min).', 'Subject area isn’t supported on Bodhin yet.', 'Details look incomplete — add experience and subjects.'];
 const REJECT_COURSE = ['Please add a free preview lesson.', 'Description should explain what learners can do after the course.', 'Some lessons look copied from public videos — please upload your own content.', 'Remove the strike-through price or add a real offer end date.'];
@@ -124,6 +127,7 @@ export function CourseReview({ id, userId, onDone }: { id: string; userId: strin
   const [sheet, setSheet] = useState<null | 'approve' | 'reject'>(null);
   const [promote, setPromote] = useState(true);
   const [open, setOpen] = useState<number | null>(0);
+  const [previewLesson, setPreviewLesson] = useState<Lesson | null>(null);
   if (!d) return <Banner text="Course not found." />;
   const { c: course, t } = d;
   const pending = course.moderation === 'pending';
@@ -147,6 +151,16 @@ export function CourseReview({ id, userId, onDone }: { id: string; userId: strin
             {course.offerEndsAt ? <Txt variant="caption" color={c.warning}>offer ends {new Date(course.offerEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</Txt> : null}
           </View>
           <Txt variant="caption" color={c.muted}>Marketplace split: Bodhin {Math.round(d.rate * 100)}% · educator gets the rest after the refund hold</Txt>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <Button
+              title="Preview course as student"
+              iconLeft="open-outline"
+              variant="outline"
+              size="md"
+              style={{ flex: 1 }}
+              onPress={() => router.push({ pathname: '/course/[id]', params: { id: course.id } })}
+            />
+          </View>
         </View>
         <Section title="Automatic checks"><Checks list={d.checks} /></Section>
         <Section title="About">
@@ -162,11 +176,21 @@ export function CourseReview({ id, userId, onDone }: { id: string; userId: strin
                 <Ionicons name={open === i ? 'chevron-up' : 'chevron-down'} size={16} color={c.muted} />
               </Pressable>
               {open === i && m.lessons.map((l) => (
-                <View key={l.id} style={styles.lesson}>
-                  <Ionicons name={l.type === 'video' ? 'play-circle-outline' : l.type === 'pdf' ? 'document-text-outline' : 'help-circle-outline'} size={18} color={c.inkSoft} />
-                  <Txt variant="label" style={{ flex: 1, fontWeight: '400' }} numberOfLines={1}>{l.title}</Txt>
-                  {l.preview && <Pill text="Preview" tone="success" />}
-                </View>
+                <Pressable
+                  key={l.id}
+                  style={[styles.lesson, { paddingVertical: 6, borderRadius: 8 }]}
+                  onPress={() => setPreviewLesson(l)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Preview ${l.title}`}
+                >
+                  <Ionicons name={l.type === 'video' ? 'play-circle-outline' : l.type === 'pdf' ? 'document-text-outline' : 'help-circle-outline'} size={20} color={c.primary} />
+                  <Txt variant="label" style={{ flex: 1, fontWeight: '500' }} numberOfLines={1}>{l.title}</Txt>
+                  {l.preview && <Pill text="Free preview" tone="success" />}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: c.surfaceMuted }}>
+                    <Ionicons name="eye-outline" size={14} color={c.inkSoft} />
+                    <Txt variant="caption" color={c.inkSoft} style={{ fontSize: 11 }}>View</Txt>
+                  </View>
+                </Pressable>
               ))}
             </View>
           ))}
@@ -187,6 +211,31 @@ export function CourseReview({ id, userId, onDone }: { id: string; userId: strin
         {course.visibility === 'public_promoted' && <ToggleRow title="Allow Bodhin promotion" sub="Featured placements, campaigns and newsletters" value={promote} onChange={setPromote} />}
       </DecisionSheet>
       <DecisionSheet open={sheet === 'reject'} title="Ask for changes" templates={REJECT_COURSE} cta="Send to educator" onClose={() => setSheet(null)} onSubmit={async (n) => { await approvals.decideCourse(userId, id, 'reject', { note: n }); setSheet(null); onDone('Changes requested · educator notified'); }} />
+      <BottomSheet open={!!previewLesson} onClose={() => setPreviewLesson(null)} title={previewLesson?.title ?? 'Lesson preview'}>
+        {previewLesson && (
+          <View style={{ gap: 14 }}>
+            {previewLesson.type === 'video' ? (
+              <VideoPreview
+                uri={previewLesson.videoUri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+                name={previewLesson.title}
+                sizeMb={previewLesson.sizeMb}
+              />
+            ) : (
+              <View style={{ padding: 24, alignItems: 'center', gap: 10 }}>
+                <Ionicons name={previewLesson.type === 'pdf' ? 'document-text-outline' : 'help-circle-outline'} size={44} color={c.primary} />
+                <Txt variant="bodyStrong">{previewLesson.title}</Txt>
+                <Txt variant="caption" color={c.muted}>{previewLesson.type === 'pdf' ? 'PDF Document Lesson' : 'Quiz Lesson'}</Txt>
+              </View>
+            )}
+            <Button
+              title="Close preview"
+              variant="outline"
+              size="md"
+              onPress={() => setPreviewLesson(null)}
+            />
+          </View>
+        )}
+      </BottomSheet>
     </View>
   );
 }

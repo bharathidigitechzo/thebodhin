@@ -115,10 +115,10 @@ export function SmartBoard({ onOp, compact, initial = [] }: { onOp?: (op: BoardO
     onOp?.(op);
   };
 
-  const flushGroup = async () => {
-    const g = group.current;
-    group.current = [];
-    timer.current = null;
+  const flushGroup = async (customGroup?: (TimedStroke & { tpts: TPt[] })[]) => {
+    const g = customGroup ?? [...group.current];
+    if (!customGroup) group.current = [];
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const s = st.current;
     if (!g.length || !s.engine || s.engine.engine === 'none' || s.langReady !== 'ready') { setPending(new Set()); return; }
     setBusy(true);
@@ -138,6 +138,23 @@ export function SmartBoard({ onOp, compact, initial = [] }: { onOp?: (op: BoardO
       setBusy(false);
       setPending(new Set());
     }
+  };
+
+  const neatenAll = async () => {
+    if (group.current.length) {
+      await flushGroup();
+      return;
+    }
+    const inkItems = st.current.items.filter((i): i is InkItem => i.kind === 'ink');
+    if (!inkItems.length) return;
+    const strokes = inkItems.map((it, idx) => ({
+      id: it.id,
+      pts: it.pts,
+      t0: idx * 200,
+      t1: idx * 200 + it.pts.length * 10,
+      tpts: it.pts.map(([x, y], pIdx) => [x, y, pIdx * 10] as TPt),
+    }));
+    await flushGroup(strokes);
   };
 
   const pan = useMemo(() => PanResponder.create({
@@ -167,22 +184,35 @@ export function SmartBoard({ onOp, compact, initial = [] }: { onOp?: (op: BoardO
       const s = cur.current;
       cur.current = null;
       setLive(null);
-      if (!s || s.pts.length < 2) return;
-      const raw: Pt[] = s.pts.map((q) => [q[0], q[1]]);
+      if (!s || !s.pts.length) return;
+      // Single-point tap: expand into a small dot so dots on 'i', 'j', accents and pulli are captured
+      let strokePts = s.pts;
+      if (strokePts.length === 1) {
+        const [px, py, pt] = strokePts[0];
+        strokePts = [[px, py, pt], [px + 0.0015, py + 0.0015, pt + 10]];
+      }
+      const raw: Pt[] = strokePts.map((q) => [q[0], q[1]]);
       const { neat: isNeat, color: col } = st.current;
-      if (isNeat) {
+      // If we are already writing a word, do not snap individual letter strokes to geometric shapes!
+      if (isNeat && group.current.length === 0) {
         const shape = recogniseShape(raw, size.current.w / size.current.h);
         if (shape) { commit({ t: 'board_put', item: { id: uid(), kind: 'shape', color: col, w: 3, ...shape } }); return; }
       }
       const item: InkItem = { id: uid(), kind: 'ink', color: col, w: 3, pts: smooth(raw).slice(0, 600) };
       commit({ t: 'board_put', item });
       if (!isNeat) return;
-      const timed = { id: item.id, pts: raw, t0: s.t0, t1: s.t0 + (s.pts[s.pts.length - 1][2] ?? 0), tpts: s.pts };
-      if (!joinsGroup(group.current, timed)) { const prev = group.current; group.current = []; if (prev.length) { group.current = prev; flushGroup(); } }
+      const timed = { id: item.id, pts: raw, t0: s.t0, t1: s.t0 + (strokePts[strokePts.length - 1][2] ?? 0), tpts: strokePts };
+      if (!joinsGroup(group.current, timed)) {
+        const prev = [...group.current];
+        group.current = [];
+        if (prev.length) {
+          flushGroup(prev);
+        }
+      }
       group.current.push(timed);
       setPending(new Set(group.current.map((g) => g.id)));
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(flushGroup, 1000);
+      timer.current = setTimeout(() => flushGroup(), 1500);
     },
     onPanResponderTerminate: () => { cur.current = null; setLive(null); },
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -224,7 +254,7 @@ export function SmartBoard({ onOp, compact, initial = [] }: { onOp?: (op: BoardO
         <Pressable onPress={() => setLangOpen(true)} accessibilityRole="button" accessibilityLabel={`Writing language: ${L.label}. Change`} style={[styles.lang, { borderColor: c.border }]}>
           <Ionicons name="language-outline" size={16} color={c.primary} /><Txt variant="label" color={c.primary}>{L.native}</Txt>
         </Pressable>
-        <Pressable onPress={() => setNeat(!neat)} accessibilityRole="switch" accessibilityState={{ checked: neat }} accessibilityLabel="Neat mode" style={[styles.lang, { borderColor: neat ? c.accent : c.border, backgroundColor: neat ? c.warningBg : 'transparent' }]}>
+        <Pressable onPress={() => { const nxt = !neat; setNeat(nxt); if (nxt) neatenAll(); }} accessibilityRole="switch" accessibilityState={{ checked: neat }} accessibilityLabel="Neat mode" style={[styles.lang, { borderColor: neat ? c.accent : c.border, backgroundColor: neat ? c.warningBg : 'transparent' }]}>
           <Ionicons name="sparkles" size={16} color={neat ? c.accent : c.muted} /><Txt variant="label" color={neat ? c.ink : c.muted}>Neat</Txt>
         </Pressable>
       </View>

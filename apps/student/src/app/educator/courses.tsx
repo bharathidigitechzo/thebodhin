@@ -76,10 +76,10 @@ export default function EducatorCourses() {
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={[styles.inner, cols && { maxWidth: 1080 }]}>
-            <AppHeader profileHref="/educator/more" action={owner ? { title: 'New course', onPress: create } : undefined} />
+            <AppHeader profileHref="/educator/more" action={{ title: 'New course', onPress: create }} />
             <View style={{ marginTop: 10, marginBottom: 12 }}>
               <TwoTone lead="My" accent="Courses" variant="title" />
-              <Txt color={c.inkSoft}>{owner ? 'Create, publish and choose where each course is sold.' : 'Courses assigned to you. You can edit lessons; the owner manages pricing.'}</Txt>
+              <Txt color={c.inkSoft}>{owner ? 'Create, publish and choose where each course is sold.' : 'Create and edit your courses. The academy owner sets pricing and publishes.'}</Txt>
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ flexGrow: 0 }}>
@@ -110,13 +110,18 @@ export default function EducatorCourses() {
                 {rows.map((r) => {
                   const m = STATE_META[r.state];
                   return (
-                    <Pressable key={r.course.id} onPress={() => setSel(r)} style={({ pressed }) => [styles.card, { backgroundColor: c.surface, borderColor: c.border }, cols && { flexBasis: '48%', flexGrow: 1 }, pressed && { opacity: 0.92 }]} accessibilityRole="button" accessibilityLabel={`${r.course.title || 'Untitled course'}, ${m.label}`}>
+                    <Pressable key={r.course.id} onPress={() => setSel(r)} style={({ pressed }) => [styles.card, { backgroundColor: c.surface, borderColor: c.border }, cols && { flexBasis: '48%', flexGrow: 1 }, pressed && { opacity: 0.92 }]} accessibilityLabel={`${r.course.title || 'Untitled course'}, ${m.label}`}>
                       <View style={{ flexDirection: 'row', gap: 12 }}>
                         <View style={{ width: 104 }}>
                           <CourseArt course={r.course} height={78} rounded={radius.md} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-                          <Pill text={m.label} tone={m.tone} icon={m.icon as any} />
+                          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                            <Pill text={m.label} tone={m.tone} icon={m.icon as any} />
+                            {r.course.tutorReview?.status === 'pending' && (
+                              <Pill text={owner ? 'Review needed' : 'Submitted'} tone="warning" icon="hourglass" />
+                            )}
+                          </View>
                           <Txt variant="bodyStrong" numberOfLines={2}>{r.course.title || 'Untitled course'}</Txt>
                           <Txt variant="caption" color={c.muted}>{r.lessons} lessons · updated {new Date(r.course.updatedAt ?? r.course.publishedAt ?? Date.now()).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</Txt>
                         </View>

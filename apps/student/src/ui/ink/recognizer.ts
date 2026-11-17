@@ -80,6 +80,73 @@ const serverEngine: Recogniser = {
   },
 };
 
+/** Web handwriting engine via Google Input Tools API (CORS enabled, 300+ languages). */
+const webInputToolsEngine: Recogniser = {
+  engine: 'browser',
+  label: 'Smart ink',
+  async prepare() {
+    return true;
+  },
+  async recognise(strokes, lang, area) {
+    if (!strokes.length) return [];
+    try {
+      const width = Math.max(300, Math.round(area.w || 800));
+      const height = Math.max(200, Math.round(area.h || 500));
+      const targetLang = lang === 'zxx-x-math' ? 'en' : (lang || 'en');
+
+      // Google Input Tools expects [ [x_coords], [y_coords], [time_ms] ] for each stroke
+      const inkPayload = strokes.map((s) => [
+        s.map(([x]) => Math.round(x * width)),
+        s.map(([, y]) => Math.round(y * height)),
+        s.map(([, , t]) => Math.round(t)),
+      ]);
+
+      const body = {
+        app_version: 0.4,
+        api_level: '537.36',
+        device: '537.36',
+        input_type: '0',
+        options: 'enable_pre_space',
+        requests: [
+          {
+            writing_guide: {
+              writing_area_width: width,
+              writing_area_height: height,
+            },
+            ink: inkPayload,
+            language: targetLang,
+          },
+        ],
+      };
+
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeout = controller ? setTimeout(() => controller.abort(), 4000) : null;
+
+      const res = await fetch('https://www.google.com/inputtools/request?ime=handwriting&app=mobilesearch&cs=1&oe=UTF-8', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller?.signal,
+      });
+
+      if (timeout) clearTimeout(timeout);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (Array.isArray(data) && data[0] === 'SUCCESS' && data[1]?.[0]?.[1]) {
+        const cands = data[1][0][1] as string[];
+        return cands.slice(0, 5);
+      }
+      return [];
+    } catch (e) {
+      console.warn('Smart ink web handwriting recogniser:', e);
+      return [];
+    }
+  },
+};
+
 const noneEngine: Recogniser = { engine: 'none', label: 'Handwriting kept as ink', prepare: async () => false, recognise: async () => [] };
 
 /** Pick the best engine on this device (cached). */
@@ -87,8 +154,14 @@ let picked: Promise<Recogniser> | null = null;
 export function getRecogniser(): Promise<Recogniser> {
   picked ??= (async () => {
     if (Platform.OS !== 'web' && native) { try { if (await native.isAvailable()) return deviceEngine; } catch { /* fall through */ } }
-    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && (navigator as unknown as HWNav).createHandwritingRecognizer) return browserEngine;
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && (navigator as unknown as HWNav).createHandwritingRecognizer) {
+      try {
+        const ok = await browserEngine.prepare('en');
+        if (ok) return browserEngine;
+      } catch { /* fall through */ }
+    }
     if (SERVER) return serverEngine;
+    if (Platform.OS === 'web' || typeof window !== 'undefined') return webInputToolsEngine;
     return noneEngine;
   })();
   return picked;

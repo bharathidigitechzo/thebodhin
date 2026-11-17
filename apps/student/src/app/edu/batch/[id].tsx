@@ -369,6 +369,8 @@ function Schedule({ info, reload, flash, onMark }: { info: Info; reload: () => v
   const [seg, setSeg] = useState<'scheduled' | 'conducted' | 'cancelled'>(info.status === 'completed' ? 'conducted' : 'scheduled');
   const [sel, setSel] = useState<ClassSession | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelErr, setCancelErr] = useState<string | null>(null);
   const [move, setMove] = useState<{ s: ClassSession; date: string; time: string; dur: number; err: string | null; busy: boolean } | null>(null);
   const uid0 = useAuth().session?.user.id ?? '';
   const openMove = (s: ClassSession) => { const d = new Date(s.startsAt); setSel(null); setMove({ s, date: d.toISOString(), time: d.toTimeString().slice(0, 5), dur: Math.round((new Date(s.endsAt).getTime() - d.getTime()) / 6e4), err: null, busy: false }); };
@@ -446,11 +448,26 @@ function Schedule({ info, reload, flash, onMark }: { info: Info; reload: () => v
         footer={
           <>
             <Button title="Keep" variant="outline" size="md" style={{ flex: 1 }} onPress={() => setConfirmCancel(false)} />
-            <Button title="Cancel class" size="md" style={{ flex: 1, backgroundColor: c.danger }} onPress={() => { if (sel) batchesApi.setSessionStatus(sel.id, 'cancelled'); setConfirmCancel(false); setSel(null); reload(); flash('Class cancelled · students notified'); }} />
+            <Button
+              title="Cancel class"
+              size="md"
+              style={{ flex: 1, backgroundColor: c.danger }}
+              onPress={() => {
+                if (!sel) return;
+                try {
+                  batchesApi.setSessionStatus(sel.id, 'cancelled', cancelReason);
+                } catch (e) {
+                  setCancelErr(e instanceof ApiError ? e.message : 'Could not cancel the class.');
+                  return;
+                }
+                setConfirmCancel(false); setSel(null); setCancelReason(''); reload(); flash('Class cancelled · students notified');
+              }}
+            />
           </>
         }
       >
-        <Txt color={c.inkSoft}>All {info.counts.enrolled} students get a notification. You can restore it later.</Txt>
+        <Txt color={c.inkSoft}>All {info.counts.enrolled} students get a notification with your reason. You can restore it later.</Txt>
+        <TextField label="Reason (students see this)" value={cancelReason} onChangeText={(t) => { setCancelReason(t); setCancelErr(null); }} placeholder="e.g. Trainer unwell, moved to Saturday" error={cancelErr ?? undefined} maxLength={200} />
       </BottomSheet>
       <BottomSheet
         open={!!move}

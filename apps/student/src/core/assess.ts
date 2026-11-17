@@ -10,6 +10,9 @@ export interface Question {
   topic: string;
   hint?: string;
   explanation: string;
+  kind?: 'mcq' | 'fill_blank';
+  blankAnswer?: string;
+  marks?: number;
 }
 
 export interface Assessment {
@@ -52,7 +55,7 @@ export interface Attempt {
   id: string;
   userId: string;
   assessmentId: string;
-  answers: number[]; // -1 = skipped
+  answers: (number | string)[]; // -1 = skipped, or string for fill in the blank
   startedAt: string;
   submittedAt: string;
   timeTakenSec: number;
@@ -70,7 +73,7 @@ export interface Submission {
   userId: string;
   assessmentId: string;
   status: 'draft' | 'submitted' | 'graded';
-  files: { name: string; sizeMb: number }[];
+  files: { name: string; sizeMb?: number; uri?: string }[];
   link?: string;
   note: string;
   updatedAt: string;
@@ -80,15 +83,42 @@ export interface Submission {
   grade?: { pct: number; feedback: string; rubric: { item: string; score: number; max: number }[]; by: string; at: string };
 }
 
-export function score(questions: Question[], answers: number[], marks: number) {
-  const correct = questions.filter((q, i) => answers[i] === q.correct).length;
-  const pct = questions.length ? Math.round((correct / questions.length) * 100) : 0;
+export function score(questions: Question[], answers: (number | string)[], marks: number) {
+  let earnedMarks = 0;
+  let totalMarks = 0;
+  let correctCount = 0;
+
+  const results = questions.map((q, i) => {
+    const qMarks = q.marks ?? 2;
+    totalMarks += qMarks;
+    let isCorrect = false;
+    const ans = answers[i];
+
+    if (q.kind === 'fill_blank') {
+      const target = (q.blankAnswer ?? q.options[q.correct] ?? '').trim().toLowerCase();
+      const userAns = typeof ans === 'string' ? ans.trim().toLowerCase() : (typeof ans === 'number' && ans >= 0 ? (q.options[ans] ?? '').trim().toLowerCase() : '');
+      isCorrect = target.length > 0 && userAns === target;
+    } else {
+      isCorrect = typeof ans === 'number' && ans === q.correct;
+    }
+
+    if (isCorrect) {
+      correctCount++;
+      earnedMarks += qMarks;
+    }
+    return { isCorrect, qMarks };
+  });
+
+  const finalTotalMarks = totalMarks || marks || questions.length * 2;
+  const pct = finalTotalMarks ? Math.round((earnedMarks / finalTotalMarks) * 100) : 0;
   const topics = [...new Set(questions.map((q) => q.topic))];
   const byTopic = topics.map((t) => {
     const qs = questions.map((q, i) => ({ q, i })).filter((x) => x.q.topic === t);
-    return { topic: t, pct: Math.round((qs.filter((x) => answers[x.i] === x.q.correct).length / qs.length) * 100) };
+    const tMarks = qs.reduce((sum, x) => sum + (x.q.marks ?? 2), 0);
+    const tEarned = qs.filter((x) => results[x.i].isCorrect).reduce((sum, x) => sum + (x.q.marks ?? 2), 0);
+    return { topic: t, pct: tMarks ? Math.round((tEarned / tMarks) * 100) : 0 };
   });
-  return { correct, total: questions.length, scorePct: pct, marks: Math.round((pct / 100) * marks), byTopic };
+  return { correct: correctCount, total: questions.length, scorePct: pct, marks: earnedMarks, byTopic };
 }
 
 /** Plain-language verdict for the result header. */

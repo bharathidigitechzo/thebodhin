@@ -22,12 +22,13 @@ const L: NavItem[] = [
   { key: 'explore', href: '/explore', title: 'Explore', icon: 'compass', match: ['/course/', '/checkout', '/search', '/bundle/'], primary: true },
   { key: 'learning', href: '/learning', title: 'My Learning', icon: 'play-circle', match: ['/result'], primary: true },
   { key: 'live', href: '/live', title: 'Live', icon: 'radio', match: ['/webinar', '/book/', '/mentorship'], primary: true },
+  { key: 'notifications', href: '/notifications', title: 'Notifications', icon: 'notifications' },
   { key: 'quizzes', href: '/quizzes', title: 'Quizzes', icon: 'help-circle', match: ['/quiz/'] },
   { key: 'assignments', href: '/assignments', title: 'Assignments', icon: 'document-text', match: ['/assignment/'] },
   { key: 'community', href: '/community', title: 'Community', icon: 'chatbubbles' },
   { key: 'playground', href: '/playground', title: 'Playground', icon: 'code-slash' },
   { key: 'certificates', href: '/certificates', title: 'Certificates', icon: 'ribbon', match: ['/certificate/'] },
-  { key: 'profile', href: '/profile', title: 'Profile', icon: 'person', match: ['/payments', '/notifications', '/downloads', '/help', '/my-purchases', '/product/', '/site/', '/refer'], primary: true },
+  { key: 'profile', href: '/profile', title: 'Profile', icon: 'person', match: ['/payments', '/downloads', '/help', '/my-purchases', '/product/', '/site/', '/refer'], primary: true },
 ];
 
 /** Teaching first (requirement 1.2): dashboard, courses, create, live, quizzes, assignments, community … business last. */

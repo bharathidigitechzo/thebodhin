@@ -2,7 +2,7 @@
  * 1:1 mentorship inbox (tutor / educator / Bodhin team). A learner's request arrives with a notification;
  * accept (keep or change the time) → the learner gets the confirmed time; reject with a reason → the learner is told why.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -21,6 +21,11 @@ type Sheet = { kind: 'accept' | 'reject' | 'cancel'; id: string; name: string; a
 export default function MentorshipInbox() {
   const { c } = useTheme();
   const { d, err, load, userId } = useDataAsync(mentorship.inbox);
+  useEffect(() => {
+    if (userId) {
+      mentorship.markViewed(userId);
+    }
+  }, [userId]);
   const a = useAct();
   const [sheet, setSheet] = useState<Sheet>(null);
   const [note, setNote] = useState('');

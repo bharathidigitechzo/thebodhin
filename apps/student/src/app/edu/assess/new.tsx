@@ -25,9 +25,9 @@ export default function NewAssessment() {
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
-  const courses = educator.courses(userId);
+  const courses = educator.courses(userId).filter((c) => c.title?.trim().length > 0 && c.status !== 'archived');
   const [kind, setKind] = useState<AssessKind | null>((['quiz', 'exam', 'assignment'] as const).find((k) => k === p.kind) ?? null);
-  const [courseId, setCourseId] = useState<string | null>(courses.find((x) => x.id === p.courseId)?.id ?? (courses.length === 1 ? courses[0].id : null));
+  const [courseId, setCourseId] = useState<string | null>(courses.find((x) => x.id === p.courseId)?.id ?? (courses.length > 0 ? courses[0].id : null));
   const go = (k = kind, co = courseId) => {
     if (!k || !co) return;
     router.replace({ pathname: '/edu/assess/[id]', params: { id: assessAdmin.create(userId, k, co), fresh: '1' } });
@@ -65,7 +65,7 @@ export default function NewAssessment() {
                 <Txt variant="label" color={c.muted} style={{ marginTop: 8 }}>FOR WHICH COURSE?</Txt>
                 {courses.map((co) => (
                   <Pressable key={co.id} onPress={() => setCourseId(co.id)} style={[styles.opt, { backgroundColor: courseId === co.id ? c.primarySoft : c.surface, borderColor: courseId === co.id ? c.primary : c.border, minHeight: 52 }]} accessibilityRole="radio" accessibilityState={{ checked: courseId === co.id }}>
-                    <Txt variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>{co.title}</Txt>
+                    <Txt variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>{co.title?.trim() || 'Untitled course'}</Txt>
                     <Ionicons name={courseId === co.id ? 'radio-button-on' : 'radio-button-off'} size={22} color={courseId === co.id ? c.primary : c.borderStrong} />
                   </Pressable>
                 ))}

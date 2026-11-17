@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bodhin-web-build",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/NANIBH~1/AppData/Local/Temp/claude/5d252406e399c45a/28b8667c-6d5c-4c1a-8086-9adc6dd9c962/scratchpad/serve.mjs",
+        "C:/Users/nani bharu/OneDrive/Desktop/bodhin-poc/apps/student/dist",
+        "8765",
+        "index.html"
+      ],
+      "port": 8765
+    }
+  ]
+}

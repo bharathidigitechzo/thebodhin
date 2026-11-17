@@ -23,6 +23,7 @@ import { VideoSurface } from '@/ui/VideoSurface';
 import { Banner } from '@/ui/misc';
 import { emiApi } from '@/api/growth';
 import { BrandLogo } from '@/ui/Brand';
+import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
 
 type Tab = 'lessons' | 'notes' | 'qa' | 'resources';
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -41,6 +42,7 @@ export default function Player() {
   const [speed, setSpeed] = useState(1);
   const [quality, setQuality] = useState('Auto');
   const [sheet, setSheet] = useState<null | 'speed' | 'quality' | 'download'>(null);
+  const [pdfModal, setPdfModal] = useState<PreviewFile | null>(null);
   const [finished, setFinished] = useState(false);
   const doneBefore = useRef<number | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -209,7 +211,7 @@ export default function Player() {
                 )}
               </View>
             ) : (
-              <DocCard lesson={lesson} onOpen={() => (lesson.type === 'quiz' ? router.push({ pathname: '/quiz/[lessonId]', params: { lessonId: lesson.id, courseId: course.id } }) : flash('PDF opens in the in-app reader on your phone'))} />
+              <DocCard lesson={lesson} onOpen={() => (lesson.type === 'quiz' ? router.push({ pathname: '/quiz/[lessonId]', params: { lessonId: lesson.id, courseId: course.id } }) : setPdfModal({ name: `${lesson.title}.pdf`, sizeMb: lesson.sizeMb }))} />
             )}
 
             <View style={styles.pad}>
@@ -278,14 +280,15 @@ export default function Player() {
               {tab === 'resources' && (
                 <View style={{ gap: 10 }}>
                   {allLessons(course).filter((l) => l.type === 'pdf').map((l) => (
-                    <View key={l.id} style={[styles.res, { backgroundColor: c.surface, borderColor: c.border }]}>
+                    <Pressable key={l.id} onPress={() => setPdfModal({ name: `${l.title}.pdf`, sizeMb: l.sizeMb })} style={[styles.res, { backgroundColor: c.surface, borderColor: c.border }]} accessibilityRole="button" accessibilityLabel={`View ${l.title}.pdf`}>
                       <View style={[styles.resIcon, { backgroundColor: c.dangerBg }]}><Ionicons name="document-text" size={20} color={c.danger} /></View>
-                      <View style={{ flex: 1 }}>
-                        <Txt variant="label">{l.title}.pdf</Txt>
-                        <Txt variant="caption" color={c.muted}>PDF · {l.sizeMb} MB</Txt>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Txt variant="label" numberOfLines={1}>{l.title}.pdf</Txt>
+                        <Txt variant="caption" color={c.muted}>PDF · {l.sizeMb} MB · tap to view</Txt>
                       </View>
+                      <IconButton icon="eye-outline" label={`View ${l.title}`} onPress={() => setPdfModal({ name: `${l.title}.pdf`, sizeMb: l.sizeMb })} />
                       <IconButton icon="download-outline" label={`Download ${l.title}`} onPress={() => (enrolled ? flash('Saved to Downloads') : flash('Enroll to download resources'))} />
-                    </View>
+                    </Pressable>
                   ))}
                 </View>
               )}
@@ -394,6 +397,13 @@ export default function Player() {
           <Button title="Rate this course" variant="outline" style={{ alignSelf: 'stretch' }} onPress={() => { setFinished(false); router.push({ pathname: '/course/[id]', params: { id: course.id } }); }} />
         </View>
       </BottomSheet>
+
+      <PdfPreviewModal
+        open={!!pdfModal}
+        onClose={() => setPdfModal(null)}
+        file={pdfModal}
+        assignmentTitle={course.title}
+      />
     </View>
   );
 }

@@ -34,8 +34,16 @@ export default function AssessHub() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         <View style={styles.top}>
-          <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/educator/more'))} />
-          <Txt variant="heading" style={{ flex: 1 }}>Quizzes & assignments</Txt>
+          <View style={styles.topInner}>
+            <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/educator/more'))} />
+            <Txt variant="heading" style={{ flex: 1 }} numberOfLines={1}>Quizzes & assignments</Txt>
+            <Button
+              title="Create"
+              iconLeft="add"
+              size="md"
+              onPress={() => router.push({ pathname: '/edu/assess/new', params: { courseId: courseId ?? '', kind: kind === 'all' ? '' : kind } })}
+            />
+          </View>
         </View>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.inner}>
@@ -96,22 +104,18 @@ export default function AssessHub() {
             )}
           </View>
         </ScrollView>
-        <View style={styles.fabWrap} pointerEvents="box-none">
-          <Button title="Create" iconLeft="add" style={styles.fab} onPress={() => router.push({ pathname: '/edu/assess/new', params: { courseId: courseId ?? '', kind: kind === 'all' ? '' : kind } })} />
-        </View>
       </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
-  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 110 },
+  top: { alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
+  topInner: { width: '100%', maxWidth: layout.contentMaxWidth, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 40 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   grade: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, padding: 14, minHeight: 64 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 18, padding: 12 },
   icon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   empty: { borderWidth: 1, borderRadius: 18, padding: 28, alignItems: 'center', gap: 8 },
-  fabWrap: { position: 'absolute', right: 20, bottom: 18, left: 20, alignItems: 'flex-end' },
-  fab: { paddingHorizontal: 22, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
 });

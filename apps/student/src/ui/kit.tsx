@@ -144,7 +144,7 @@ export function ProgressBar({ pct, color, height = 6 }: { pct: number; color?: s
   }, [pct, v]);
   return (
     <View style={{ height, borderRadius: height, backgroundColor: c.border, overflow: 'hidden', flex: 1 }} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(pct) }}>
-      <Animated.View style={{ width: '100%', height, borderRadius: height, backgroundColor: color ?? c.success, transformOrigin: 'left', transform: [{ scaleX: v }] }} />
+      <View style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height, borderRadius: height, backgroundColor: color ?? c.success }} />
     </View>
   );
 }

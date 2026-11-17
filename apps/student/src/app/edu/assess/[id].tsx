@@ -22,8 +22,29 @@ import { KIND_META } from '@/ui/assessMeta';
 
 type Tab = 'setup' | 'content' | 'results';
 type Info = NonNullable<ReturnType<typeof assessAdmin.get>>;
-type Draft = { id?: string; text: string; options: string[]; correct: number; topic: string; explanation: string; hint: string };
-const EMPTY: Draft = { text: '', options: ['', '', '', ''], correct: -1, topic: '', explanation: '', hint: '' };
+type Draft = {
+  id?: string;
+  text: string;
+  options: string[];
+  correct: number;
+  topic: string;
+  explanation: string;
+  hint: string;
+  kind?: 'mcq' | 'fill_blank';
+  blankAnswer?: string;
+  marks?: number;
+};
+const EMPTY: Draft = {
+  text: '',
+  options: ['', '', '', ''],
+  correct: -1,
+  topic: '',
+  explanation: '',
+  hint: '',
+  kind: 'mcq',
+  blankAnswer: '',
+  marks: 2,
+};
 const ACCEPTS = ['PDF', 'DOCX', 'PPTX', 'ZIP', 'JPG', 'Link'];
 const hhmm = (iso?: string) => (iso ? new Date(iso).toTimeString().slice(0, 5) : '18:00');
 const withTime = (dateIso: string, t: string) => {
@@ -48,6 +69,7 @@ export default function Builder() {
   const [picked, setPicked] = useState<string[]>([]);
   const [req, setReq] = useState('');
   const [menu, setMenu] = useState(false);
+  const [publishedDone, setPublishedDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,14 +105,35 @@ export default function Builder() {
   const checklist = assessAdmin.checklist({ ...a, title, instructions });
   const ready = checklist.every((x) => x.ok);
 
+  const handleNext = () => {
+    commitText();
+    if (title.trim().length < 4) {
+      setErr('Add a title (4+ characters) before continuing.');
+      return;
+    }
+    setErr(null);
+    setTab('content');
+  };
+
   const publish = async () => {
     commitText();
+    if (tab === 'setup' && !ready) {
+      handleNext();
+      return;
+    }
     setErr(null);
     setBusy(true);
     try {
+      if (a.kind === 'assignment') {
+        const ins = (instructions || a.instructions || '').trim() || 'Please follow the rubric criteria and submit your deliverables before the deadline.';
+        set({ title, instructions: ins });
+      } else {
+        set({ title });
+      }
       await assessAdmin.publish(userId, id);
-      reload();
       flash('Published · students notified');
+      // Directly close the form and return to assessments dashboard
+      router.replace({ pathname: '/edu/assess', params: { kind: a.kind } });
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Could not publish.');
     } finally {
@@ -99,9 +142,39 @@ export default function Builder() {
   };
   const saveQ = () => {
     if (!q) return;
-    const opts = q.options.map((o) => o.trim()).filter((o, i) => o || i < 2);
     try {
-      assessAdmin.upsertQuestion(userId, id, { id: q.id, text: q.text, options: opts.length ? opts : q.options, correct: q.correct, topic: q.topic, explanation: q.explanation, hint: q.hint });
+      if (q.kind === 'fill_blank') {
+        const ans = (q.blankAnswer ?? '').trim();
+        if (!ans) {
+          setQErr('Enter the correct answer for the blank.');
+          return;
+        }
+        assessAdmin.upsertQuestion(userId, id, {
+          id: q.id,
+          text: q.text,
+          options: [ans],
+          correct: 0,
+          kind: 'fill_blank',
+          blankAnswer: ans,
+          marks: q.marks ?? (a.kind === 'exam' ? 2 : 1),
+          topic: q.topic,
+          explanation: q.explanation,
+          hint: q.hint,
+        });
+      } else {
+        const opts = q.options.map((o) => o.trim()).filter((o, i) => o || i < 2);
+        assessAdmin.upsertQuestion(userId, id, {
+          id: q.id,
+          text: q.text,
+          options: opts.length ? opts : q.options,
+          correct: q.correct,
+          kind: 'mcq',
+          marks: q.marks ?? (a.kind === 'exam' ? 2 : 1),
+          topic: q.topic,
+          explanation: q.explanation,
+          hint: q.hint,
+        });
+      }
       setQ(null);
       reload();
       flash(q.id ? 'Question updated' : 'Question added');
@@ -120,6 +193,15 @@ export default function Builder() {
             <Txt variant="caption" color={c.muted} numberOfLines={1}>{m.label} · {course.title}</Txt>
           </View>
           <Pill text={draft ? 'Draft' : 'Published'} tone={draft ? 'neutral' : 'success'} />
+          <Button
+            title="Done"
+            size="md"
+            variant={draft ? 'outline' : 'primary'}
+            onPress={() => {
+              commitText();
+              router.replace('/edu/assess');
+            }}
+          />
           <IconButton icon="ellipsis-horizontal" label="More actions" tone="filled" onPress={() => setMenu(true)} />
         </View>
         <View style={styles.tabsWrap}>
@@ -181,13 +263,19 @@ export default function Builder() {
                 )}
 
                 {draft && (
-                  <Card title="Ready to publish?">
+                  <Card title="Steps to publish">
                     {checklist.map((k) => (
                       <View key={k.text} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                         <Ionicons name={k.ok ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={k.ok ? c.success : c.borderStrong} />
                         <Txt color={k.ok ? c.ink : c.inkSoft}>{k.text}</Txt>
                       </View>
                     ))}
+                    <Button
+                      title={a.kind === 'assignment' ? 'Next: Brief & rubric' : 'Next: Questions'}
+                      iconRight="arrow-forward"
+                      size="md"
+                      onPress={handleNext}
+                    />
                   </Card>
                 )}
               </>
@@ -196,34 +284,58 @@ export default function Builder() {
             {tab === 'content' && a.kind !== 'assignment' && (
               <>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Button title="Add question" iconLeft="add" size="md" style={{ flex: 1 }} onPress={() => { setQ({ ...EMPTY, options: ['', '', '', ''] }); setQErr(null); }} />
+                  <Button title="Add question" iconLeft="add" size="md" style={{ flex: 1 }} onPress={() => { setQ({ ...EMPTY, options: ['', '', '', ''], marks: a.kind === 'exam' ? 2 : 1 }); setQErr(null); }} />
                   <Button title="From bank" iconLeft="albums-outline" size="md" variant="outline" style={{ flex: 1 }} onPress={() => { setBank(assessAdmin.bank(userId, id)); setPicked([]); }} />
                 </View>
-                <Txt variant="caption" color={c.muted}>{questions.length} questions · {a.marks} marks{a.kind === 'exam' && a.createdBy ? ' (2 per question)' : ''}</Txt>
+                <Txt variant="caption" color={c.muted}>{questions.length} questions · {a.marks} total marks</Txt>
                 {questions.length === 0 && (
                   <View style={[styles.empty, { backgroundColor: c.surface, borderColor: c.border }]}>
                     <Ionicons name="help-circle-outline" size={34} color={c.muted} />
-                    <Txt color={c.muted} center>Add your own questions or pick from questions you’ve used in this course.</Txt>
+                    <Txt color={c.muted} center>Add multiple-choice or fill-in-the-blank questions or pick from questions you’ve used in this course.</Txt>
                   </View>
                 )}
                 {questions.map((qq, i) => (
                   <View key={qq.id} style={[styles.qcard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                       <Txt variant="label" color={c.primary}>Q{i + 1}</Txt>
                       <Txt variant="bodyStrong" style={{ flex: 1 }}>{qq.text}</Txt>
+                      <Pill text={qq.kind === 'fill_blank' ? 'Fill in blank' : 'MCQ'} tone="info" />
+                      <Pill text={`${qq.marks ?? (a.kind === 'exam' ? 2 : 1)} ${qq.marks === 1 ? 'mark' : 'marks'}`} tone="gold" />
                     </View>
-                    {qq.options.map((o, k) => (
-                      <View key={k} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                        <Ionicons name={k === qq.correct ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={k === qq.correct ? c.success : c.borderStrong} />
-                        <Txt variant="label" style={{ fontWeight: k === qq.correct ? '700' : '400', flex: 1 }}>{o}</Txt>
+                    {qq.kind === 'fill_blank' ? (
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingVertical: 4 }}>
+                        <Ionicons name="create-outline" size={18} color={c.success} />
+                        <Txt variant="label" color={c.inkSoft}>Answer: </Txt>
+                        <Txt variant="bodyStrong" color={c.success}>{qq.blankAnswer || qq.options[0] || '—'}</Txt>
                       </View>
-                    ))}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Pill text={qq.topic} tone="neutral" />
+                    ) : (
+                      qq.options.map((o, k) => (
+                        <View key={k} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                          <Ionicons name={k === qq.correct ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={k === qq.correct ? c.success : c.borderStrong} />
+                          <Txt variant="label" style={{ fontWeight: k === qq.correct ? '700' : '400', flex: 1 }}>{o}</Txt>
+                        </View>
+                      ))
+                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                      <Pill text={qq.topic || 'General'} tone="neutral" />
                       <View style={{ flex: 1 }} />
                       <Small icon="arrow-up" label="Move up" disabled={i === 0} onPress={() => { assessAdmin.moveQuestion(userId, id, qq.id, -1); reload(); }} />
                       <Small icon="arrow-down" label="Move down" disabled={i === questions.length - 1} onPress={() => { assessAdmin.moveQuestion(userId, id, qq.id, 1); reload(); }} />
-                      <Small icon="create-outline" label="Edit question" onPress={() => { setQ({ id: qq.id, text: qq.text, options: [...qq.options], correct: qq.correct, topic: qq.topic, explanation: qq.explanation, hint: qq.hint ?? '' }); setQErr(null); }} />
+                      <Small icon="create-outline" label="Edit question" onPress={() => {
+                        setQ({
+                          id: qq.id,
+                          text: qq.text,
+                          options: [...qq.options],
+                          correct: qq.correct,
+                          topic: qq.topic,
+                          explanation: qq.explanation,
+                          hint: qq.hint ?? '',
+                          kind: qq.kind ?? 'mcq',
+                          blankAnswer: qq.blankAnswer ?? (qq.options[0] || ''),
+                          marks: qq.marks ?? (a.kind === 'exam' ? 2 : 1),
+                        });
+                        setQErr(null);
+                      }} />
                       <Small icon="trash-outline" label="Remove question" onPress={() => { assessAdmin.removeQuestion(userId, id, qq.id); reload(); flash('Question removed'); }} />
                     </View>
                   </View>
@@ -270,7 +382,31 @@ export default function Builder() {
         {draft && (
           <View style={[styles.footer, { borderTopColor: c.border, backgroundColor: c.surface }]}>
             <Txt variant="caption" color={c.muted} center>Saved automatically as draft</Txt>
-            <Button title={ready ? 'Publish & notify students' : `Publish (${checklist.filter((x) => !x.ok).length} left)`} iconLeft="send" loading={busy} onPress={publish} style={{ width: '100%', maxWidth: layout.contentMaxWidth }} />
+            {tab === 'setup' ? (
+              <Button
+                title={a.kind === 'assignment' ? 'Next: Brief & rubric' : 'Next: Questions'}
+                iconRight="arrow-forward"
+                onPress={handleNext}
+                style={{ width: '100%', maxWidth: layout.contentMaxWidth }}
+              />
+            ) : (
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%', maxWidth: layout.contentMaxWidth }}>
+                <Button
+                  title="Back to setup"
+                  variant="outline"
+                  iconLeft="arrow-back"
+                  style={{ flex: 1 }}
+                  onPress={() => { commitText(); setTab('setup'); }}
+                />
+                <Button
+                  title={ready ? 'Publish & close' : `Publish (${checklist.filter((x) => !x.ok).length} left)`}
+                  iconLeft="send"
+                  loading={busy}
+                  style={{ flex: 1.8 }}
+                  onPress={publish}
+                />
+              </View>
+            )}
           </View>
         )}
         {toast && <View style={[styles.toast, { backgroundColor: c.ink }]} pointerEvents="none"><Txt variant="label" color="#fff" center>{toast}</Txt></View>}
@@ -278,18 +414,74 @@ export default function Builder() {
 
       <BottomSheet open={!!q} onClose={() => setQ(null)} title={q?.id ? 'Edit question' : 'New question'} footer={<Button title="Save question" size="md" style={{ flex: 1 }} onPress={saveQ} />}>
         {q && (
-          <View style={{ gap: 10 }}>
-            <TextInput value={q.text} onChangeText={(v) => setQ({ ...q, text: v })} multiline placeholder="Question" placeholderTextColor={c.muted} style={[styles.area, { minHeight: 70, borderColor: c.border, color: c.ink }]} accessibilityLabel="Question text" />
-            <Txt variant="caption" color={c.muted}>Tap the circle to mark the correct answer.</Txt>
-            {q.options.map((o, i) => (
-              <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                <Pressable onPress={() => setQ({ ...q, correct: i })} style={styles.radio} accessibilityRole="radio" accessibilityState={{ checked: q.correct === i }} accessibilityLabel={`Mark option ${i + 1} correct`}>
-                  <Ionicons name={q.correct === i ? 'checkmark-circle' : 'ellipse-outline'} size={26} color={q.correct === i ? c.success : c.borderStrong} />
-                </Pressable>
-                <TextInput value={o} onChangeText={(v) => setQ({ ...q, options: q.options.map((x, j) => (j === i ? v : x)) })} placeholder={`Option ${i + 1}${i >= 2 ? ' (optional)' : ''}`} placeholderTextColor={c.muted} style={[styles.input, { borderColor: q.correct === i ? c.success : c.border, color: c.ink }]} accessibilityLabel={`Option ${i + 1}`} />
+          <View style={{ gap: 12 }}>
+            <Txt variant="label">Question Type</Txt>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Chip
+                label="Multiple Choice (MCQ)"
+                active={q.kind !== 'fill_blank'}
+                onPress={() => setQ({ ...q, kind: 'mcq' })}
+              />
+              <Chip
+                label="Fill in the Blank"
+                active={q.kind === 'fill_blank'}
+                onPress={() => setQ({ ...q, kind: 'fill_blank' })}
+              />
+            </View>
+
+            <Txt variant="label">Allocate Marks</Txt>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {[1, 2, 3, 4, 5, 10].map((mVal) => (
+                <Chip
+                  key={mVal}
+                  label={`${mVal} ${mVal === 1 ? 'mark' : 'marks'}`}
+                  active={q.marks === mVal}
+                  onPress={() => setQ({ ...q, marks: mVal })}
+                />
+              ))}
+            </View>
+
+            <TextInput
+              value={q.text}
+              onChangeText={(v) => setQ({ ...q, text: v })}
+              multiline
+              placeholder={q.kind === 'fill_blank' ? 'Question / sentence (e.g. The process of optimizing web pages is called _____)' : 'Question text'}
+              placeholderTextColor={c.muted}
+              style={[styles.area, { minHeight: 70, borderColor: c.border, color: c.ink }]}
+              accessibilityLabel="Question text"
+            />
+
+            {q.kind === 'fill_blank' ? (
+              <View style={{ gap: 6 }}>
+                <Txt variant="label">Correct Answer</Txt>
+                <TextInput
+                  value={q.blankAnswer}
+                  onChangeText={(v) => setQ({ ...q, blankAnswer: v })}
+                  placeholder="e.g. SEO (evaluated case-insensitively)"
+                  placeholderTextColor={c.muted}
+                  style={[styles.input, { borderColor: c.border, color: c.ink, flex: 0 }]}
+                  accessibilityLabel="Correct answer for blank"
+                />
+                <Txt variant="caption" color={c.muted}>
+                  Students will type their answer. Grading is case-insensitive and trims whitespace.
+                </Txt>
               </View>
-            ))}
+            ) : (
+              <View style={{ gap: 8 }}>
+                <Txt variant="caption" color={c.muted}>Tap the circle to mark the correct answer.</Txt>
+                {q.options.map((o, i) => (
+                  <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <Pressable onPress={() => setQ({ ...q, correct: i })} style={styles.radio} accessibilityRole="radio" accessibilityState={{ checked: q.correct === i }} accessibilityLabel={`Mark option ${i + 1} correct`}>
+                      <Ionicons name={q.correct === i ? 'checkmark-circle' : 'ellipse-outline'} size={26} color={q.correct === i ? c.success : c.borderStrong} />
+                    </Pressable>
+                    <TextInput value={o} onChangeText={(v) => setQ({ ...q, options: q.options.map((x, j) => (j === i ? v : x)) })} placeholder={`Option ${i + 1}${i >= 2 ? ' (optional)' : ''}`} placeholderTextColor={c.muted} style={[styles.input, { borderColor: q.correct === i ? c.success : c.border, color: c.ink }]} accessibilityLabel={`Option ${i + 1}`} />
+                  </View>
+                ))}
+              </View>
+            )}
+
             <TextInput value={q.topic} onChangeText={(v) => setQ({ ...q, topic: v })} placeholder="Topic (for per-topic results), e.g. On-Page SEO" placeholderTextColor={c.muted} style={[styles.input, { borderColor: c.border, color: c.ink, flex: 0 }]} accessibilityLabel="Topic" />
+            <TextInput value={q.hint} onChangeText={(v) => setQ({ ...q, hint: v })} placeholder="Hint (optional)" placeholderTextColor={c.muted} style={[styles.input, { borderColor: c.border, color: c.ink, flex: 0 }]} accessibilityLabel="Hint" />
             <TextInput value={q.explanation} onChangeText={(v) => setQ({ ...q, explanation: v })} multiline placeholder="Explanation shown after submit (recommended)" placeholderTextColor={c.muted} style={[styles.area, { minHeight: 60, borderColor: c.border, color: c.ink }]} accessibilityLabel="Explanation" />
             {qErr && <Banner text={qErr} />}
           </View>
@@ -315,6 +507,50 @@ export default function Builder() {
           <Button title="Duplicate" variant="outline" iconLeft="copy-outline" onPress={() => { setMenu(false); router.replace({ pathname: '/edu/assess/[id]', params: { id: assessAdmin.duplicate(userId, id) } }); }} />
           {!draft && <Button title="Move back to draft" variant="outline" iconLeft="eye-off-outline" onPress={() => { setMenu(false); try { assessAdmin.unpublish(userId, id); reload(); flash('Moved to draft · hidden from students'); } catch (e) { setErr(e instanceof ApiError ? e.message : 'Could not unpublish.'); } }} />}
           {draft && !a.lessonId && <Button title="Delete draft" variant="outline" iconLeft="trash-outline" onPress={() => { setMenu(false); assessAdmin.remove(userId, id); router.replace('/edu/assess'); }} />}
+        </View>
+      </BottomSheet>
+
+      <BottomSheet
+        open={publishedDone}
+        onClose={() => {
+          setPublishedDone(false);
+          router.replace('/edu/assess');
+        }}
+        title={`${m.label} published!`}
+        footer={
+          <View style={{ flexDirection: 'row', gap: 10, flex: 1 }}>
+            <Button
+              title="View results"
+              variant="outline"
+              size="md"
+              style={{ flex: 1 }}
+              onPress={() => {
+                setPublishedDone(false);
+                setTab('results');
+              }}
+            />
+            <Button
+              title="Done · Close form"
+              size="md"
+              style={{ flex: 1.4 }}
+              onPress={() => {
+                setPublishedDone(false);
+                router.replace('/edu/assess');
+              }}
+            />
+          </View>
+        }
+      >
+        <View style={{ alignItems: 'center', gap: 12, paddingVertical: 12 }}>
+          <View style={[styles.okIcon, { backgroundColor: c.successBg }]}>
+            <Ionicons name="checkmark-done" size={38} color={c.success} />
+          </View>
+          <Txt variant="heading" center>{title || m.label}</Txt>
+          <Txt color={c.inkSoft} center>
+            {a.kind === 'assignment'
+              ? 'Your assignment is published. Students have been notified and can submit responses.'
+              : `${m.label} is published and live for students. Attempts and real-time scores will appear in Results.`}
+          </Txt>
         </View>
       </BottomSheet>
     </View>
@@ -452,5 +688,6 @@ const styles = StyleSheet.create({
   stat: { flex: 1, borderWidth: 1, borderRadius: 14, padding: 10, gap: 2 },
   person: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46 },
   footer: { borderTopWidth: 1, padding: 12, paddingTop: 6, alignItems: 'center', gap: 6 },
+  okIcon: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute', alignSelf: 'center', bottom: 110, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999 },
 });
