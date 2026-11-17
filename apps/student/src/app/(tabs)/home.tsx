@@ -3,9 +3,9 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 import { Grid, PAGE, useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { learning } from '@/api/client';
+import { learning, notifications } from '@/api/client';
 import { dateParts, greeting, sessionStatus, timeRange } from '@/core/time';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -21,6 +21,16 @@ export default function Home() {
   const userId = session?.user.id ?? '';
   const { data, loading, error, reload } = useAsync(() => learning.home(userId, tenant?.id ?? null), [userId, tenant?.id]);
   const first = session?.user.name.split(' ')[0] ?? 'there';
+  const [, setNotifRev] = React.useState(0);
+  const notifs = notifications.list(userId);
+  const unreadNotifs = notifs.filter((n) => !n.read).length;
+  const topNotif = notifs[0];
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setNotifRev((r) => r + 1);
+    }, [])
+  );
 
   const quick = [
     { label: 'My Learning', icon: 'book-outline', color: c.primary, go: () => router.navigate('/learning') },
@@ -80,8 +90,17 @@ export default function Home() {
                 {/* Quick actions */}
                 <View style={styles.quick}>
                   {quick.map((q) => (
-                    <Pressable key={q.label} onPress={q.go} accessibilityRole="button" style={({ pressed }) => [styles.quickItem, { backgroundColor: c.surface, borderColor: c.border }, pressed && { opacity: 0.8 }]}>
-                      <View>
+                    <Pressable
+                      key={q.label}
+                      onPress={q.go}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.quickItem,
+                        { backgroundColor: c.surface, borderColor: c.border },
+                        pressed && { opacity: 0.8 },
+                      ]}
+                    >
+                      <View style={styles.quickIconWrap}>
                         <Ionicons name={q.icon} size={28} color={q.color} />
                         {'badge' in q && !!q.badge && (
                           <View style={[styles.badge, { backgroundColor: c.live }]}>
@@ -98,14 +117,59 @@ export default function Home() {
                   ))}
                 </View>
 
-                <Pressable onPress={() => router.push('/playground')} accessibilityRole="button" accessibilityLabel="Open Code Playground" style={[{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, backgroundColor: c.primarySoft, borderColor: c.primary }]}>
-                  <Ionicons name="code-slash" size={26} color={c.primary} />
-                  <View style={{ flex: 1 }}>
+                {/* Code Playground */}
+                <Pressable
+                  onPress={() => router.push('/playground')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Code Playground"
+                  style={({ pressed }) => [
+                    styles.playground,
+                    { backgroundColor: c.primarySoft, borderColor: c.primary },
+                    pressed && { opacity: 0.9 },
+                  ]}
+                >
+                  <View style={[styles.playgroundIconBox, { backgroundColor: c.surface, borderColor: `${c.primary}30` }]}>
+                    <Ionicons name="code-slash" size={24} color={c.primary} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
                     <Txt variant="bodyStrong">Code Playground</Txt>
-                    <Txt variant="caption" color={c.inkSoft}>Practise Python, JavaScript, SQL, Java, React and more — no install.</Txt>
+                    <Txt variant="caption" color={c.inkSoft} numberOfLines={2}>
+                      Practise Python, JavaScript, SQL, Java, React and more — no install.
+                    </Txt>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={c.primary} />
                 </Pressable>
+
+                {/* Notifications card */}
+                {topNotif && (
+                  <Pressable
+                    onPress={() => {
+                      notifications.markRead(userId, topNotif.id); // same as opening it from Notifications
+                      if (topNotif.link) router.push(topNotif.link as any);
+                      else router.push('/notifications');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Notification: ${topNotif.title}`}
+                    style={({ pressed }) => [
+                      styles.notifBanner,
+                      { backgroundColor: c.surface, borderColor: !topNotif.read ? c.primary : c.border },
+                      pressed && { opacity: 0.9 },
+                    ]}
+                  >
+                    <View style={[styles.notifIconWrap, { backgroundColor: !topNotif.read ? c.primarySoft : c.surfaceMuted }]}>
+                      <Ionicons name="notifications" size={20} color={c.primary} />
+                      {!topNotif.read && <View style={[styles.notifDot, { backgroundColor: c.live }]} />}
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Txt variant="bodyStrong" numberOfLines={1}>{topNotif.title}</Txt>
+                        {unreadNotifs > 0 && <Pill text={`${unreadNotifs} unread`} tone="live" />}
+                      </View>
+                      <Txt variant="caption" color={c.inkSoft} numberOfLines={1}>{topNotif.body}</Txt>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={c.muted} />
+                  </Pressable>
+                )}
 
                 {/* Continue learning */}
                 {cont ? (
@@ -233,9 +297,15 @@ const styles = StyleSheet.create({
   inner: { width: '100%', maxWidth: layout.contentMaxWidth },
   deskRow: { flexDirection: 'row', gap: 28, alignItems: 'flex-start' },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18, borderRadius: 22 },
-  quick: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  quickItem: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 2, borderRadius: radius.lg, borderWidth: 1, minHeight: 88 },
+  quick: { flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 14 },
+  quickItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 4, borderRadius: radius.lg, borderWidth: 1, minHeight: 88, minWidth: 0 },
+  quickIconWrap: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', top: -4, right: -10, minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  playground: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: radius.lg, borderWidth: 1, marginBottom: 6 },
+  playgroundIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  notifBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.lg, borderWidth: 1, marginTop: 4, marginBottom: 12 },
+  notifIconWrap: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  notifDot: { position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: 4 },
   cont: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: radius.lg, borderWidth: 1 },
   play: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   live: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: radius.lg, borderWidth: 1.2 },

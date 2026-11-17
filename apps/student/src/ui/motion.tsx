@@ -222,7 +222,7 @@ export const ScrollCtx = createContext<Animated.Value | null>(null);
 export function ScrollProgress({ color }: { color: string }) {
   const v = useContext(ScrollCtx);
   if (!v) return null;
-  return <Animated.View style={{ height: 3, backgroundColor: color, alignSelf: 'flex-start', width: '100%', transformOrigin: 'left', transform: [{ scaleX: v }] } as never} />;
+  return <Animated.View style={[{ height: 3, backgroundColor: color, alignSelf: 'flex-start', width: '100%', transform: [{ scaleX: v }] }, Platform.select({ web: { transformOrigin: 'left' } as never, default: {} })]} />;
 }
 
 /** Raw scroll offset (px) from the page frame — used for gentle parallax. */
@@ -257,7 +257,7 @@ export function DrawLine({ color, vertical, thickness = 2, length }: { color: st
   }, [seen, reduce, a]);
   return (
     <View ref={ref} style={vertical ? { width: thickness, height: length ?? '100%' } : { height: thickness, width: length ?? '100%' }}>
-      <Animated.View style={{ flex: 1, backgroundColor: color, borderRadius: thickness, transformOrigin: vertical ? 'top' : 'left', transform: [vertical ? { scaleY: a } : { scaleX: a }] } as never} />
+      <Animated.View style={[{ flex: 1, backgroundColor: color, borderRadius: thickness, transform: [vertical ? { scaleY: a } : { scaleX: a }] }, Platform.select({ web: { transformOrigin: vertical ? 'top' : 'left' } as never, default: {} })]} />
     </View>
   );
 }

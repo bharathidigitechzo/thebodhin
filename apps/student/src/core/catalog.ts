@@ -27,6 +27,7 @@ export interface Lesson {
   type: 'video' | 'pdf' | 'quiz';
   durationSec?: number;
   sizeMb?: number;
+  videoUri?: string;
   questions?: number;
   preview?: boolean; // free preview before enrolling
   description?: string;
@@ -77,6 +78,17 @@ export interface Course {
   /** Bodhin's note when a listing is rejected or needs changes. */
   moderationNote?: string;
   updatedAt?: string;
+  /** Internal review state between staff tutor and workspace educator/owner. */
+  tutorReview?: {
+    status: 'draft' | 'pending' | 'approved' | 'changes_requested';
+    requestedAt?: string;
+    requestedByTutorId?: string;
+    tutorName?: string;
+    notes?: string;
+    reviewedAt?: string;
+    reviewedByOwnerId?: string;
+    ownerFeedback?: string;
+  };
 }
 
 /** Listing review: 'changes' = Bodhin asked for edits before listing. */

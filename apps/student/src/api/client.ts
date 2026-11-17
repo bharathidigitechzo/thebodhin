@@ -541,12 +541,15 @@ export const player = {
    * (private object storage + controlled delivery, per the architecture blueprint).
    */
   open(userId: string, courseId: string, lessonId?: string) {
-    const course = seedCourses.find((c) => c.id === courseId);
+    const course = seedCourses.find((c) => c.id === courseId) ?? db.courses.find((c) => c.id === courseId);
     if (!course) throw new ApiError('not_found', 'Course not found.');
     const e = db.enrollments.find((x) => x.userId === userId && x.courseId === courseId);
     const lessons = allLessons(course);
     const lesson = lessons.find((l) => l.id === lessonId) ?? (e ? nextLesson(course, e).lesson : lessons[0]);
-    if (!e && !lesson.preview) throw new ApiError('locked', 'Enroll in this course to watch this lesson.');
+    if (!lesson) throw new ApiError('not_found', 'No lessons available in this course.');
+    const isOwnerOrTutor = canManage(userId, courseId, true) != null || course.tutorId === userId;
+    const isPlatformAdmin = !!adminRoleOf(userId) || educator.context(userId) != null;
+    if (!e && !lesson.preview && !isOwnerOrTutor && !isPlatformAdmin) throw new ApiError('locked', 'Enroll in this course to watch this lesson.');
     const i = lessons.indexOf(lesson);
     const module = course.modules.find((m) => m.lessons.includes(lesson))!;
     if (e) {
@@ -565,7 +568,7 @@ export const player = {
       enrolled: !!e,
       completed: new Set(e?.completedLessonIds ?? []),
       position: db.positions[`${userId}:${lesson.id}`] ?? 0,
-      streamUrl: `https://media.thebodhin.com/hls/${lesson.id}/master.m3u8?sig=demo`, // placeholder
+      streamUrl: lesson.videoUri || `https://media.thebodhin.com/hls/${lesson.id}/master.m3u8?sig=demo`, // placeholder
     };
   },
 
@@ -846,7 +849,7 @@ export const assessments = {
     return { ...found, questions: questionsOf(found.a), previous: latestAttempt(userId, found.a.id) };
   },
 
-  async submit(userId: string, assessmentId: string, answers: number[], startedAt: number): Promise<Attempt> {
+  async submit(userId: string, assessmentId: string, answers: (number | string)[], startedAt: number): Promise<Attempt> {
     await wait(700);
     const a = ASSESSMENTS.find((x) => x.id === assessmentId)!;
     const s = scoreQuiz(questionsOf(a), answers, a.marks);
@@ -880,7 +883,7 @@ export const assessments = {
     const a = ASSESSMENTS.find((x) => x.id === assessmentId)!;
     if (submit && !patch.files.length && !patch.link?.trim()) throw new ApiError('empty', 'Add a file or a link before submitting.');
     if (patch.link && !/^https?:\/\/\S+\.\S+/.test(patch.link.trim())) throw new ApiError('bad_link', 'Enter a full link starting with https://', 'link');
-    const tooBig = patch.files.find((f) => f.sizeMb > (a.maxMb ?? 50));
+    const tooBig = patch.files.find((f) => (f.sizeMb ?? 0) > (a.maxMb ?? 50));
     if (tooBig) throw new ApiError('too_big', `${tooBig.name} is larger than ${a.maxMb} MB.`);
     let s = db.submissions.find((x) => x.userId === userId && x.assessmentId === assessmentId);
     if (s?.status === 'graded') throw new ApiError('graded', 'This assignment is already graded.');
@@ -1084,8 +1087,24 @@ export const support = {
 };
 
 export const notifications = {
-  list: (userId: string) => db.notifications.filter((n) => n.userId === userId).sort((a, b) => b.at.localeCompare(a.at)),
-  unread: (userId: string) => db.notifications.filter((n) => n.userId === userId && !n.read).length,
+  list: (userId: string) => {
+    let list = db.notifications.filter((n) => n.userId === userId);
+    if (!list.length) {
+      const seeded = [
+        { id: uid('n'), userId, kind: 'live' as const, title: 'Upcoming Live Masterclass', body: 'Join interactive live sessions with your tutors and peers.', at: new Date(Date.now() - 36e5).toISOString(), read: false, link: { pathname: '/live' } },
+        { id: uid('n'), userId, kind: 'system' as const, title: 'Welcome to Bodhin!', body: 'Explore top courses, practice on Code Playground, and earn certified credentials.', at: new Date(Date.now() - 72e5).toISOString(), read: true, link: { pathname: '/explore' } },
+      ];
+      db.notifications.push(...seeded);
+      persist();
+      list = seeded;
+    }
+    return list.sort((a, b) => b.at.localeCompare(a.at));
+  },
+  unread: (userId: string): number => {
+    const list = db.notifications.filter((n) => n.userId === userId);
+    if (!list.length) return 1;
+    return list.filter((n) => !n.read).length;
+  },
   markRead(userId: string, id?: string) {
     db.notifications.forEach((n) => {
       if (n.userId === userId && (!id || n.id === id)) n.read = true;
@@ -1185,14 +1204,15 @@ export const educator = {
     };
   },
 
-  /** Courses this user may manage: owner → all workspace courses; tutor → assigned only. */
+  /** Courses this user may manage: owner → all workspace courses; tutor → assigned only. Sorted newest first. */
   courses(userId: string) {
     const ctx = educator.context(userId);
     if (!ctx) return [];
     const all = seedCourses.filter((c) => c.tenantId === ctx.tenant.id);
-    if (ctx.role === 'owner') return all;
-    const mine = new Set(db.tutorAssignments.filter((a) => a.userId === userId).map((a) => a.courseId));
-    return all.filter((c) => mine.has(c.id));
+    const list = ctx.role === 'owner' ? all : all.filter((c) => db.tutorAssignments.some((a) => a.userId === userId && a.courseId === c.id));
+    return [...list]
+      .filter((c) => c.status !== 'archived')
+      .sort((a, b) => (b.updatedAt ?? b.publishedAt ?? '').localeCompare(a.updatedAt ?? a.publishedAt ?? ''));
   },
 
   /** Sales of this workspace this month, split by who collected the money. */
@@ -1232,7 +1252,14 @@ export const educator = {
     const doubtCount = db.questions.filter((q) => ids.has(q.courseId) && !q.answer).length;
     const inReview = courses.filter((c) => c.moderation === 'pending').length;
     const stats = db.tenantStats[ctx.tenant.id] ?? { students: 0, studentsDelta: 0, completion: { completed: 0, inProgress: 0, notStarted: 0 }, earningsHistory: [] };
+    const mentorPending = ((db as any).academy?.mentor ?? []).filter((r: any) => {
+      if (r.status !== 'pending') return false;
+      if (ctx.role === 'owner') return r.tenantId === ctx.tenant.id;
+      return r.mentorUserId === userId || db.tutorAssignments.some((a) => a.userId === userId && a.courseId === r.courseId);
+    });
+    const mentorCount = mentorPending.filter((r: any) => !r.viewedBy?.includes(userId)).length;
     const attention = [
+      { key: 'mentorship', icon: 'person-circle', label: '1:1 mentorship requests', count: mentorCount, href: '/edu/mentorship' },
       { key: 'grade', icon: 'document-text', label: 'Assignments to grade', count: toGrade, href: '/edu/grading' },
       { key: 'doubts', icon: 'chatbubbles', label: 'Student doubts waiting', count: doubtCount, href: '/edu/doubts' },
       { key: 'review', icon: 'hourglass', label: 'Courses in Bodhin review', count: inReview, href: '/educator/courses' },
@@ -1278,7 +1305,7 @@ function ensureTutorProfile(tenantId: string, userId: string) {
   return t;
 }
 
-function saveCourse(c: Course) {
+export function saveCourse(c: Course) {
   c.updatedAt = new Date().toISOString();
   const i = db.courses.findIndex((x) => x.id === c.id);
   i >= 0 ? (db.courses[i] = c) : db.courses.push(c);
@@ -1291,7 +1318,7 @@ const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 function canManage(userId: string, courseId: string, allowLocked = false) {
   const ctx = educator.context(userId);
-  const c = seedCourses.find((x) => x.id === courseId);
+  const c = seedCourses.find((x) => x.id === courseId) ?? seedCourses.find((x) => x.id === `${courseId}_growth` || x.id.startsWith(courseId));
   if (!ctx || !c || c.tenantId !== ctx.tenant.id) return null;
   if (ctx.locked && !allowLocked) throw new ApiError('locked', `${ctx.gate.title}. ${ctx.gate.message}`);
   if (ctx.role === 'tutor' && !db.tutorAssignments.some((a) => a.userId === userId && a.courseId === courseId)) return null;
@@ -1309,6 +1336,10 @@ export function courseState(c: Course): CourseState {
 }
 
 export const courseAdmin = {
+  canManage(userId: string, courseId: string) {
+    return canManage(userId, courseId, true);
+  },
+
   async list(userId: string) {
     await wait(220);
     return educator.courses(userId)
@@ -1463,10 +1494,10 @@ export const courseAdmin = {
    * POC upload: simulated progress + extracted duration. Real: request a presigned URL, upload to
    * private object storage, then a transcoding job reports duration and renditions.
    */
-  upload(userId: string, kind: 'video' | 'pdf', fileName: string, sizeMb: number, onProgress: (p: number) => void) {
+  upload(userId: string, kind: 'video' | 'pdf', fileName: string, sizeMb: number, onProgress: (p: number) => void, videoUri?: string) {
     const check = courseAdmin.canUpload(userId, sizeMb);
     if (!check.ok) return Promise.reject(new ApiError('storage_full', check.message));
-    return new Promise<{ fileName: string; sizeMb: number; durationSec?: number }>((resolve) => {
+    return new Promise<{ fileName: string; sizeMb: number; durationSec?: number; videoUri?: string }>((resolve) => {
       let p = 0;
       const t = setInterval(() => {
         p = Math.min(100, p + 9 + Math.random() * 12);
@@ -1474,7 +1505,12 @@ export const courseAdmin = {
         if (p >= 100) {
           clearInterval(t);
           adjustStorage(educator.context(userId)!.tenant.id, sizeMb / 1024);
-          resolve({ fileName, sizeMb, durationSec: kind === 'video' ? Math.round(sizeMb * 2.2 + 120) : undefined });
+          resolve({
+            fileName,
+            sizeMb,
+            durationSec: kind === 'video' ? Math.round(sizeMb * 2.2 + 120) : undefined,
+            videoUri: kind === 'video' ? videoUri : undefined,
+          });
         }
       }, 220);
     });
@@ -1789,10 +1825,13 @@ export const batchesApi = {
     });
   },
 
-  setSessionStatus(sessionId: string, status: 'cancelled' | 'scheduled') {
+  /** Cancel (with the reason students see) or restore a batch class. */
+  setSessionStatus(sessionId: string, status: 'cancelled' | 'scheduled', reason?: string) {
     const s = db.classSessions.find((x) => x.id === sessionId)!;
+    if (status === 'cancelled' && reason !== undefined && reason.trim().length < 5) throw new ApiError('reason', 'Tell students why (5+ characters).', 'reason');
     s.status = status;
-    if (status === 'cancelled') membersOf(s.batchId).forEach((p) => notifyPerson(p, 'Class cancelled', `${s.title} on ${new Date(s.startsAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} is cancelled.`, 'live'));
+    const why = reason?.trim() ? ` Reason: ${reason.trim()}` : '';
+    if (status === 'cancelled') membersOf(s.batchId).forEach((p) => notifyPerson(p, 'Class cancelled', `${s.title} on ${new Date(s.startsAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} is cancelled.${why}`, 'live'));
     persist();
   },
 
@@ -2445,7 +2484,10 @@ export const assessAdmin = {
   update(userId: string, id: string, patch: Partial<Assessment>) {
     const a = { ...ownedAssessment(userId, id), ...patch };
     if (a.kind === 'assignment' && a.rubric) a.marks = a.rubric.reduce((s, r) => s + r.max, 0);
-    if (a.kind !== 'assignment' && a.createdBy) a.marks = (a.questionIds ?? []).length * (a.kind === 'exam' ? 2 : 1);
+    if (a.kind !== 'assignment' && a.createdBy && (a.questionIds ?? []).length > 0) {
+      const qs = (a.questionIds ?? []).map((qid) => QUESTIONS.find((x) => x.id === qid)).filter(Boolean);
+      a.marks = qs.reduce((sum, q) => sum + (q?.marks ?? (a.kind === 'exam' ? 2 : 1)), 0);
+    }
     saveAssessment(a);
     return a;
   },
@@ -2453,25 +2495,51 @@ export const assessAdmin = {
   upsertQuestion(userId: string, id: string, q: Omit<Question, 'id'> & { id?: string }) {
     const a = ownedAssessment(userId, id);
     if (q.text.trim().length < 5) throw new ApiError('text', 'Write the question (5+ characters).', 'text');
-    const options = q.options.map((o) => o.trim());
-    if (options.filter(Boolean).length < 2 || options.some((o) => !o)) throw new ApiError('options', 'Fill every option (at least 2).', 'options');
-    if (q.correct < 0 || q.correct >= options.length) throw new ApiError('correct', 'Tap the circle next to the correct answer.', 'options');
+    const isBlank = q.kind === 'fill_blank';
+    let options: string[] = [];
+    let correct = 0;
+    if (isBlank) {
+      const answer = (q.blankAnswer || q.options[0] || '').trim();
+      if (!answer) throw new ApiError('blankAnswer', 'Enter the correct answer for the blank.', 'blankAnswer');
+      options = [answer];
+      correct = 0;
+    } else {
+      options = q.options.map((o) => o.trim());
+      if (options.filter(Boolean).length < 2 || options.some((o) => !o)) throw new ApiError('options', 'Fill every option (at least 2).', 'options');
+      if (q.correct < 0 || q.correct >= options.length) throw new ApiError('correct', 'Tap the circle next to the correct answer.', 'options');
+      correct = q.correct;
+    }
+    const marks = Math.max(1, q.marks ?? (a.kind === 'exam' ? 2 : 1));
     // Editing a seed question creates a custom copy so other assessments are not affected.
     const ownCustom = q.id && db.customQuestions.some((x) => x.id === q.id) && !ASSESSMENTS.some((x) => x.id !== id && x.questionIds?.includes(q.id!));
     const qid = ownCustom ? q.id! : uid('q');
-    const row: Question = { id: qid, text: q.text.trim(), options, correct: q.correct, topic: q.topic.trim() || 'General', explanation: q.explanation.trim(), hint: q.hint?.trim() || undefined };
+    const row: Question = {
+      id: qid,
+      text: q.text.trim(),
+      options,
+      correct,
+      topic: q.topic.trim() || 'General',
+      explanation: q.explanation.trim(),
+      hint: q.hint?.trim() || undefined,
+      kind: q.kind ?? 'mcq',
+      blankAnswer: isBlank ? (q.blankAnswer || options[0]) : undefined,
+      marks,
+    };
     const i = db.customQuestions.findIndex((x) => x.id === qid);
     i >= 0 ? (db.customQuestions[i] = row) : db.customQuestions.push(row);
     syncAssessments();
     const list = [...(a.questionIds ?? [])];
     if (q.id && list.includes(q.id)) list[list.indexOf(q.id)] = qid;
     else list.push(qid);
-    assessAdmin.update(userId, id, { questionIds: list });
+    const totalMarks = list.map((xid) => (xid === qid ? marks : (QUESTIONS.find((x) => x.id === xid)?.marks ?? 2))).reduce((sum, m) => sum + m, 0);
+    assessAdmin.update(userId, id, { questionIds: list, marks: totalMarks || a.marks || 20 });
     return qid;
   },
   removeQuestion(userId: string, id: string, qid: string) {
     const a = ownedAssessment(userId, id);
-    assessAdmin.update(userId, id, { questionIds: (a.questionIds ?? []).filter((x) => x !== qid) });
+    const list = (a.questionIds ?? []).filter((x) => x !== qid);
+    const totalMarks = list.map((xid) => QUESTIONS.find((x) => x.id === xid)?.marks ?? 2).reduce((sum, m) => sum + m, 0);
+    assessAdmin.update(userId, id, { questionIds: list, marks: totalMarks || 20 });
   },
   moveQuestion(userId: string, id: string, qid: string, dir: -1 | 1) {
     const list = [...(ownedAssessment(userId, id).questionIds ?? [])];
@@ -2496,11 +2564,10 @@ export const assessAdmin = {
   checklist(a: Assessment) {
     const out: { ok: boolean; text: string }[] = [{ ok: a.title.trim().length >= 4, text: 'Title (4+ characters)' }];
     if (a.kind === 'assignment') {
-      out.push({ ok: (a.instructions ?? '').trim().length >= 20, text: 'Instructions (20+ characters)' });
       out.push({ ok: !!a.dueAt && new Date(a.dueAt).getTime() > Date.now(), text: 'Due date in the future' });
       out.push({ ok: (a.rubric ?? []).length > 0 && a.marks > 0, text: 'Grading rubric with marks' });
     } else {
-      out.push({ ok: (a.questionIds ?? []).length >= 3, text: 'At least 3 questions' });
+      out.push({ ok: (a.questionIds ?? []).length >= 1, text: 'At least 1 question' });
       out.push({ ok: (a.durationMin ?? 0) >= 5, text: 'Time limit (5+ minutes)' });
       if (a.kind === 'exam') out.push({ ok: !!a.opensAt, text: 'Exam opening date & time' });
     }
@@ -2510,6 +2577,11 @@ export const assessAdmin = {
   async publish(userId: string, id: string) {
     await wait(500);
     const a = ownedAssessment(userId, id);
+    if (a.kind === 'assignment' && (!a.instructions || a.instructions.trim().length < 5)) {
+      assessAdmin.update(userId, id, {
+        instructions: (a.instructions || '').trim() || 'Please follow the rubric criteria and submit your deliverables before the deadline.',
+      });
+    }
     const miss = assessAdmin.checklist(a).filter((x) => !x.ok);
     if (miss.length) throw new ApiError('incomplete', `Finish: ${miss.map((m) => m.text.toLowerCase()).join(', ')}.`);
     assessAdmin.update(userId, id, { status: 'published' });

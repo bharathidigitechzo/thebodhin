@@ -9,12 +9,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PAGE, useLayout } from '@/ui/responsive';
-import { catalog, commerce, enrollment as enrollmentApi, live as liveApi, reviews as reviewsApi } from '@/api/client';
+import { catalog, commerce, courseAdmin, enrollment as enrollmentApi, live as liveApi, reviews as reviewsApi } from '@/api/client';
 import { affiliatesApi, bundlesApi, track } from '@/api/growth2';
 import { FORMAT_LABEL, LEVEL_LABEL, compact, lessonCount, nextLesson, priceDisplay, progressOf, totalHours, type Course, type Enrollment, type Lesson, type Order } from '@/core/catalog';
 import { dateParts, dayLabel, sessionStatus, timeRange } from '@/core/time';
 import { tenantUrl } from '@/core/tenant';
-import { useAuth } from '@/store/auth';
+import { adminMembership, educatorMembership, useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout, radius } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
@@ -80,10 +80,11 @@ export default function CoursePage() {
   const prog = progressOf(course, enr ?? undefined);
   const next = nextLesson(course, enr ?? undefined);
   const source: Order['source'] = ref === 'campaign' ? 'bodhin_campaign' : tenant ? 'direct' : 'bodhin_referral';
+  const isManager = courseAdmin.canManage(userId, course.id) != null || course.tutorId === userId || adminMembership(session) != null || educatorMembership(session) != null;
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/explore'));
   const openLesson = (l: Lesson) => {
-    if (enrolled || l.preview) router.push({ pathname: '/learn/[courseId]', params: { courseId: course.id, lesson: l.id } });
+    if (enrolled || l.preview || isManager) router.push({ pathname: '/learn/[courseId]', params: { courseId: course.id, lesson: l.id } });
     else setLockedOpen(true);
   };
   const enroll = async () => {
@@ -399,7 +400,7 @@ export default function CoursePage() {
             <View style={styles.inner}>
               {tab === 'overview' && <Overview course={course} />}
               {tab === 'overview' && bundles.map(({ b, list }) => <Pressable key={b.id} onPress={() => router.push({ pathname: '/bundle/[id]', params: { id: b.id } })} accessibilityRole="link" style={{ borderWidth: 1, borderColor: c.primary, borderRadius: 16, padding: 14, marginTop: 12, gap: 2 }}><Txt variant="bodyStrong">Bundle: {b.title}</Txt><Txt variant="caption" color={c.muted}>{b.courseIds.length} courses for ₹{b.priceInr.toLocaleString('en-IN')} (save ₹{(list - b.priceInr).toLocaleString('en-IN')})</Txt></Pressable>)}
-              {tab === 'curriculum' && <Curriculum course={course} enr={enr} nextId={next.lesson.id} onOpen={openLesson} />}
+              {tab === 'curriculum' && <Curriculum course={course} enr={enr} nextId={next.lesson.id} onOpen={openLesson} isManager={isManager} />}
               {tab === 'live' && <LiveList course={course} userId={userId} enrolled={enrolled} onToast={flash} />}
               {tab === 'reviews' &&
                 (rv.loading || !rv.data ? (
@@ -425,6 +426,14 @@ export default function CoursePage() {
                   </Txt>
                 </View>
                 <Button title={prog.done ? 'Continue' : 'Start'} iconRight="play" style={{ minWidth: 150 }} onPress={() => openLesson(next.lesson)} />
+              </>
+            ) : isManager ? (
+              <>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Txt variant="caption" color={c.muted}>Instructor / Reviewer preview</Txt>
+                  <Txt variant="bodyStrong" numberOfLines={1}>{next.lesson.title}</Txt>
+                </View>
+                <Button title="Preview lessons" iconRight="play" style={{ minWidth: 160 }} onPress={() => openLesson(next.lesson)} />
               </>
             ) : (
               <>
@@ -526,7 +535,7 @@ function Overview({ course }: { course: Course }) {
   );
 }
 
-function Curriculum({ course, enr, nextId, onOpen }: { course: Course; enr: Enrollment | null; nextId: string; onOpen: (l: Lesson) => void }) {
+function Curriculum({ course, enr, nextId, onOpen, isManager }: { course: Course; enr: Enrollment | null; nextId: string; onOpen: (l: Lesson) => void; isManager?: boolean }) {
   const { c } = useTheme();
   const done = new Set(enr?.completedLessonIds ?? []);
   const firstOpen = course.modules.find((m) => m.lessons.some((l) => l.id === nextId))?.id ?? course.modules[0]?.id;
@@ -563,7 +572,7 @@ function Curriculum({ course, enr, nextId, onOpen }: { course: Course; enr: Enro
               m.lessons.map((l, li) => {
                 const isDone = done.has(l.id);
                 const isNext = !!enr && l.id === nextId;
-                const locked = !enr && !l.preview;
+                const locked = !enr && !l.preview && !isManager;
                 const [bg, fg] = tint[l.type];
                 return (
                   <Pressable key={l.id} onPress={() => onOpen(l)} style={[styles.lesson, { borderTopColor: c.border }, isNext && { backgroundColor: c.primarySoft }]} accessibilityRole="button" accessibilityLabel={`${l.title}${isDone ? ', completed' : ''}${locked ? ', locked' : ''}`}>
@@ -576,7 +585,7 @@ function Curriculum({ course, enr, nextId, onOpen }: { course: Course; enr: Enro
                       </Txt>
                       <Txt variant="caption" color={c.muted}>
                         {l.type === 'video' ? `Video · ${fmtDur(l.durationSec)}` : l.type === 'pdf' ? `PDF · ${l.sizeMb} MB` : `Quiz · ${l.questions} questions`}
-                        {l.preview && !enr ? ' · Free preview' : ''}
+                        {l.preview && !enr ? ' · Free preview' : isManager && !enr ? ' · Preview mode' : ''}
                       </Txt>
                     </View>
                     {isDone ? (
@@ -585,6 +594,8 @@ function Curriculum({ course, enr, nextId, onOpen }: { course: Course; enr: Enro
                       <Ionicons name="lock-closed-outline" size={20} color={c.muted} />
                     ) : l.preview && !enr ? (
                       <Pill text="Preview" tone="success" />
+                    ) : isManager && !enr ? (
+                      <Pill text="Preview" tone="info" />
                     ) : (
                       <Ionicons name={isNext ? 'play-circle' : 'ellipse-outline'} size={24} color={isNext ? c.primary : c.borderStrong} />
                     )}

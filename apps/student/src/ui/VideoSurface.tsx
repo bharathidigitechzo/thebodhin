@@ -5,7 +5,7 @@
  * player.open(); keep this component's props so the screen does not change.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { GestureResponderEvent, LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
+import { GestureResponderEvent, LayoutChangeEvent, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Course, Lesson } from '@/core/catalog';
@@ -36,26 +36,57 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   const duration = lesson.durationSec ?? 600;
   const [t, setT] = useState(Math.min(startAt, duration - 1));
   const [playing, setPlaying] = useState(false);
+  const [realPlaying, setRealPlaying] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const [chrome, setChrome] = useState(true);
   const [seekHint, setSeekHint] = useState<null | 'back' | 'fwd'>(null);
   const [barW, setBarW] = useState(1);
   const lastTap = useRef<{ at: number; x: number } | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const width = useRef(1);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const videoSrc = lesson.videoUri || course.intro?.uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
   // reset when lesson changes
   useEffect(() => {
     setT(Math.min(startAt, duration - 1));
     setPlaying(false);
+    setRealPlaying(false);
+    setVideoError(false);
     setChrome(true);
+    if (Platform.OS === 'web' && videoRef.current) {
+      videoRef.current.currentTime = Math.min(startAt, duration - 1);
+    }
   }, [lesson.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // simulated clock
+  // play / pause real video on web
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !videoRef.current) return;
+    if (playing) {
+      videoRef.current.play().then(() => setRealPlaying(true)).catch(() => {
+        // If autoplay or codecs blocked, use robust playback simulation
+        setVideoError(true);
+      });
+    } else {
+      videoRef.current.pause();
+      setRealPlaying(false);
+    }
+  }, [playing]);
+
+  // playback speed
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !videoRef.current) return;
+    videoRef.current.playbackRate = speed;
+  }, [speed]);
+
+  // timer progression (active when video is simulated or fallback)
   useEffect(() => {
     if (!playing) return;
+    if (Platform.OS === 'web' && !videoError && realPlaying) return;
     const id = setInterval(() => {
       setT((x) => {
-        const n = Math.min(duration, x + 0.5 * speed * 6); // 6× faster than real time so the demo moves
+        const n = Math.min(duration, x + 0.5 * speed * 2);
         if (n >= duration) {
           setPlaying(false);
           setTimeout(onEnded, 0);
@@ -64,7 +95,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
       });
     }, 500);
     return () => clearInterval(id);
-  }, [playing, speed, duration, onEnded]);
+  }, [playing, speed, duration, onEnded, videoError, realPlaying]);
 
   useEffect(() => onTime(t, duration), [t]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -74,7 +105,13 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
     if (playing && chrome) hideTimer.current = setTimeout(() => setChrome(false), 3000);
   }, [playing, chrome]);
 
-  const seek = (d: number) => setT((x) => Math.max(0, Math.min(duration - 1, x + d)));
+  const seek = (d: number) => {
+    const nextT = Math.max(0, Math.min(duration - 1, t + d));
+    setT(nextT);
+    if (Platform.OS === 'web' && videoRef.current) {
+      videoRef.current.currentTime = nextT;
+    }
+  };
 
   /** Single tap toggles controls; double tap on left/right third seeks ∓10s. */
   const onSurfaceTap = (e: GestureResponderEvent) => {
@@ -96,7 +133,13 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
     }, 290);
   };
 
-  const scrub = (e: GestureResponderEvent) => setT(Math.max(0, Math.min(duration - 1, (e.nativeEvent.locationX / barW) * duration)));
+  const scrub = (e: GestureResponderEvent) => {
+    const nextT = Math.max(0, Math.min(duration - 1, (e.nativeEvent.locationX / barW) * duration));
+    setT(nextT);
+    if (Platform.OS === 'web' && videoRef.current) {
+      videoRef.current.currentTime = nextT;
+    }
+  };
   const pct = (t / duration) * 100;
 
   return (
@@ -105,13 +148,58 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
       onLayout={(e: LayoutChangeEvent) => (width.current = e.nativeEvent.layout.width)}
       accessibilityLabel={`Video: ${lesson.title}`}
     >
-      <LinearGradient colors={[course.art.from, course.art.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-      <Ionicons name={course.art.icon as keyof typeof Ionicons.glyphMap} size={160} color="rgba(255,255,255,0.10)" style={{ position: 'absolute', right: 10, top: 10 }} />
-      <View style={[styles.slide, chrome && { opacity: 0 }]}>
-        <Txt variant="title" color="#fff" numberOfLines={2} style={{ maxWidth: '75%', fontSize: 20 }}>
-          {lesson.title}
-        </Txt>
-      </View>
+      {Platform.OS === 'web' && !videoError ? (
+        React.createElement('video', {
+          ref: (el: HTMLVideoElement | null) => {
+            videoRef.current = el;
+            if (el && startAt > 0 && Math.abs(el.currentTime - startAt) > 1) {
+              el.currentTime = startAt;
+            }
+          },
+          src: videoSrc,
+          playsInline: true,
+          preload: 'auto',
+          onPlay: () => { setPlaying(true); setRealPlaying(true); },
+          onPause: () => { setPlaying(false); setRealPlaying(false); },
+          onError: () => setVideoError(true),
+          onTimeUpdate: (e: React.SyntheticEvent<HTMLVideoElement>) => {
+            const el = e.currentTarget;
+            setT(el.currentTime);
+            onTime(el.currentTime, el.duration || duration);
+          },
+          onEnded: () => {
+            setPlaying(false);
+            setRealPlaying(false);
+            onEnded();
+          },
+          style: {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            backgroundColor: '#000',
+          },
+          'aria-label': `Video: ${lesson.title}`,
+        })
+      ) : (
+        <>
+          <LinearGradient colors={[course.art.from, course.art.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+          <Ionicons name={course.art.icon as keyof typeof Ionicons.glyphMap} size={160} color="rgba(255,255,255,0.12)" style={{ position: 'absolute', right: 10, top: 10 }} />
+          <View style={[styles.slide, chrome && { opacity: 0.15 }]}>
+            <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Ionicons name={playing ? 'play' : 'film'} size={32} color="#fff" />
+            </View>
+            <Txt variant="title" color="#fff" numberOfLines={2} center style={{ maxWidth: '85%', fontSize: 20 }}>
+              {lesson.title}
+            </Txt>
+            <Txt variant="caption" color="rgba(255,255,255,0.85)" center style={{ marginTop: 6 }}>
+              {course.title} · {Math.round(duration / 60)} min
+            </Txt>
+          </View>
+        </>
+      )}
 
       <Pressable style={StyleSheet.absoluteFill} onPress={onSurfaceTap} accessibilityRole="button" accessibilityLabel={chrome ? 'Hide controls' : 'Show controls'} />
 
@@ -143,7 +231,18 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
             <Pressable onPress={() => seek(-10)} style={styles.small} accessibilityRole="button" accessibilityLabel="Back 10 seconds" hitSlop={8}>
               <Ionicons name="play-back" size={24} color="#fff" />
             </Pressable>
-            <Pressable onPress={() => { if (t >= duration - 1) setT(0); setPlaying((p) => !p); }} style={styles.big} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play'}>
+            <Pressable
+              onPress={() => {
+                if (t >= duration - 1) {
+                  setT(0);
+                  if (videoRef.current) videoRef.current.currentTime = 0;
+                }
+                setPlaying((p) => !p);
+              }}
+              style={styles.big}
+              accessibilityRole="button"
+              accessibilityLabel={playing ? 'Pause' : 'Play'}
+            >
               <Ionicons name={playing ? 'pause' : 'play'} size={34} color="#fff" style={!playing ? { marginLeft: 4 } : undefined} />
             </Pressable>
             <Pressable onPress={() => seek(10)} style={styles.small} accessibilityRole="button" accessibilityLabel="Forward 10 seconds" hitSlop={8}>

@@ -3,7 +3,7 @@
  * question grid + review in bottom sheets, timer auto-submits at zero.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { BackHandler, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,7 +35,7 @@ export default function QuizAttempt() {
 
   const [phase, setPhase] = useState<'intro' | 'running'>('intro');
   const [i, setI] = useState(0);
-  const [answers, setAnswers] = useState<number[]>([]);
+  const [answers, setAnswers] = useState<(number | string)[]>([]);
   const [flags, setFlags] = useState<Set<number>>(new Set());
   const [hint, setHint] = useState(false);
   const [left, setLeft] = useState(0);
@@ -45,6 +45,8 @@ export default function QuizAttempt() {
   const submitted = useRef(false);
 
   const total = setup.ok ? setup.questions.length : 0;
+
+  const isAnswered = (ans: number | string | undefined) => (typeof ans === 'number' ? ans >= 0 : typeof ans === 'string' ? ans.trim().length > 0 : false);
 
   const begin = () => {
     if (!setup.ok) return;
@@ -138,7 +140,7 @@ export default function QuizAttempt() {
 
   /* ── running ── */
   const q = questions[i];
-  const answered = answers.filter((x) => x >= 0).length;
+  const answered = answers.filter(isAnswered).length;
   const low = left <= 60;
   const choose = (k: number) => setAnswers((arr) => arr.map((v, j) => (j === i ? k : v)));
 
@@ -167,6 +169,7 @@ export default function QuizAttempt() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Pill text={`Q${i + 1}`} tone="info" />
               <Pill text={q.topic} />
+              <Pill text={`${q.marks ?? 2} ${q.marks === 1 ? 'mark' : 'marks'}`} tone="gold" />
               <View style={{ flex: 1 }} />
               <Pressable onPress={() => setFlags((f) => { const n = new Set(f); n.has(i) ? n.delete(i) : n.add(i); return n; })} hitSlop={8} accessibilityRole="button" accessibilityState={{ selected: flags.has(i) }} style={[styles.flag, { borderColor: flags.has(i) ? c.accent : c.border, backgroundColor: flags.has(i) ? c.accentSoft : c.surface }]}>
                 <Ionicons name={flags.has(i) ? 'bookmark' : 'bookmark-outline'} size={16} color={flags.has(i) ? c.warning : c.inkSoft} />
@@ -176,20 +179,36 @@ export default function QuizAttempt() {
 
             <Txt variant="heading" style={{ fontSize: 20, lineHeight: 28 }} accessibilityRole="header">{q.text}</Txt>
 
-            <View style={{ gap: 10 }} accessibilityRole="radiogroup">
-              {q.options.map((o, k) => {
-                const on = answers[i] === k;
-                return (
-                  <Pressable key={o} onPress={() => choose(k)} accessibilityRole="radio" accessibilityState={{ checked: on }} style={({ pressed }) => [styles.opt, { borderColor: on ? c.primary : c.border, backgroundColor: on ? c.primarySoft : c.surface }, on && { borderWidth: 2 }, pressed && { opacity: 0.85 }]}>
-                    <View style={[styles.letter, { backgroundColor: on ? c.primary : c.surfaceMuted }]}>
-                      <Txt variant="label" color={on ? '#fff' : c.inkSoft}>{LETTERS[k]}</Txt>
-                    </View>
-                    <Txt style={{ flex: 1 }} variant={on ? 'bodyStrong' : 'body'}>{o}</Txt>
-                    {on && <Ionicons name="checkmark-circle" size={22} color={c.primary} />}
-                  </Pressable>
-                );
-              })}
-            </View>
+            {q.kind === 'fill_blank' ? (
+              <View style={{ gap: 8, marginTop: 4 }}>
+                <Txt variant="label" color={c.muted}>Type your answer in the blank below:</Txt>
+                <TextInput
+                  value={typeof answers[i] === 'string' ? (answers[i] as string) : ''}
+                  onChangeText={(val) => setAnswers((arr) => arr.map((v, j) => (j === i ? val : v)))}
+                  placeholder="Type your answer here..."
+                  placeholderTextColor={c.muted}
+                  style={[styles.input, { borderColor: isAnswered(answers[i]) ? c.primary : c.border, color: c.ink, backgroundColor: c.surface }]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  accessibilityLabel="Fill in the blank answer"
+                />
+              </View>
+            ) : (
+              <View style={{ gap: 10 }} accessibilityRole="radiogroup">
+                {q.options.map((o, k) => {
+                  const on = answers[i] === k;
+                  return (
+                    <Pressable key={o} onPress={() => choose(k)} accessibilityRole="radio" accessibilityState={{ checked: on }} style={({ pressed }) => [styles.opt, { borderColor: on ? c.primary : c.border, backgroundColor: on ? c.primarySoft : c.surface }, on && { borderWidth: 2 }, pressed && { opacity: 0.85 }]}>
+                      <View style={[styles.letter, { backgroundColor: on ? c.primary : c.surfaceMuted }]}>
+                        <Txt variant="label" color={on ? '#fff' : c.inkSoft}>{LETTERS[k]}</Txt>
+                      </View>
+                      <Txt style={{ flex: 1 }} variant={on ? 'bodyStrong' : 'body'}>{o}</Txt>
+                      {on && <Ionicons name="checkmark-circle" size={22} color={c.primary} />}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
 
             {q.hint && (
               hint ? (
@@ -218,7 +237,7 @@ export default function QuizAttempt() {
               <Ionicons name="chevron-back" size={22} color={c.ink} />
             </Pressable>
             {i < total - 1 ? (
-              <Button title={answers[i] >= 0 ? 'Next' : 'Skip'} iconRight="arrow-forward" style={{ flex: 1 }} onPress={() => setI((x) => x + 1)} />
+              <Button title={isAnswered(answers[i]) ? 'Next' : 'Skip'} iconRight="arrow-forward" style={{ flex: 1 }} onPress={() => setI((x) => x + 1)} />
             ) : (
               <Button title="Review & submit" iconRight="send" style={{ flex: 1 }} onPress={() => setSheet('review')} />
             )}
@@ -229,7 +248,7 @@ export default function QuizAttempt() {
       <BottomSheet open={sheet === 'grid'} onClose={() => setSheet(null)} title="All questions" footer={<Button title="Review & submit" style={{ flex: 1 }} onPress={() => setSheet('review')} />}>
         <View style={styles.grid}>
           {questions.map((_, k) => {
-            const done = answers[k] >= 0;
+            const done = isAnswered(answers[k]);
             const cur = k === i;
             return (
               <Pressable key={k} onPress={() => { setI(k); setSheet(null); }} accessibilityRole="button" accessibilityLabel={`Question ${k + 1}${done ? ', answered' : ''}${flags.has(k) ? ', marked' : ''}`} style={[styles.cell, { borderColor: cur ? c.primary : done ? c.success : c.border, backgroundColor: done ? c.successBg : c.surface }, cur && { borderWidth: 2 }]}>
@@ -311,6 +330,7 @@ const styles = StyleSheet.create({
   bar: { height: 6, borderRadius: 3, overflow: 'hidden' },
   flag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, minHeight: 34, borderRadius: radius.pill, borderWidth: 1.2 },
   opt: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, minHeight: 60, borderRadius: radius.lg, borderWidth: 1.2 },
+  input: { borderWidth: 1.5, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
   letter: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   hint: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: radius.md },
   hintBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 40 },

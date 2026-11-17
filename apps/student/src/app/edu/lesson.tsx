@@ -18,6 +18,9 @@ import { Button } from '@/ui/Button';
 import { TextField } from '@/ui/TextField';
 import { BottomSheet, Chip, IconButton, Pill, ProgressBar } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
+import { pickVideo } from '@/ui/pickMedia';
+import { VideoPreview } from '@/ui/VideoPreview';
+import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
 
 type Kind = 'video' | 'pdf';
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -34,8 +37,13 @@ export default function LessonEditor() {
   const [title, setTitle] = useState(existing?.title ?? '');
   const [desc, setDesc] = useState(existing?.description ?? '');
   const [kind, setKind] = useState<Kind>(existing?.type === 'pdf' ? 'pdf' : 'video');
-  const [file, setFile] = useState<{ name: string; sizeMb: number; durationSec?: number } | null>(
-    existing && (existing.durationSec || existing.sizeMb) ? { name: existing.type === 'pdf' ? `${existing.title}.pdf` : `${existing.title}.mp4`, sizeMb: existing.sizeMb ?? Math.round((existing.durationSec ?? 600) / 2.2), durationSec: existing.durationSec } : null,
+  const [file, setFile] = useState<{ name: string; sizeMb: number; durationSec?: number; uri?: string } | null>(
+    existing && (existing.durationSec || existing.sizeMb || existing.videoUri) ? {
+      name: existing.type === 'pdf' ? `${existing.title}.pdf` : `${existing.title}.mp4`,
+      sizeMb: existing.sizeMb ?? Math.round((existing.durationSec ?? 600) / 2.2),
+      durationSec: existing.durationSec,
+      uri: existing.videoUri,
+    } : null,
   );
   const [progress, setProgress] = useState<number | null>(null);
   const [resources, setResources] = useState(existing?.resources ?? []);
@@ -43,6 +51,7 @@ export default function LessonEditor() {
   const [completion, setCompletion] = useState<Lesson['completion']>(existing?.completion ?? 'watch_90');
   const [err, setErr] = useState<{ field?: string; msg: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<PreviewFile | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (!info) {
@@ -62,17 +71,29 @@ export default function LessonEditor() {
     const want = purpose === 'main' ? kind : 'pdf';
     let name = '';
     let sizeMb = 0;
-    try {
-      const r = await DocumentPicker.getDocumentAsync({ type: want === 'video' ? 'video/*' : 'application/pdf', copyToCacheDirectory: false });
-      if (r.canceled) return;
-      name = r.assets[0].name;
-      sizeMb = Math.max(0.2, Math.round(((r.assets[0].size ?? 0) / 1048576) * 10) / 10);
-    } catch {
-      // Picker unavailable in some preview frames → use a sample file so the flow can be tested.
-      name = want === 'video' ? `${(title || 'lesson').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mp4` : 'lesson-notes.pdf';
-      sizeMb = want === 'video' ? 180 + Math.round(Math.random() * 260) : 1.6;
+    let pickedUri: string | undefined = undefined;
+    if (want === 'video') {
+      const f = await pickVideo();
+      if (!f) return;
+      name = f.name;
+      sizeMb = Math.max(0.2, Math.round(((f.sizeBytes ?? 0) / 1048576) * 10) / 10);
+      pickedUri = f.uri;
+    } else {
+      try {
+        const r = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+        if (r.canceled || !r.assets?.length) return;
+        name = r.assets[0].name;
+        sizeMb = Math.max(0.2, Math.round(((r.assets[0].size ?? 0) / 1048576) * 10) / 10);
+        pickedUri = r.assets[0].uri;
+        if (typeof window !== 'undefined' && (r.assets[0] as any).file instanceof Blob) {
+          pickedUri = URL.createObjectURL((r.assets[0] as any).file);
+        }
+      } catch {
+        name = 'lesson-notes.pdf';
+        sizeMb = 1.6;
+      }
     }
-    if (!sizeMb || sizeMb < 0.3) sizeMb = want === 'video' ? 220 : 1.2; // tiny/unknown test files
+    if (!sizeMb || sizeMb < 0.3) sizeMb = want === 'video' ? 220 : 1.2;
     if (want === 'video' && sizeMb > 2048) return setErr({ field: 'file', msg: 'Videos can be up to 2 GB. Export at 1080p or lower and try again.' });
     if (purpose === 'resource') {
       if (sizeMb > 50) return setErr({ msg: 'Resources can be up to 50 MB.' });
@@ -81,8 +102,8 @@ export default function LessonEditor() {
     }
     setProgress(0);
     try {
-      const res = await courseAdmin.upload(userId, want, name, sizeMb, setProgress);
-      setFile({ name: res.fileName, sizeMb: res.sizeMb, durationSec: res.durationSec });
+      const res = await courseAdmin.upload(userId, want, name, sizeMb, setProgress, pickedUri);
+      setFile({ name: res.fileName, sizeMb: res.sizeMb, durationSec: res.durationSec, uri: res.videoUri || pickedUri });
     } catch (e) {
       setErr({ field: 'file', msg: (e as ApiError).message });
     } finally {
@@ -101,6 +122,7 @@ export default function LessonEditor() {
         type: kind,
         durationSec: kind === 'video' ? file?.durationSec : undefined,
         sizeMb: kind === 'pdf' ? file?.sizeMb : undefined,
+        videoUri: file?.uri || existing?.videoUri,
         preview,
         resources,
         completion: kind === 'video' ? completion : 'manual',
@@ -170,18 +192,26 @@ export default function LessonEditor() {
                   <Txt variant="caption" color={t.muted}>Keep this screen open. You can keep editing the title and description.</Txt>
                 </View>
               ) : file ? (
-                <View style={[styles.fileCard, { borderColor: t.border }]}>
-                  <View style={[styles.fileIcon, { backgroundColor: kind === 'video' ? t.primarySoft : t.dangerBg }]}>
-                    <Ionicons name={kind === 'video' ? 'film' : 'document-text'} size={24} color={kind === 'video' ? t.primary : t.danger} />
+                <View style={{ gap: 10 }}>
+                  <View style={[styles.fileCard, { borderColor: t.border }]}>
+                    <View style={[styles.fileIcon, { backgroundColor: kind === 'video' ? t.primarySoft : t.dangerBg }]}>
+                      <Ionicons name={kind === 'video' ? 'film' : 'document-text'} size={24} color={kind === 'video' ? t.primary : t.danger} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Txt variant="label" numberOfLines={1}>{file.name}</Txt>
+                      <Txt variant="caption" color={t.muted}>{kind === 'video' && file.durationSec ? `${fmt(file.durationSec)} · ` : ''}{file.sizeMb >= 1 ? `${Math.round(file.sizeMb * 10) / 10} MB` : `${Math.round(file.sizeMb * 1024)} KB`}</Txt>
+                      <Pill text={kind === 'video' ? 'Uploaded · ready' : 'Ready'} tone="success" icon="checkmark" />
+                    </View>
+                    <View style={{ gap: 6, flexDirection: 'row' }}>
+                      {kind === 'pdf' && (
+                        <Button title="Preview PDF" variant="outline" size="md" iconLeft="open-outline" onPress={() => setPdfPreview(file)} />
+                      )}
+                      <Button title="Replace" variant="soft" size="md" onPress={() => pick('main')} />
+                    </View>
                   </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Txt variant="label" numberOfLines={1}>{file.name}</Txt>
-                    <Txt variant="caption" color={t.muted}>{kind === 'video' && file.durationSec ? `${fmt(file.durationSec)} · ` : ''}{file.sizeMb >= 1 ? `${Math.round(file.sizeMb * 10) / 10} MB` : `${Math.round(file.sizeMb * 1024)} KB`}</Txt>
-                    <Pill text={kind === 'video' ? 'Processed · ready' : 'Ready'} tone="success" icon="checkmark" />
-                  </View>
-                  <View style={{ gap: 4 }}>
-                    <Button title="Replace" variant="soft" size="md" onPress={() => pick('main')} />
-                  </View>
+                  {kind === 'video' && file.uri && (
+                    <VideoPreview uri={file.uri} name={file.name} sizeMb={file.sizeMb} />
+                  )}
                 </View>
               ) : (
                 <Pressable onPress={() => pick('main')} disabled={!space.ok} style={[styles.upload, { borderColor: space.ok ? t.primary : t.danger, backgroundColor: space.ok ? t.primarySoft : t.dangerBg }]} accessibilityRole="button" accessibilityLabel={kind === 'video' ? 'Choose a video to upload' : 'Choose a PDF to upload'}>
@@ -265,6 +295,13 @@ export default function LessonEditor() {
       >
         <Txt color={t.inkSoft}>“{existing?.title}” will be removed from {module?.title ?? 'this module'}. Its storage is freed.</Txt>
       </BottomSheet>
+
+      <PdfPreviewModal
+        open={!!pdfPreview}
+        onClose={() => setPdfPreview(null)}
+        file={pdfPreview}
+        assignmentTitle={title || 'Lesson Document'}
+      />
     </View>
   );
 }

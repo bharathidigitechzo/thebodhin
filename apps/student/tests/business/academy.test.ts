@@ -135,9 +135,11 @@ const later = (h) => new Date(Date.now() + h * 3600e3).toISOString();
   await throws(() => ac.mentorship.request('u_arjun', { courseId: MC.id, mentorUserId: 'u_zzz', topic: 'Help me with ads targeting please', preferredAt: later(30), durationMin: 30 }), 'mentor must belong to the course', /Pick a tutor/);
   const mr = await ac.mentorship.request('u_arjun', { courseId: MC.id, mentorUserId: M, topic: 'Help me with ads targeting please', preferredAt: later(30), durationMin: 30 });
   ok(mr.status === 'pending' && !!lastNote(M, /mentorship request/i), 'request → the chosen tutor is notified');
+  ok(ac.mentorship.unviewedCount(M) >= 1, 'request → 1 count shown on 1:1 mentorship section for tutor');
   await throws(() => ac.mentorship.request('u_arjun', { courseId: MC.id, mentorUserId: M, topic: 'Another question about reports', preferredAt: later(40), durationMin: 30 }), 'one pending request per course', /already/);
   const inboxM = await ac.mentorship.inbox(M);
   ok(inboxM.pending.some((x) => x.r.id === mr.id), 'tutor sees it in the mentorship inbox');
+  ok(ac.mentorship.unviewedCount(M) === 0, 'once viewed, 1:1 mentorship count becomes 0 (invisible)');
   ok((await ac.mentorship.inbox(R)).pending.some((x) => x.r.id === mr.id), 'owner sees academy requests too');
   await throws(() => ac.mentorship.respond(ADMIN, mr.id, 'accept'), 'Bodhin staff cannot answer an academy’s request', /can’t/);
   await throws(() => ac.mentorship.respond(M, mr.id, 'reject', { note: 'no' }), 'decline needs a reason', /10 characters/);
@@ -162,21 +164,22 @@ const later = (h) => new Date(Date.now() + h * 3600e3).toISOString();
   const before = notes('u_arjun').length;
   await throws(() => ac.courseLive.schedule(R, { courseId: MC.id, title: 'Q&A', startsAt: later(24), durationMin: 60, notifyNow: true }), 'title needs 4+ characters', /title/);
   await throws(() => ac.courseLive.schedule(R, { courseId: MC.id, title: 'Weekly Q&A', startsAt: later(0.01), durationMin: 60, notifyNow: true }), 'must be 5+ minutes ahead', /5 minutes/);
-  const s1 = await ac.courseLive.schedule(R, { courseId: MC.id, title: 'Weekly Q&A for all buyers', startsAt: later(24), durationMin: 60, notifyNow: true });
+  // Classes are scheduled ~20 days out so the test never collides with seeded classes (they sit 0–7 days ahead).
+  const s1 = await ac.courseLive.schedule(R, { courseId: MC.id, title: 'Weekly Q&A for all buyers', startsAt: later(480), durationMin: 60, notifyNow: true });
   ok(notes('u_arjun').length > before && /New live class/.test(notes('u_arjun').at(-1).title), 'every buyer notified with the schedule');
   const lt = await api.liveTab.schedule('u_arjun', null);
   ok(lt.upcoming.some((r) => r.session.id === s1.id), 'class appears in the learner’s Live tab (upcoming)');
   ok(!(await api.liveTab.schedule(stranger, null)).upcoming.some((r) => r.session.id === s1.id), 'non-buyers do not see it');
-  await throws(() => ac.courseLive.schedule(R, { courseId: MC.id, title: 'Clashing class', startsAt: later(24.5), durationMin: 30, notifyNow: false }), 'clash with another class of the course', /Clashes/);
+  await throws(() => ac.courseLive.schedule(R, { courseId: MC.id, title: 'Clashing class', startsAt: later(480.5), durationMin: 30, notifyNow: false }), 'clash with another class of the course', /Clashes/);
   ok((await api.liveAdmin.list(R)).some ? true : true, 'educator live list loads');
   ok(api.liveAdmin.week(R, 1).total + api.liveAdmin.week(R, 0).total >= 1, 'class is on the educator timetable');
-  await ac.courseLive.schedule(M, { courseId: MC.id, title: 'Tutor revision class', startsAt: later(50), durationMin: 45, notifyNow: false });
+  await ac.courseLive.schedule(M, { courseId: MC.id, title: 'Tutor revision class', startsAt: later(530), durationMin: 45, notifyNow: false });
   await throws(() => ac.courseLive.schedule(M, { courseId: 'c_seo_growth', title: 'Not my course', startsAt: later(60), durationMin: 45, notifyNow: false }), 'tutor schedules only assigned courses', /Choose one of your courses/);
   await throws(() => ac.courseLive.cancel(R, s1.id, 'no'), 'cancel needs a reason', /why/);
   await ac.courseLive.cancel(R, s1.id, 'Moved to Saturday, same time');
   ok(!(await api.liveTab.schedule('u_arjun', null)).upcoming.some((r) => r.session.id === s1.id) && /cancelled/i.test(notes('u_arjun').at(-1).title), 'cancelled → gone from Live tab, learners told');
   const B2 = seedCourses.find((c) => c.tenantId === 't_bodhin' && c.title);
-  const sb = await ac.courseLive.schedule(ADMIN, { courseId: B2.id, title: 'Bodhin live orientation', startsAt: later(30), durationMin: 60, notifyNow: true });
+  const sb = await ac.courseLive.schedule(ADMIN, { courseId: B2.id, title: 'Bodhin live orientation', startsAt: later(510), durationMin: 60, notifyNow: true });
   ok(seedLive.some((x) => x.id === sb.id) && (await ac.courseLive.list(ADMIN)).upcoming.some((r) => r.s.id === sb.id), 'admin schedules for a Bodhin course and sees it in Live');
 
   /* ── reminders ── */
@@ -230,6 +233,25 @@ const later = (h) => new Date(Date.now() + h * 3600e3).toISOString();
   await throws(() => ac.announcements.post(M, { channelId: chs[0].id, title: 'Hi', body: 'x', pin: true, notify: true }), 'announcement title checked', /title/);
   const an = await ac.announcements.post(R, { channelId: chs[0].id, title: 'Class moved to Saturday', body: 'Saturday 7 pm, same link.', pin: true, notify: true });
   ok(an.post.pinned && an.reached > 0 && notes('u_arjun').some((n) => n.title === 'Class moved to Saturday'), 'announcement posted, pinned and students notified', an.reached);
+
+  /* ── 17 Nov fixes: seeded certificates follow the rule; educators cancel course-wide classes; batch cancel needs a reason ── */
+  const arjunLinked = db.certificates.filter((x) => x.userId === 'u_arjun' && x.courseId);
+  ok(arjunLinked.every((x) => { const co = seedCourses.find((k) => k.id === x.courseId); const e = db.enrollments.find((k) => k.userId === 'u_arjun' && k.courseId === x.courseId); return co && e && progressOf(co, e).pct >= CERT_MIN_PCT; }), 'seeded certificates linked to a course are earned there (none for part-done courses)', arjunLinked.map((x) => x.id));
+  ok(['BODHIN-DM-AI-2026-0487', 'BODHIN-SEO-2026-0412'].every((id) => db.certificates.some((x) => x.id === id)), 'earlier demo certificates still exist (verify links keep working)');
+  const ownerCourse = ac.courseLive.courses(R)[0];
+  const buyer = await newLearner('cw17');
+  enrol(buyer, ownerCourse.id);
+  const cw = await ac.courseLive.schedule(R, { courseId: ownerCourse.id, title: 'Cancel test class', startsAt: new Date(Date.now() + 40 * 864e5).toISOString(), durationMin: 60, notifyNow: false }); // far ahead: no clash with seeded classes
+  await throws(() => ac.courseLive.cancel(R, cw.id, 'no'), 'educator cancel of a course-wide class needs a reason', /5\+/);
+  await ac.courseLive.cancel(R, cw.id, 'Trainer unwell, moved to next week');
+  ok(db.sessionStatus[cw.id] === 'cancelled' && /Trainer unwell/.test(lastNote(buyer, /Live class cancelled/)?.body ?? ''), 'educator cancels a course-wide class → buyer notified with the reason');
+  const bs = db.classSessions.find((x) => x.status === 'scheduled' && new Date(x.startsAt).getTime() > Date.now());
+  if (bs) {
+    await throws(() => api.batchesApi.setSessionStatus(bs.id, 'cancelled', 'no'), 'batch class cancel with a too-short reason is refused', /5\+/);
+    api.batchesApi.setSessionStatus(bs.id, 'cancelled', 'Hall booked for exams');
+    ok(bs.status === 'cancelled' && db.notifications.some((n) => n.title === 'Class cancelled' && /Hall booked for exams/.test(n.body)), 'batch class cancelled → students told the reason');
+    api.batchesApi.setSessionStatus(bs.id, 'scheduled');
+  } else ok(false, 'a future batch class exists to test cancel');
 
   console.log(`academy: ${pass} passed, ${fail} failed`);
   if (fail) { fails.forEach((f) => console.log('  ✗ ' + f)); process.exit(1); }

@@ -12,6 +12,7 @@ import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { Avatar, BottomSheet, Chip, IconButton, Pill, ProgressRing } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
+import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
 
 const QUICK = ['Well researched and clearly presented.', 'Good effort — add more specific examples.', 'Follow the template format next time.', 'Great use of data to support your points.'];
 
@@ -27,7 +28,7 @@ export default function GradeSubmission() {
   const [busy, setBusy] = useState(false);
   const [ret, setRet] = useState(false);
   const [note, setNote] = useState('');
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewFile | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
   useEffect(() => {
@@ -105,13 +106,13 @@ export default function GradeSubmission() {
             <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
               <Txt variant="label" color={c.muted}>SUBMISSION</Txt>
               {d.s.files.map((f) => (
-                <Pressable key={f.name} onPress={() => setPreview(f.name)} style={[styles.file, { borderColor: c.border }]} accessibilityRole="button" accessibilityLabel={`Open ${f.name}`}>
+                <Pressable key={f.name} onPress={() => setPreview(f)} style={[styles.file, { borderColor: c.border }]} accessibilityRole="button" accessibilityLabel={`Open ${f.name}`}>
                   <View style={[styles.fileIcon, { backgroundColor: c.dangerBg }]}><Ionicons name="document-text" size={20} color={c.danger} /></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Txt variant="bodyStrong" numberOfLines={1}>{f.name}</Txt>
-                    <Txt variant="caption" color={c.muted}>{f.sizeMb} MB · tap to view</Txt>
+                    <Txt variant="caption" color={c.muted}>{f.sizeMb} MB · tap to view PDF</Txt>
                   </View>
-                  <Ionicons name="eye-outline" size={20} color={c.inkSoft} />
+                  <IconButton icon="eye-outline" label="View PDF" onPress={() => setPreview(f)} />
                 </Pressable>
               ))}
               {!!d.s.link && (
@@ -173,12 +174,13 @@ export default function GradeSubmission() {
         <Txt color={c.inkSoft}>The student gets a notification and can upload again. No grade is recorded.</Txt>
         <TextInput value={note} onChangeText={setNote} multiline placeholder="e.g. Please add the keyword metrics table (volume, difficulty)." placeholderTextColor={c.muted} style={[styles.area, { borderColor: c.border, color: c.ink, marginTop: 8 }]} accessibilityLabel="What to fix" />
       </BottomSheet>
-      <BottomSheet open={!!preview} onClose={() => setPreview(null)} title={preview ?? ''}>
-        <View style={[styles.doc, { backgroundColor: c.surfaceMuted }]}>
-          {[90, 70, 85, 60, 95, 40, 80, 75].map((w, i) => <View key={i} style={{ height: i === 0 ? 14 : 8, width: `${w}%`, backgroundColor: i === 0 ? c.inkSoft : c.borderStrong, borderRadius: 4 }} />)}
-          <Txt variant="caption" color={c.muted} center style={{ marginTop: 10 }}>Document preview (simulated in this POC)</Txt>
-        </View>
-      </BottomSheet>
+      <PdfPreviewModal
+        open={!!preview}
+        onClose={() => setPreview(null)}
+        file={preview}
+        studentName={d.name}
+        assignmentTitle={d.a.title}
+      />
     </View>
   );
 }

@@ -88,6 +88,7 @@ export interface MentorRequest {
   startsAt?: string; // confirmed time
   endsAt?: string;
   cancelledBy?: 'learner' | 'mentor';
+  viewedBy?: string[]; // IDs of tutors/educators who have viewed this request
 }
 
 export const MENTOR_DURATIONS = [15, 30, 45, 60] as const;

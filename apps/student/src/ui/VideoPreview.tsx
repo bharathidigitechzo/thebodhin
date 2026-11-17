@@ -7,11 +7,12 @@ import { Txt } from './Txt';
 
 export function VideoPreview({ uri, name, sizeMb }: { uri: string; name: string; sizeMb?: number }) {
   const { c } = useTheme();
-  const playable = Platform.OS === 'web' && /^(blob:|data:|https?:)/.test(uri);
+  const validUri = uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+  const playable = Platform.OS === 'web' && /^(blob:|data:|https?:)/.test(validUri);
   return (
     <View style={[s.box, { borderColor: c.border, backgroundColor: c.surfaceMuted }]}>
       {playable ? (
-        React.createElement('video', { src: uri, controls: true, preload: 'metadata', style: { width: '100%', maxHeight: 260, borderRadius: 12, background: '#000' }, 'aria-label': `Preview of ${name}` })
+        React.createElement('video', { src: validUri, controls: true, preload: 'metadata', playsInline: true, style: { width: '100%', maxHeight: 260, borderRadius: 12, background: '#000' }, 'aria-label': `Preview of ${name}` })
       ) : (
         <View style={[s.poster, { backgroundColor: '#0B1F3A' }]}>
           <Ionicons name="play-circle" size={48} color="rgba(255,255,255,0.9)" />

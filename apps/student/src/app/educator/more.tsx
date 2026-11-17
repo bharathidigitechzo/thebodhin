@@ -4,14 +4,15 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { educator } from '@/api/client';
+import { mentorship } from '@/api/academy';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout } from '@/theme/tokens';
 import { TwoTone, Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
-import { AppHeader, Avatar, BottomSheet, Pill } from '@/ui/kit';
+import { Avatar, BottomSheet, Pill } from '@/ui/kit';
 import { Group, Row } from '@/ui/ListRow';
-import { ModuleGrid, SwitchDashboardSheet, dashboardsOf } from '@/ui/responsive';
+import { SwitchDashboardSheet, dashboardsOf } from '@/ui/responsive';
 
 
 export default function More() {
@@ -20,6 +21,7 @@ export default function More() {
   const [switching, setSwitching] = useState(false);
   const userId = session?.user.id ?? '';
   const ctx = educator.context(userId);
+  const mentorCount = mentorship.unviewedCount(userId);
   const [logout, setLogout] = useState(false);
   if (!ctx || !session) return null;
   const owner = ctx.role === 'owner';
@@ -31,8 +33,6 @@ export default function More() {
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.inner}>
-            <AppHeader profileHref="/educator/more" />
-            <ModuleGrid area="educator" />
             <View style={[styles.me, { backgroundColor: c.surface, borderColor: c.border }]}>
               <Avatar name={session.user.name} size={56} color={c.primaryDeep} />
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -67,7 +67,7 @@ export default function More() {
               <Row icon="help-circle-outline" title="Quizzes & assignments" sub="Create, publish and see results" onPress={() => router.push('/edu/assess')} />
               <Row icon="chatbubbles-outline" title="Student doubts" sub="Lesson questions waiting for you" onPress={() => router.push('/edu/doubts')} />
               <Row icon="grid-outline" title="Timetable" sub="Live meetings and your teaching reminders" onPress={() => router.push('/edu/timetable')} />
-              <Row icon="person-circle-outline" title="1:1 mentorship" sub="Requests from your students · accept or decline" onPress={() => router.push('/edu/mentorship')} />
+              <Row icon="person-circle-outline" title="1:1 mentorship" sub="Requests from your students · accept or decline" onPress={() => router.push('/edu/mentorship')} right={mentorCount > 0 ? <Pill text={`${mentorCount}`} tone="live" /> : undefined} />
               <Row icon="school-outline" title="Students" sub="Enrolled students by course · progress, quizzes, assignments" onPress={() => router.push('/edu/students')} />
               {owner && <Row icon="ribbon-outline" title="Certificates" sub="Approve certificates · templates and designs" onPress={() => router.push('/edu/certificates')} />}
               <Row icon="sparkles-outline" title="Smart board" sub="Handwriting in any language turns neat" onPress={() => router.push('/edu/board')} />

@@ -12,7 +12,8 @@ import { router, useGlobalSearchParams, usePathname } from 'expo-router';
 import { useTheme } from '@/theme/ThemeProvider';
 import { adminMembership, educatorMembership, useAuth } from '@/store/auth';
 import type { Session } from '@/core/types';
-import { educator } from '@/api/client';
+import { educator, notifications } from '@/api/client';
+import { mentorship } from '@/api/academy';
 import { TAB_ROOTS, activeKey, navFor, primaryOf, type NavArea, type NavRole } from '@/core/nav';
 import { canOpenAdmin, type AdminRole } from '@/core/admin';
 import { haptic } from './haptics';
@@ -98,6 +99,9 @@ export function DesktopSidebar({ area, path }: { area: Area; path: string }) {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 2, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
         {items.map((it) => {
           const on = it.key === active;
+          const notifCount = it.key === 'notifications' && session ? notifications.unread(session.user.id) : 0;
+          const mentorCount = it.key === 'mentorship' && session ? mentorship.unviewedCount(session.user.id) : 0;
+          const badgeCount = notifCount || mentorCount;
           return (
             <Pressable
               key={it.key}
@@ -108,7 +112,12 @@ export function DesktopSidebar({ area, path }: { area: Area; path: string }) {
               style={({ hovered }: any) => [s.item, { backgroundColor: on ? c.primarySoft : hovered ? c.surfaceMuted : 'transparent' }]}
             >
               <Ionicons name={(on ? it.icon : `${it.icon}-outline`) as keyof typeof Ionicons.glyphMap} size={20} color={on ? c.primary : c.inkSoft} />
-              <Txt variant="bodyStrong" color={on ? c.primary : c.ink} style={{ fontWeight: on ? '700' : '500' }}>{it.title}</Txt>
+              <Txt variant="bodyStrong" color={on ? c.primary : c.ink} style={{ fontWeight: on ? '700' : '500', flex: 1 }}>{it.title}</Txt>
+              {badgeCount > 0 && (
+                <View style={{ backgroundColor: c.live, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 }}>
+                  <Txt variant="caption" color="#fff" style={{ fontSize: 10, fontWeight: '700' }}>{badgeCount}</Txt>
+                </View>
+              )}
             </Pressable>
           );
         })}
@@ -218,13 +227,24 @@ export function AreaBar({ area, path }: { area: Area; path: string }) {
 export function ModuleGrid({ area, exclude = [], title = 'All modules', compact = false }: { area?: Area; exclude?: string[]; title?: string; compact?: boolean }) {
   const { c } = useTheme();
   const { items } = useNav(area);
+  const { session } = useAuth();
   const list = items.filter((x) => !exclude.includes(x.key) && x.key !== 'more');
-  const tile = (it: (typeof list)[number]) => (
-    <Pressable key={it.key} onPress={() => router.push(it.href as never)} accessibilityRole="link" accessibilityLabel={it.title} style={({ pressed }) => [compact ? s.chipTile : s.tile, { backgroundColor: c.surface, borderColor: c.border }, pressed && { opacity: 0.8 }]}>
-      <Ionicons name={`${it.icon}-outline` as keyof typeof Ionicons.glyphMap} size={compact ? 18 : 22} color={c.primary} />
-      <Txt variant="caption" center={!compact} numberOfLines={compact ? 1 : 2} style={{ fontWeight: '600' }}>{it.title}</Txt>
-    </Pressable>
-  );
+  const tile = (it: (typeof list)[number]) => {
+    const mentorCount = it.key === 'mentorship' && session ? mentorship.unviewedCount(session.user.id) : 0;
+    return (
+      <Pressable key={it.key} onPress={() => router.push(it.href as never)} accessibilityRole="link" accessibilityLabel={it.title} style={({ pressed }) => [compact ? s.chipTile : s.tile, { backgroundColor: c.surface, borderColor: c.border }, pressed && { opacity: 0.8 }]}>
+        <View style={{ position: 'relative' }}>
+          <Ionicons name={`${it.icon}-outline` as keyof typeof Ionicons.glyphMap} size={compact ? 18 : 22} color={c.primary} />
+          {mentorCount > 0 && (
+            <View style={{ position: 'absolute', top: -4, right: -8, backgroundColor: c.live, borderRadius: 8, paddingHorizontal: 4, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}>
+              <Txt variant="caption" color="#fff" style={{ fontSize: 9, fontWeight: '700', lineHeight: 11 }}>{mentorCount}</Txt>
+            </View>
+          )}
+        </View>
+        <Txt variant="caption" center={!compact} numberOfLines={compact ? 1 : 2} style={{ fontWeight: '600' }}>{it.title}</Txt>
+      </Pressable>
+    );
+  };
   return (
     <View style={{ gap: 8 }} accessibilityLabel={title}>
       <Txt variant="label" color={c.muted}>{title.toUpperCase()}</Txt>

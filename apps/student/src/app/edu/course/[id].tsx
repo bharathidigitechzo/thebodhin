@@ -22,7 +22,7 @@ import { BottomSheet, Chip, IconButton, Pill } from '@/ui/kit';
 import { Banner, Checkbox } from '@/ui/misc';
 import { CourseArt } from '@/ui/course';
 import { STATE_META } from '@/ui/courseState';
-import { askOwnerToPublish, categoriesApi } from '@/api/academy';
+import { askOwnerToPublish, categoriesApi, respondToTutorReview } from '@/api/academy';
 import { mediaError } from '@/core/academy';
 import { pickImage, pickVideo } from '@/ui/pickMedia';
 import { VideoPreview } from '@/ui/VideoPreview';
@@ -34,11 +34,11 @@ const fmtDur = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.roun
 
 export default function CourseBuilder() {
   const { isDesktop } = useLayout();
-  const { id, step: stepParam } = useLocalSearchParams<{ id: string; step?: string }>();
+  const { id, step: stepParam, review: reviewParam } = useLocalSearchParams<{ id: string; step?: string; review?: string }>();
   const { c: t } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
-  const [step, setStep] = useState(Number(stepParam ?? 0));
+  const [step, setStep] = useState(reviewParam === '1' ? 3 : Number(stepParam ?? 0));
   const [c, setC] = useState<Course | null>(null);
   const [meta, setMeta] = useState<ReturnType<typeof courseAdmin.get>>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -46,6 +46,9 @@ export default function CourseBuilder() {
   const [done, setDone] = useState<null | ReturnType<typeof courseAdmin.get>>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [agree, setAgree] = useState(false);
+  const [previewLesson, setPreviewLesson] = useState<{ title: string; durationSec?: number; sizeMb?: number; uri?: string; moduleTitle?: string } | null>(null);
+  const [feedbackModal, setFeedbackModal] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
 
   const load = useCallback(() => {
     const m = courseAdmin.get(userId, id);
@@ -144,6 +147,23 @@ export default function CourseBuilder() {
       <Button title={`Next: ${STEPS[step + 1]}`} iconRight="arrow-forward" style={{ flex: 1.6 }} onPress={next} />
     ) : owner && meta.state === 'draft' ? (
       <Button title={c.visibility === 'private' ? 'Publish' : 'Publish & submit'} iconRight="rocket-outline" loading={busy} style={{ flex: 1.6 }} onPress={publish} />
+    ) : !owner && meta.state === 'draft' ? (
+      <Button
+        title={c.tutorReview?.status === 'pending' ? 'Submitted for Review' : 'Ask educator to publish'}
+        iconRight="paper-plane-outline"
+        disabled={c.tutorReview?.status === 'pending'}
+        style={{ flex: 1.6 }}
+        onPress={async () => {
+          try {
+            await askOwnerToPublish(userId, c.id);
+            load();
+            flash('Submitted to educator for review');
+            haptic('success');
+          } catch (e) {
+            flash((e as ApiError).message);
+          }
+        }}
+      />
     ) : (
       <Button title="Done" iconRight="checkmark" style={{ flex: 1.6 }} onPress={() => { save(true); router.replace(coursesHome(session) as never); }} />
     )}
@@ -160,6 +180,7 @@ export default function CourseBuilder() {
             <Pill text={STATE_META[meta.state].label} tone={STATE_META[meta.state].tone} />
           </View>
           <IconButton icon="eye-outline" label="Preview as a student" tone="filled" onPress={() => { save(true); router.push({ pathname: '/course/[id]', params: { id: c.id } }); }} />
+          <Button title="Done" size="md" variant={meta.state === 'draft' ? 'outline' : 'primary'} onPress={exit} />
         </View>
 
         <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
@@ -182,10 +203,69 @@ export default function CourseBuilder() {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.scroll, isDesktop && { paddingHorizontal: 32, paddingTop: 8, paddingBottom: 48 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={[styles.inner, isDesktop && { maxWidth: 860 }]}>
             {err && <Banner text={err} />}
+
+            {/* Tutor Submission Alert Banner */}
+            {c.tutorReview?.status === 'pending' && (
+              <View style={[styles.reviewAlert, { backgroundColor: t.warningBg, borderColor: t.warning }]}>
+                <Ionicons name="alert-circle" size={24} color={t.warning} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Txt variant="bodyStrong">
+                    {owner ? `Tutor Submission from ${c.tutorReview.tutorName || 'Tutor'}` : 'Submitted for Educator Review'}
+                  </Txt>
+                  <Txt variant="caption" color={t.inkSoft}>
+                    {owner
+                      ? `${c.tutorReview.notes ? `Tutor note: "${c.tutorReview.notes}" · ` : ''}Preview videos below, set pricing in Step 3, and publish.`
+                      : 'Your academy educator has been notified to review your videos, set pricing, and publish this course.'}
+                  </Txt>
+                </View>
+                {owner && (
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <Button title="Preview videos" size="md" variant="outline" onPress={() => setStep(1)} />
+                    <Button title="Set pricing" size="md" onPress={() => setStep(2)} />
+                  </View>
+                )}
+              </View>
+            )}
+
+            {c.tutorReview?.status === 'changes_requested' && (
+              <View style={[styles.reviewAlert, { backgroundColor: t.dangerBg, borderColor: t.danger }]}>
+                <Ionicons name="information-circle" size={24} color={t.danger} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Txt variant="bodyStrong" color={t.danger}>
+                    Changes Requested by {owner ? 'You' : 'Educator'}
+                  </Txt>
+                  <Txt variant="caption" color={t.inkSoft}>
+                    {c.tutorReview.ownerFeedback || 'Please update the course lessons and resubmit.'}
+                  </Txt>
+                </View>
+              </View>
+            )}
+
             {step === 0 && <Details c={c} set={set} />}
-            {step === 1 && <Content c={c} userId={userId} reload={load} onError={setErr} />}
-            {step === 2 && (owner ? <Pricing c={c} set={set} state={meta.state} payReady={meta.ctx.tenant.payments?.directGatewayStatus === 'active'} host={meta.ctx.host} /> : <OwnerOnly />)}
-            {step === 3 && <Publish c={c} meta={meta} owner={owner} goStep={setStep} agree={agree || meta.state !== 'draft'} setAgree={setAgree} />}
+            {step === 1 && <Content c={c} userId={userId} reload={load} onError={setErr} onPreviewVideo={setPreviewLesson} />}
+            {step === 2 && (owner ? <Pricing c={c} set={set} state={meta.state} payReady={meta.ctx.tenant.payments?.directGatewayStatus === 'active'} host={meta.ctx.host} /> : <OwnerOnly c={c} reload={load} onSent={() => flash('Sent to educator for review')} />)}
+            {step === 3 && (
+              <Publish
+                c={c}
+                set={set}
+                meta={meta}
+                owner={owner}
+                goStep={setStep}
+                agree={agree || meta.state !== 'draft'}
+                setAgree={setAgree}
+                onPreviewVideo={setPreviewLesson}
+                reload={load}
+                onToast={flash}
+                onRequestChanges={() => setFeedbackModal(true)}
+                onPublished={(m) => {
+                  if (m) {
+                    setMeta(m);
+                    setC(m.course);
+                    setDone(m);
+                  }
+                }}
+              />
+            )}
             {isDesktop && <View style={[styles.barInner, { maxWidth: undefined, marginTop: 12 }]}>{navBar}</View>}
           </View>
         </ScrollView>
@@ -203,14 +283,85 @@ export default function CourseBuilder() {
         )}
       </SafeAreaView>
 
+      {/* Video Preview Modal */}
+      <BottomSheet
+        open={!!previewLesson}
+        onClose={() => setPreviewLesson(null)}
+        title={previewLesson?.title ? `Preview: ${previewLesson.title}` : 'Video Preview'}
+        footer={<Button title="Done viewing video" size="md" style={{ flex: 1 }} onPress={() => setPreviewLesson(null)} />}
+      >
+        {previewLesson && (
+          <View style={{ gap: 14 }}>
+            <VideoPreview
+              name={previewLesson.title}
+              uri={previewLesson.uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+              sizeMb={previewLesson.sizeMb}
+            />
+            <View style={{ gap: 4 }}>
+              <Txt variant="bodyStrong">{previewLesson.title}</Txt>
+              <Txt variant="caption" color={t.muted}>
+                {previewLesson.durationSec ? `${fmtDur(previewLesson.durationSec)} · ` : ''}
+                {previewLesson.moduleTitle ? `${previewLesson.moduleTitle} · ` : ''}
+                Uploaded lesson video
+              </Txt>
+            </View>
+          </View>
+        )}
+      </BottomSheet>
+
+      {/* Changes Request Feedback Modal */}
+      <BottomSheet
+        open={feedbackModal}
+        onClose={() => setFeedbackModal(false)}
+        title="Request Changes from Tutor"
+        footer={
+          <View style={{ flexDirection: 'row', gap: 8, flex: 1 }}>
+            <Button title="Cancel" variant="outline" size="md" style={{ flex: 1 }} onPress={() => setFeedbackModal(false)} />
+            <Button
+              title="Send feedback"
+              size="md"
+              style={{ flex: 1 }}
+              disabled={!feedbackText.trim()}
+              onPress={async () => {
+                try {
+                  await respondToTutorReview(userId, c.id, 'request_changes', feedbackText.trim());
+                  setFeedbackModal(false);
+                  setFeedbackText('');
+                  load();
+                  flash('Feedback sent to tutor. Course remains in draft.');
+                  haptic('success');
+                } catch (e) {
+                  flash((e as ApiError).message);
+                }
+              }}
+            />
+          </View>
+        }
+      >
+        <View style={{ gap: 12 }}>
+          <Txt color={t.inkSoft}>
+            Provide specific guidance on what the tutor should fix (e.g. video audio, additional practice exercises, or description).
+          </Txt>
+          <TextField
+            label="Feedback for tutor"
+            placeholder="e.g. Please re-record lesson 2 with a clearer microphone and add downloadable PDF cheat sheet."
+            value={feedbackText}
+            onChangeText={setFeedbackText}
+          />
+        </View>
+      </BottomSheet>
+
       <BottomSheet
         open={!!done}
-        onClose={() => setDone(null)}
+        onClose={() => {
+          setDone(null);
+          router.replace(coursesHome(session) as never);
+        }}
         title={done?.state === 'in_review' ? 'Published · in review' : 'Course published'}
         footer={
           <>
-            <Button title="Preview" variant="outline" size="md" style={{ flex: 1 }} onPress={() => { setDone(null); router.push({ pathname: '/course/[id]', params: { id: c.id } }); }} />
-            <Button title="My courses" size="md" style={{ flex: 1 }} onPress={() => { setDone(null); router.replace(coursesHome(session) as never); }} />
+            <Button title="Preview course" variant="outline" size="md" style={{ flex: 1 }} onPress={() => { setDone(null); router.push({ pathname: '/course/[id]', params: { id: c.id } }); }} />
+            <Button title="Done · Close form" size="md" style={{ flex: 1.4 }} onPress={() => { setDone(null); router.replace(coursesHome(session) as never); }} />
           </>
         }
       >
@@ -391,7 +542,19 @@ function Details({ c, set }: { c: Course; set: (p: Partial<Course>) => void }) {
 }
 
 /* ───────── Step 2: Content ───────── */
-function Content({ c, userId, reload, onError }: { c: Course; userId: string; reload: () => void; onError: (e: string) => void }) {
+function Content({
+  c,
+  userId,
+  reload,
+  onError,
+  onPreviewVideo,
+}: {
+  c: Course;
+  userId: string;
+  reload: () => void;
+  onError: (e: string) => void;
+  onPreviewVideo?: (l: { title: string; durationSec?: number; sizeMb?: number; uri?: string; moduleTitle?: string }) => void;
+}) {
   const { c: t } = useTheme();
   const [open, setOpen] = useState<Set<string>>(() => new Set(c.modules.map((m) => m.id)));
   const [sheet, setSheet] = useState<null | { mode: 'add' } | { mode: 'rename'; id: string; title: string } | { mode: 'delete'; id: string; title: string }>(null);
@@ -449,7 +612,15 @@ function Content({ c, userId, reload, onError }: { c: Course; userId: string; re
                         <Txt variant="caption" color={t.muted}>{l.type === 'video' ? `Video · ${fmtDur(l.durationSec ?? 0)}` : l.type === 'pdf' ? `PDF · ${l.sizeMb} MB` : `Quiz · ${l.questions} questions`}{l.preview ? ' · Free preview' : ''}</Txt>
                       </View>
                     </Pressable>
-                    <View style={{ flexDirection: 'row' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      {l.type === 'video' && onPreviewVideo && (
+                        <IconButton
+                          icon="play-circle"
+                          label="Preview video"
+                          tone="filled"
+                          onPress={() => onPreviewVideo({ title: l.title, durationSec: l.durationSec, sizeMb: l.sizeMb, uri: l.videoUri, moduleTitle: m.title })}
+                        />
+                      )}
                       <IconButton icon="chevron-up" label="Move lesson up" onPress={() => run(() => courseAdmin.moveLesson(userId, c.id, m.id, l.id, -1))} />
                       <IconButton icon="chevron-down" label="Move lesson down" onPress={() => run(() => courseAdmin.moveLesson(userId, c.id, m.id, l.id, 1))} />
                     </View>
@@ -652,30 +823,204 @@ function Receive({ label, sub, amount, tone }: { label: string; sub: string; amo
   );
 }
 
-function OwnerOnly() {
+function OwnerOnly({ c, reload, onSent }: { c: Course; reload: () => void; onSent: () => void }) {
   const { c: t } = useTheme();
   const { session } = useAuth();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const [sent, setSent] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const isPending = c.tutorReview?.status === 'pending';
+
   return (
-    <View style={{ alignItems: 'center', gap: 10, paddingVertical: 40 }}>
-      <Ionicons name="lock-closed-outline" size={36} color={t.muted} />
-      <Txt variant="bodyStrong">Managed by the workspace owner</Txt>
-      <Txt color={t.muted} center>Pricing, listing and publishing are set by the owner. You can keep editing details and lessons.</Txt>
-      {sent ? <Banner tone="success" text={sent} /> : <Button title="Ask owner to publish" iconLeft="paper-plane-outline" size="md" variant="outline" onPress={async () => { try { await askOwnerToPublish(session?.user.id ?? '', id); setSent('Sent. The owner will review and publish it.'); haptic('success'); } catch (e) { setSent((e as ApiError).message); } }} />}
+    <View style={{ gap: 14, paddingVertical: 14 }}>
+      <View style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}>
+        <Ionicons name="lock-closed-outline" size={36} color={t.muted} />
+        <Txt variant="bodyStrong">Pricing & Publishing managed by Academy Educator</Txt>
+        <Txt color={t.muted} center>
+          As a tutor, you can design modules and upload lesson videos. The educator sets the final selling price and publishes the course.
+        </Txt>
+      </View>
+
+      {isPending ? (
+        <View style={[styles.reviewAlert, { backgroundColor: t.warningBg, borderColor: t.warning }]}>
+          <Ionicons name="hourglass-outline" size={24} color={t.warning} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Txt variant="bodyStrong">Course is pending educator review</Txt>
+            <Txt variant="caption" color={t.inkSoft}>
+              Submitted on {new Date(c.tutorReview!.requestedAt || Date.now()).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.
+              {c.tutorReview?.notes ? ` Note: "${c.tutorReview.notes}"` : ''}
+            </Txt>
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.section, { backgroundColor: t.surface, borderColor: t.border }]}>
+          <Txt variant="heading">Ask educator to review & set pricing</Txt>
+          <Txt variant="caption" color={t.muted}>
+            When you submit, your academy educator will receive an in-app notification to review your video lessons, set the course price, and publish.
+          </Txt>
+          <TextField
+            label="Note for educator (optional)"
+            placeholder="e.g. Completed modules with video lessons, ready for pricing review."
+            value={note}
+            onChangeText={setNote}
+          />
+          {err && <Banner tone="danger" text={err} />}
+          <Button
+            title="Submit course to educator for review"
+            iconLeft="paper-plane-outline"
+            size="md"
+            loading={busy}
+            onPress={async () => {
+              setBusy(true);
+              setErr(null);
+              try {
+                await askOwnerToPublish(session?.user.id ?? '', c.id, note);
+                reload();
+                onSent();
+                haptic('success');
+              } catch (e) {
+                setErr((e as ApiError).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }
 
 /* ───────── Step 4: Publish ───────── */
-function Publish({ c, meta, owner, goStep, agree, setAgree }: { c: Course; meta: NonNullable<ReturnType<typeof courseAdmin.get>>; owner: boolean; goStep: (s: number) => void; agree: boolean; setAgree: (v: boolean) => void }) {
+function Publish({
+  c,
+  set,
+  meta,
+  owner,
+  goStep,
+  agree,
+  setAgree,
+  onPreviewVideo,
+  reload,
+  onToast,
+  onRequestChanges,
+  onPublished,
+}: {
+  c: Course;
+  set: (p: Partial<Course>) => void;
+  meta: NonNullable<ReturnType<typeof courseAdmin.get>>;
+  owner: boolean;
+  goStep: (s: number) => void;
+  agree: boolean;
+  setAgree: (v: boolean) => void;
+  onPreviewVideo: (lesson: { title: string; uri?: string; sizeMb?: number; durationSec?: number; moduleTitle?: string }) => void;
+  reload: () => void;
+  onToast: (msg: string) => void;
+  onRequestChanges: () => void;
+  onPublished?: (m: ReturnType<typeof courseAdmin.get>) => void;
+}) {
   const { c: t } = useTheme();
+  const { session } = useAuth();
+  const ownerUserId = session?.user.id ?? '';
   const list = useMemo(() => courseAdmin.checklist(c, meta.ctx.tenant.payments), [c, meta]);
   const doneCount = list.filter((x) => x.ok || x.optional).length;
   const lessons = allLessons(c);
   const listing = c.visibility !== 'private';
+  const published = meta.state !== 'draft';
+
+  const videoLessons = useMemo(() => {
+    const vids: Array<{ id: string; title: string; videoUri?: string; uri?: string; sizeMb?: number; durationSec?: number; moduleTitle?: string }> = [];
+    (c.modules || []).forEach((m) => {
+      (m.lessons || []).forEach((l) => {
+        if (l.type === 'video') {
+          vids.push({
+            id: l.id,
+            title: l.title,
+            videoUri: l.videoUri,
+            uri: l.videoUri,
+            sizeMb: l.sizeMb,
+            durationSec: l.durationSec,
+            moduleTitle: m.title,
+          });
+        }
+      });
+    });
+    return vids;
+  }, [c.modules]);
+
   return (
     <>
+      {owner && c.tutorReview?.status === 'pending' && (
+        <Section icon="shield-checkmark-outline" title="Tutor Course Review & Approval" sub={`Submitted by ${c.tutorReview.tutorName || 'Tutor'}`}>
+          {c.tutorReview.notes && (
+            <View style={[styles.tutorNote, { backgroundColor: t.primarySoft }]}>
+              <Txt variant="caption" color={t.muted}>Note from tutor:</Txt>
+              <Txt variant="body">{c.tutorReview.notes}</Txt>
+            </View>
+          )}
+
+          <View style={[styles.pricingNotice, { backgroundColor: t.surface, borderColor: t.border }]}>
+            <Ionicons name="pricetag-outline" size={24} color={t.primary} />
+            <View style={{ flex: 1 }}>
+              <Txt variant="bodyStrong">Course Price: {c.priceInr ? inr(c.priceInr) : 'Free'}</Txt>
+              <Txt variant="caption" color={t.muted}>
+                {c.priceInr ? 'Selling price configured' : 'Currently Free. Set the final selling price in Step 3 before publishing.'}
+              </Txt>
+            </View>
+            <Button title="Set price (Step 3)" variant="outline" size="md" onPress={() => goStep(2)} />
+          </View>
+
+          <View style={[styles.pricingNotice, { backgroundColor: t.surface, borderColor: t.border }]}>
+            <Ionicons name="storefront-outline" size={24} color={t.primary} />
+            <View style={{ flex: 1 }}>
+              <Txt variant="bodyStrong">
+                Where to sell: {c.visibility === 'private' ? 'Only my students (Private)' : c.visibility === 'public' ? 'Bodhin marketplace' : 'List + Bodhin promotion'}
+              </Txt>
+              <Txt variant="caption" color={t.muted}>
+                {c.visibility === 'private' ? 'Sell directly on your academy site · no commission' : 'Listed on marketplace after 24–48h review'}
+              </Txt>
+            </View>
+            <Pill text={c.visibility === 'private' ? 'Private' : 'Marketplace'} tone={c.visibility === 'private' ? 'info' : 'success'} />
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <Button
+              title="Request changes"
+              variant="outline"
+              size="md"
+              style={{ flex: 1 }}
+              onPress={onRequestChanges}
+            />
+            <Button
+              title="Approve & Publish"
+              iconLeft="rocket-outline"
+              size="md"
+              style={{ flex: 1.4 }}
+              onPress={async () => {
+                if (c.visibility !== 'private' && !agree) {
+                  onToast('Tick the marketplace guidelines box to submit for listing.');
+                  return;
+                }
+                try {
+                  await respondToTutorReview(ownerUserId, c.id, 'approve', undefined, { visibility: c.visibility });
+                  const m = courseAdmin.get(ownerUserId, c.id);
+                  if (m && onPublished) {
+                    onPublished(m);
+                  } else {
+                    reload();
+                  }
+                  onToast('Course approved & published! Tutor notified.');
+                  haptic('success');
+                } catch (e) {
+                  onToast((e as ApiError).message);
+                }
+              }}
+            />
+          </View>
+        </Section>
+      )}
+
       <Section icon="eye-outline" title="Preview" sub="How learners will see it.">
         <CourseArt course={c} height={150} rounded={18} showTitle />
         <Txt variant="heading">{c.title || 'Untitled course'}</Txt>
@@ -687,6 +1032,31 @@ function Publish({ c, meta, owner, goStep, agree, setAgree }: { c: Course; meta:
           <Pill text={c.priceInr ? inr(c.priceInr) : 'Free'} tone="info" />
         </View>
         <Button title="Preview as a student" variant="outline" iconLeft="eye-outline" size="md" onPress={() => router.push({ pathname: '/course/[id]', params: { id: c.id } })} />
+      </Section>
+
+      <Section icon="videocam-outline" title="Video lessons review" sub={`${videoLessons.length} video ${videoLessons.length === 1 ? 'lesson' : 'lessons'} available to preview`}>
+        {videoLessons.length === 0 ? (
+          <Txt variant="caption" color={t.muted}>No video lessons uploaded in this course yet.</Txt>
+        ) : (
+          videoLessons.map((l) => (
+            <View key={l.id} style={[styles.videoReviewRow, { borderColor: t.border }]}>
+              <Ionicons name="play-circle" size={24} color={t.primary} />
+              <View style={{ flex: 1 }}>
+                <Txt variant="bodyStrong" numberOfLines={1}>{l.title}</Txt>
+                <Txt variant="caption" color={t.muted}>
+                  {l.moduleTitle ? `${l.moduleTitle} · ` : ''}{fmtDur(l.durationSec ?? 0)}
+                </Txt>
+              </View>
+              <Button
+                title="Watch video"
+                variant="outline"
+                size="md"
+                iconLeft="play-circle-outline"
+                onPress={() => onPreviewVideo(l)}
+              />
+            </View>
+          ))
+        )}
       </Section>
 
       <Section icon="radio-outline" title="Live classes for this course" sub="Everyone who buys it sees them in Live and gets a notification.">
@@ -706,7 +1076,41 @@ function Publish({ c, meta, owner, goStep, agree, setAgree }: { c: Course; meta:
         ))}
       </Section>
 
-      <Section icon="globe-outline" title="Where it will appear">
+      <Section icon="storefront-outline" title="Where to sell" sub="Private by default. Listing and promotion are separate choices you can change any time.">
+        {published && <Banner tone="info" text="Change listing for a published course from My Courses → course menu." />}
+        {([
+          ['private', 'lock-closed-outline', 'Only my students', `Sell on ${meta.ctx.host} and private links. You collect the payment directly. No commission.`],
+          ['public', 'storefront-outline', 'Also list on Bodhin marketplace', 'Bodhin reviews it first (24–48 h). Sales made on Bodhin are collected by Bodhin and paid out to you after commission.'],
+          ['public_promoted', 'megaphone-outline', 'List + allow Bodhin promotion', 'Bodhin may also feature it in campaigns and newsletters. Withdraw consent any time.'],
+        ] as const).map(([v, icon, l, sub]) => {
+          const on = c.visibility === v;
+          return (
+            <Pressable
+              key={v}
+              disabled={!owner || published}
+              onPress={() => {
+                if (owner && !published) {
+                  set({ visibility: v });
+                }
+              }}
+              style={[
+                styles.sell,
+                { borderColor: on ? t.primary : t.border, backgroundColor: on ? t.primarySoft : t.surface, opacity: published && !on ? 0.5 : 1 },
+                on && { borderWidth: 2 },
+              ]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on, disabled: !owner || published }}
+            >
+              <Ionicons name={icon} size={24} color={t.primary} />
+              <View style={{ flex: 1 }}>
+                <Txt variant="bodyStrong">{l}</Txt>
+                <Txt variant="caption" color={t.inkSoft}>{sub}</Txt>
+              </View>
+              <Ionicons name={on ? 'radio-button-on' : 'radio-button-off'} size={22} color={on ? t.primary : t.borderStrong} />
+            </Pressable>
+          );
+        })}
+
         <View style={styles.where}>
           <Ionicons name="checkmark-circle" size={20} color={t.success} />
           <Txt style={{ flex: 1 }}><Txt variant="bodyStrong">Your site</Txt> · {meta.ctx.host}/course/{c.id}</Txt>
@@ -721,7 +1125,8 @@ function Publish({ c, meta, owner, goStep, agree, setAgree }: { c: Course; meta:
           </Checkbox>
         )}
       </Section>
-      {!owner && <OwnerOnly />}
+
+      {!owner && <OwnerOnly c={c} reload={reload} onSent={() => onToast('Submitted to educator for review')} />}
       {owner && listing && meta.state === 'draft' && !agree && <Txt variant="caption" color={t.warning} center>Tick the guidelines box to submit for listing.</Txt>}
     </>
   );
@@ -791,4 +1196,8 @@ const styles = StyleSheet.create({
   round: { width: 54, height: 54, borderRadius: 27, borderWidth: 1.2, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute', bottom: 92, alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 12, borderRadius: radius.pill },
   okIcon: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center' },
+  reviewAlert: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.md, borderWidth: 1 },
+  tutorNote: { padding: 10, borderRadius: radius.sm, gap: 4 },
+  pricingNotice: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, borderWidth: 1 },
+  videoReviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: radius.md, borderWidth: 1 },
 });

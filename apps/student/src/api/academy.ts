@@ -15,7 +15,7 @@
 import { db, persist, uid } from './mockDb';
 import { courses as seedCourses, liveSessions as seedLive, tutors as seedTutors } from './catalogSeed';
 import { ASSESSMENTS } from './assessSeed';
-import { ApiError, academyHooks, catalog, courseAdmin, educator, newCertId, notifyUser, tenantGate, tenantHas } from './client';
+import { ApiError, academyHooks, catalog, courseAdmin, educator, newCertId, notifyUser, saveCourse, tenantGate, tenantHas } from './client';
 import { communityApi } from './growth';
 import { allLessons, progressOf, type Course, type LiveSession } from '@/core/catalog';
 import {
@@ -44,6 +44,21 @@ function A(): AcademyDb {
   if (!d.academy || !d.academy.certRequests || !d.academy.liveCancelled) {
     // fresh store, or one saved by an older build → fill in whatever is missing (nothing is dropped)
     d.academy = { v: 1, certRequests: [], certSettings: {}, certDesigns: [], mentor: [], reminders: [], categories: [], courseLive: [], liveCancelled: {}, ...(d.academy ?? {}) } as AcademyDb;
+  }
+  if (d.academy.mentor.length === 0 && (db as any).mentorshipBookings?.length) {
+    d.academy.mentor = (db as any).mentorshipBookings.map((b: any) => ({
+      id: b.id,
+      userId: b.studentId,
+      courseId: b.courseId,
+      tenantId: b.tenantId,
+      mentorUserId: b.tutorId,
+      topic: b.topic,
+      preferredAt: new Date(b.requestedDate + 'T10:00:00Z').toISOString(),
+      durationMin: 30,
+      status: b.status,
+      createdAt: b.createdAt,
+      viewedBy: []
+    }));
   }
   return d.academy;
 }
@@ -309,7 +324,7 @@ export const mentorship = {
     const mentors = mentorsFor(c);
     if (!mentors.some((m) => m.userId === input.mentorUserId)) throw new ApiError('mentor', 'Pick a tutor from this course.', 'mentor');
     if (A().mentor.some((r) => r.userId === userId && r.courseId === c.id && r.status === 'pending')) throw new ApiError('pending', 'You already have a request waiting for this course. Wait for the reply or cancel it first.');
-    const r: MentorRequest = { id: uid('mr'), userId, courseId: c.id, tenantId: c.tenantId, mentorUserId: input.mentorUserId, topic: input.topic.trim(), preferredAt: new Date(input.preferredAt).toISOString(), durationMin: input.durationMin, status: 'pending', createdAt: now() };
+    const r: MentorRequest = { id: uid('mr'), userId, courseId: c.id, tenantId: c.tenantId, mentorUserId: input.mentorUserId, topic: input.topic.trim(), preferredAt: new Date(input.preferredAt).toISOString(), durationMin: input.durationMin, status: 'pending', createdAt: now(), viewedBy: [] };
     A().mentor.push(r);
     mentorRecipients(r).forEach((id) => notifyUser(id, 'course', 'New 1:1 mentorship request', `${nameOf(userId)} · “${c.title}” · ${fmt(r.preferredAt)} (${r.durationMin} min): ${r.topic.slice(0, 90)}`, { pathname: '/edu/mentorship' }));
     notifyUser(userId, 'course', 'Mentorship request sent', `We told ${input.mentorUserId ? nameOf(input.mentorUserId) : 'the Bodhin team'}. You’ll get a message when they reply.`, { pathname: '/mentorship' });
@@ -317,10 +332,34 @@ export const mentorship = {
     return r;
   },
 
+  /** Count of unviewed pending requests for this tutor / educator. */
+  unviewedCount(userId: string): number {
+    if (!userId) return 0;
+    const list = A().mentor.filter((r) => r.status === 'pending' && canMentor(userId, r));
+    return list.filter((r) => !r.viewedBy?.includes(userId)).length;
+  },
+
+  /** Mark all pending requests as viewed by this staff user (called when viewing /edu/mentorship). */
+  markViewed(userId: string) {
+    if (!userId) return;
+    let changed = false;
+    for (const r of A().mentor) {
+      if (r.status === 'pending' && canMentor(userId, r)) {
+        r.viewedBy = r.viewedBy ?? [];
+        if (!r.viewedBy.includes(userId)) {
+          r.viewedBy.push(userId);
+          changed = true;
+        }
+      }
+    }
+    if (changed) persist();
+  },
+
   /** Educator / Bodhin team inbox. */
   async inbox(userId: string) {
     await wait(220);
     const ctx = ctxOrThrow(userId);
+    mentorship.markViewed(userId);
     const t = Date.now();
     const rows = A().mentor.filter((r) => canMentor(userId, r)).map((r) => ({ r, course: courseOf(r.courseId)!, learner: userOf(r.userId), mentor: r.mentorUserId ? nameOf(r.mentorUserId) : 'Bodhin team', label: mentorLabel(r, t) })).filter((x) => x.course);
     return {
@@ -641,13 +680,97 @@ export const announcements = {
   },
 };
 
-/* ───────────────────────── Tutor → owner: ask to publish ───────────────────────── */
+/* ───────────────────────── Tutor → owner: ask to publish & review ───────────────────────── */
 
-export async function askOwnerToPublish(userId: string, courseId: string) {
+export async function askOwnerToPublish(userId: string, courseId: string, notes?: string) {
   await wait(300);
   const r = courseAdmin.get(userId, courseId);
   if (!r) throw new ApiError('forbidden', 'You can’t edit this course.');
   if (r.role === 'owner') throw new ApiError('owner', 'You can publish this course yourself.');
-  approversOf(r.ctx.tenant.id).forEach((id) => notifyUser(id, 'course', 'Course ready to publish', `${nameOf(userId)} finished “${r.course.title || 'Untitled course'}” and asked you to review and publish it.`, { pathname: '/edu/course/[id]', params: { id: courseId } }));
+  const tutorName = nameOf(userId);
+  const course = r.course;
+  course.tutorReview = {
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    requestedByTutorId: userId,
+    tutorName,
+    notes: notes?.trim() || undefined,
+  };
+  saveCourse(course);
+  approversOf(r.ctx.tenant.id).forEach((id) =>
+    notifyUser(
+      id,
+      'course',
+      `Tutor created course: ${course.title || 'Untitled'}`,
+      `${tutorName} created "${course.title || 'Untitled'}" and requested review. Click to preview videos, set pricing, and publish.`,
+      { pathname: '/edu/course/[id]', params: { id: courseId, review: '1' } }
+    )
+  );
   persist();
+  return course;
+}
+
+export async function respondToTutorReview(
+  ownerUserId: string,
+  courseId: string,
+  action: 'approve' | 'request_changes',
+  feedback?: string,
+  pricingPatch?: { priceInr?: number; compareAtInr?: number; offerEndsAt?: string; visibility?: Course['visibility'] }
+) {
+  await wait(300);
+  const r = courseAdmin.get(ownerUserId, courseId);
+  if (!r) throw new ApiError('forbidden', 'You can’t manage this course.');
+  if (r.role !== 'owner') throw new ApiError('forbidden', 'Only the workspace owner can approve courses.');
+
+  const course = r.course;
+  const ownerName = nameOf(ownerUserId);
+  const tutorUserId = course.tutorReview?.requestedByTutorId;
+
+  if (action === 'approve') {
+    if (pricingPatch) {
+      if (pricingPatch.priceInr !== undefined) course.priceInr = pricingPatch.priceInr;
+      if (pricingPatch.compareAtInr !== undefined) course.compareAtInr = pricingPatch.compareAtInr;
+      if (pricingPatch.offerEndsAt !== undefined) course.offerEndsAt = pricingPatch.offerEndsAt;
+      if (pricingPatch.visibility !== undefined) course.visibility = pricingPatch.visibility;
+    }
+    course.tutorReview = {
+      ...course.tutorReview,
+      status: 'approved',
+      reviewedAt: new Date().toISOString(),
+      reviewedByOwnerId: ownerUserId,
+      ownerFeedback: feedback,
+    };
+    saveCourse(course);
+    await courseAdmin.publish(ownerUserId, courseId);
+
+    if (tutorUserId) {
+      notifyUser(
+        tutorUserId,
+        'course',
+        'Course approved & live! 🎉',
+        `${ownerName} reviewed "${course.title}", set price to ${course.priceInr ? `₹${course.priceInr}` : 'Free'}, and published it.`,
+        { pathname: '/edu/course/[id]', params: { id: courseId } }
+      );
+    }
+  } else {
+    course.tutorReview = {
+      ...course.tutorReview,
+      status: 'changes_requested',
+      reviewedAt: new Date().toISOString(),
+      reviewedByOwnerId: ownerUserId,
+      ownerFeedback: feedback,
+    };
+    saveCourse(course);
+    if (tutorUserId) {
+      notifyUser(
+        tutorUserId,
+        'course',
+        'Changes requested on course',
+        `${ownerName} reviewed "${course.title}": ${feedback || 'Please update the lessons and resubmit.'}`,
+        { pathname: '/edu/course/[id]', params: { id: courseId } }
+      );
+    }
+  }
+  persist();
+  return course;
 }

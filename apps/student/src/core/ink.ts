@@ -114,19 +114,19 @@ export function recogniseShape(raw: Pt[], aspect = 16 / 9): Pick<ShapeItem, 'sha
   const pts = resample(raw.map(([x, y]) => [x * aspect, y] as Pt), 72);
   const b = bbox(pts);
   const size = Math.max(b.w, b.h);
-  if (size < 0.08) return null; // small marks are handwriting
+  if (size < 0.12) return null; // letters and letter stems (under 12% screen) are handwriting
   const L = pathLength(pts);
   const gap = dist(pts[0], pts[pts.length - 1]);
   const back = (p: Pt[]) => p.map(([x, y]) => [x / aspect, y] as Pt);
 
-  // 1. straight line: path length ≈ end-to-end distance
-  if (gap / L > 0.94 && L > 0.1) return { shape: 'line', pts: back([pts[0], pts[pts.length - 1]]) };
+  // 1. straight line: only snap intentionally long divider/axis lines (L > 0.22)
+  if (gap / L > 0.94 && L > 0.22) return { shape: 'line', pts: back([pts[0], pts[pts.length - 1]]) };
 
   // 2. arrow: a straight shaft, then a short hook back near the end
   const shaftEnd = Math.floor(pts.length * 0.72);
   const shaft = pts.slice(0, shaftEnd + 1);
   const shaftStraight = dist(shaft[0], shaft[shaft.length - 1]) / pathLength(shaft);
-  if (shaftStraight > 0.95 && gap / L < 0.9 && gap / L > 0.4) {
+  if (shaftStraight > 0.95 && gap / L < 0.9 && gap / L > 0.4 && pathLength(shaft) > 0.18) {
     const tip = shaft[shaft.length - 1];
     const tail = pts.slice(shaftEnd);
     const tailFar = Math.max(...tail.map((p) => dist(p, tip)));
@@ -185,7 +185,7 @@ export interface TimedStroke { id: string; pts: Pt[]; t0: number; t1: number }
  * Should `next` join the current writing group? Yes when it starts soon after the last stroke ended
  * and sits on the same line, close to what is already written.
  */
-export function joinsGroup(group: TimedStroke[], next: TimedStroke, pauseMs = 1100) {
+export function joinsGroup(group: TimedStroke[], next: TimedStroke, pauseMs = 1500) {
   if (!group.length) return true;
   const last = group[group.length - 1];
   if (next.t0 - last.t1 > pauseMs) return false;
@@ -194,7 +194,24 @@ export function joinsGroup(group: TimedStroke[], next: TimedStroke, pauseMs = 11
   const lineH = Math.max(g.h, n.h, 0.02);
   const verticalOverlap = Math.min(g.y + g.h, n.y + n.h) - Math.max(g.y, n.y);
   const horizontalGap = n.x - (g.x + g.w);
-  return verticalOverlap > -lineH * 0.6 && horizontalGap < lineH * 2.2 && n.x + n.w > g.x - lineH * 1.5;
+
+  // 1. Accents, dots on i/j, cross on t, or Tamil pulli:
+  // Stroke is near or directly above/below/inside the current word boundary
+  const isAccentOrCross = (
+    n.x + n.w >= g.x - lineH * 0.8 &&
+    n.x <= g.x + g.w + lineH * 1.0 &&
+    n.y + n.h >= g.y - lineH * 2.0 &&
+    n.y <= g.y + g.h + lineH * 1.5
+  );
+
+  // 2. Normal adjacent letter within the word line
+  const isAdjacentLetter = (
+    verticalOverlap > -lineH * 0.8 &&
+    horizontalGap < lineH * 2.5 &&
+    n.x + n.w > g.x - lineH * 1.5
+  );
+
+  return isAccentOrCross || isAdjacentLetter;
 }
 
 /** Where to put the typed text so it sits exactly where it was written, at a matching size. */

@@ -177,9 +177,12 @@ const seed = (): Db => mergeExtras({
     },
     { id: 'sub_meta', userId: 'u_arjun', assessmentId: 'asg_meta', status: 'draft', files: [], note: 'Brand: local organic store. Working on creatives.', updatedAt: daysAgo(0.3) },
   ],
+  // Arjun's earlier programmes (finished before the current catalogue). They carry no courseId on purpose:
+  // a certificate linked to a course must be earned there (75% + required quiz + approval), and Arjun is only
+  // part-way through Digital Marketing & AI Mastery, so linking these to c_dm_ai skipped the approval flow.
   certificates: [
-    { id: 'BODHIN-DM-AI-2026-0487', userId: 'u_arjun', courseId: 'c_dm_ai', title: 'Digital Marketing Fundamentals', program: 'Job Ready Program', issuedAt: daysAgo(6), weeks: 6, tutor: 'Rajesh Kumar' },
-    { id: 'BODHIN-SEO-2026-0412', userId: 'u_arjun', courseId: 'c_dm_ai', title: 'SEO & Content Strategy', program: 'Certification Course', issuedAt: daysAgo(15), weeks: 4, tutor: 'Rajesh Kumar' },
+    { id: 'BODHIN-DM-AI-2026-0487', userId: 'u_arjun', title: 'Digital Marketing Fundamentals', program: 'Job Ready Program', issuedAt: daysAgo(6), weeks: 6, tutor: 'Rajesh Kumar' },
+    { id: 'BODHIN-SEO-2026-0412', userId: 'u_arjun', title: 'SEO & Content Strategy', program: 'Certification Course', issuedAt: daysAgo(15), weeks: 4, tutor: 'Rajesh Kumar' },
     { id: 'BODHIN-GA-2026-0298', userId: 'u_arjun', title: 'Google Analytics Basics', program: 'Short Course', issuedAt: daysAgo(48), weeks: 2, tutor: 'Rajesh Kumar' },
     { id: 'BODHIN-EXL-2026-0177', userId: 'u_arjun', title: 'Excel Essentials', program: 'Short Course', issuedAt: daysAgo(80), weeks: 2, tutor: 'Arun Prakash' },
   ],
@@ -207,6 +210,10 @@ const seed = (): Db => mergeExtras({
     { id: 'n4', userId: 'u_arjun', kind: 'course', title: 'New lessons added', body: 'Module 5: AI Tools for Marketing now has 2 new lessons.', at: daysAgo(2), read: true, link: { pathname: '/course/[id]', params: { id: 'c_dm_ai' } } },
     { id: 'n5', userId: 'u_arjun', kind: 'payment', title: 'Payment received', body: '₹17,500 for Digital Marketing & AI Mastery. Invoice BOD-INV-2026-00412.', at: daysAgo(5), read: true, link: { pathname: '/payments' } },
     { id: 'n6', userId: 'u_arjun', kind: 'system', title: 'Certificate issued', body: 'Your certificate for Digital Marketing Fundamentals is ready to share.', at: daysAgo(6), read: true, link: { pathname: '/certificates' } },
+    { id: 'nr1', userId: 'u_rajesh', kind: 'course', title: 'Tutor submitted course for review', body: 'Your tutor Meera Iyer created “Advanced SEO & Growth”. Review content and set pricing.', at: daysAgo(0.05), read: false, link: { pathname: '/edu/course/[id]', params: { id: 'c_seo_growth' } } },
+    { id: 'nr2', userId: 'u_rajesh', kind: 'grade', title: 'Assignment graded: 95%', body: 'Your submission for “SEO Fundamentals” was graded with feedback.', at: daysAgo(0.2), read: false, link: { pathname: '/assignments' } },
+    { id: 'nr3', userId: 'u_rajesh', kind: 'live', title: 'Upcoming Live Masterclass', body: 'Meta Ads Scaling Strategies starts tomorrow at 6:00 PM. Reserve your seat.', at: daysAgo(0.5), read: false, link: { pathname: '/live' } },
+    { id: 'nr4', userId: 'u_rajesh', kind: 'system', title: 'Certificate earned', body: 'Your certificate for Python & AI for Marketers is available to view and download.', at: daysAgo(1.5), read: true, link: { pathname: '/certificates' } },
   ],
   settings: {},
   feedback: [],
@@ -456,13 +463,20 @@ function seedEnrollment(courseId: string, done: number, enrolledAt: string, hour
 }
 
 const KEY = 'bodhin.mockdb.v26';
+
+/** Demo data saved by older builds linked Arjun's earlier certificates to c_dm_ai (see the seed). Unlink them once. */
+const UNLINKED_SEED_CERTS = ['BODHIN-DM-AI-2026-0487', 'BODHIN-SEO-2026-0412'];
+function fixSavedCertificates(d: Db): Db {
+  for (const c of d.certificates) if (UNLINKED_SEED_CERTS.includes(c.id) && c.courseId) delete (c as { courseId?: string }).courseId;
+  return d;
+}
 const canPersist = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
 function load(): Db {
   if (canPersist) {
     try {
       const raw = window.localStorage.getItem(KEY);
-      if (raw) return { ...seed(), ...(JSON.parse(raw) as Db) }; // new fields fall back to seed defaults
+      if (raw) return fixSavedCertificates({ ...seed(), ...(JSON.parse(raw) as Db) }); // new fields fall back to seed defaults
     } catch {
       /* storage blocked → fall back to seed */
     }

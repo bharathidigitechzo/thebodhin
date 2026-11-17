@@ -37,7 +37,14 @@ export default function Result() {
     ['podium-outline', `#${t.rank}`, `of ${t.of}`, '#7C3AED'],
   ] as const;
 
-  const rows = questions.map((q, i) => ({ q, i, mine: t.answers[i], ok: t.answers[i] === q.correct })).filter((r) => (filter === 'all' ? true : filter === 'correct' ? r.ok : !r.ok));
+  const rows = questions.map((q, i) => {
+    const isBlank = q.kind === 'fill_blank';
+    const mine = t.answers[i];
+    const ok = isBlank
+      ? typeof mine === 'string' && typeof (q.blankAnswer || q.options[0]) === 'string' && mine.trim().toLowerCase() === (q.blankAnswer || q.options[0]).trim().toLowerCase()
+      : mine === q.correct;
+    return { q, i, mine, ok, isBlank };
+  }).filter((r) => (filter === 'all' ? true : filter === 'correct' ? r.ok : !r.ok));
 
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
@@ -93,7 +100,7 @@ export default function Result() {
               <Chip label={`Correct (${t.correct})`} active={filter === 'correct'} onPress={() => setFilter('correct')} />
               <Chip label={`Incorrect (${t.total - t.correct})`} active={filter === 'wrong'} onPress={() => setFilter('wrong')} />
             </View>
-            {rows.map(({ q, i, mine, ok }) => {
+            {rows.map(({ q, i, mine, ok, isBlank }) => {
               const expanded = open === i;
               return (
                 <View key={q.id} style={[styles.qRow, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -106,22 +113,42 @@ export default function Result() {
                   </Pressable>
                   {expanded && (
                     <View style={{ gap: 8, paddingHorizontal: 12, paddingBottom: 12 }}>
-                      {q.options.map((o, k) => {
-                        const isCorrect = k === q.correct;
-                        const isMine = k === mine;
-                        return (
-                          <View key={o} style={[styles.ans, { borderColor: isCorrect ? c.success : isMine ? c.danger : c.border, backgroundColor: isCorrect ? c.successBg : isMine ? c.dangerBg : c.surface }]}>
-                            <Txt variant="label" color={c.inkSoft}>{LETTERS[k]}.</Txt>
-                            <Txt variant="label" style={{ flex: 1, fontWeight: '500' }}>{o}</Txt>
-                            {isCorrect && <Txt variant="caption" color={c.success} style={{ fontWeight: '700' }}>Correct</Txt>}
-                            {isMine && !isCorrect && <Txt variant="caption" color={c.danger} style={{ fontWeight: '700' }}>Your answer</Txt>}
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <Pill text={isBlank ? 'Fill in blank' : 'MCQ'} tone="info" />
+                        <Pill text={`${q.marks ?? 2} ${q.marks === 1 ? 'mark' : 'marks'}`} tone="gold" />
+                      </View>
+                      {isBlank ? (
+                        <View style={{ gap: 6 }}>
+                          <View style={[styles.ans, { borderColor: ok ? c.success : c.danger, backgroundColor: ok ? c.successBg : c.dangerBg }]}>
+                            <Txt variant="label" color={c.inkSoft}>Your answer:</Txt>
+                            <Txt variant="label" style={{ flex: 1, fontWeight: '700' }}>{typeof mine === 'string' && mine.trim() ? mine : '— (skipped)'}</Txt>
+                            <Txt variant="caption" color={ok ? c.success : c.danger} style={{ fontWeight: '700' }}>{ok ? 'Correct' : 'Incorrect'}</Txt>
                           </View>
-                        );
-                      })}
-                      {mine < 0 && <Txt variant="caption" color={c.warning}>You skipped this question.</Txt>}
+                          {!ok && (
+                            <View style={[styles.ans, { borderColor: c.success, backgroundColor: c.successBg }]}>
+                              <Txt variant="label" color={c.inkSoft}>Correct answer:</Txt>
+                              <Txt variant="label" style={{ flex: 1, fontWeight: '700', color: c.success }}>{q.blankAnswer || q.options[0] || '—'}</Txt>
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        q.options.map((o, k) => {
+                          const isCorrect = k === q.correct;
+                          const isMine = k === mine;
+                          return (
+                            <View key={o} style={[styles.ans, { borderColor: isCorrect ? c.success : isMine ? c.danger : c.border, backgroundColor: isCorrect ? c.successBg : isMine ? c.dangerBg : c.surface }]}>
+                              <Txt variant="label" color={c.inkSoft}>{LETTERS[k]}.</Txt>
+                              <Txt variant="label" style={{ flex: 1, fontWeight: '500' }}>{o}</Txt>
+                              {isCorrect && <Txt variant="caption" color={c.success} style={{ fontWeight: '700' }}>Correct</Txt>}
+                              {isMine && !isCorrect && <Txt variant="caption" color={c.danger} style={{ fontWeight: '700' }}>Your answer</Txt>}
+                            </View>
+                          );
+                        })
+                      )}
+                      {!isBlank && typeof mine === 'number' && mine < 0 && <Txt variant="caption" color={c.warning}>You skipped this question.</Txt>}
                       <View style={[styles.exp, { backgroundColor: c.infoBg }]}>
                         <Ionicons name="bulb-outline" size={18} color={c.info} />
-                        <Txt variant="label" color={c.inkSoft} style={{ flex: 1, fontWeight: '500' }}>{q.explanation}</Txt>
+                        <Txt variant="label" color={c.inkSoft} style={{ flex: 1, fontWeight: '500' }}>{q.explanation || 'No explanation provided.'}</Txt>
                       </View>
                     </View>
                   )}

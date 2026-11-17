@@ -12,7 +12,15 @@ async function pick(type: string): Promise<(PickedFile & { file?: File }) | null
   const r = await DocumentPicker.getDocumentAsync({ type, multiple: false, copyToCacheDirectory: true });
   if (r.canceled || !r.assets?.length) return null;
   const a = r.assets[0] as DocumentPicker.DocumentPickerAsset & { file?: File };
-  return { name: a.name, mime: a.mimeType ?? a.file?.type ?? null, sizeBytes: a.size ?? a.file?.size ?? null, uri: a.uri, file: a.file };
+  let uri = a.uri;
+  if (Platform.OS === 'web' && a.file) {
+    try {
+      uri = URL.createObjectURL(a.file);
+    } catch {
+      // fallback to a.uri
+    }
+  }
+  return { name: a.name, mime: a.mimeType ?? a.file?.type ?? null, sizeBytes: a.size ?? a.file?.size ?? null, uri, file: a.file };
 }
 
 function shrink(file: File, maxW = 1280): Promise<string> {

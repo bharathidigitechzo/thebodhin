@@ -6,12 +6,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, liveAdmin } from '@/api/client';
+import { courseLive } from '@/api/academy';
+import { TextField } from '@/ui/TextField';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
-import { Avatar, Chip, IconButton, Pill } from '@/ui/kit';
+import { Avatar, BottomSheet, Chip, IconButton, Pill } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
 
 const CAMS = ['Built-in camera', 'USB webcam'];
@@ -30,6 +32,11 @@ export default function PreJoin() {
   const [net, setNet] = useState<'checking' | 'good'>('checking');
   const [level, setLevel] = useState(0.2);
   const [err, setErr] = useState<string | null>(null);
+  // Cancel a course-wide class (Nov 16 change request T3): reason required, every buyer is notified.
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [cancelErr, setCancelErr] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setNet('good'), 1400);
@@ -48,6 +55,23 @@ export default function PreJoin() {
   const s = info.session;
   const minsToStart = Math.round((new Date(s.startsAt).getTime() - Date.now()) / 6e4);
   const early = minsToStart > 15;
+  const courseWide = !s.batchId;
+  const canCancel = courseWide && minsToStart > 0; // the API also refuses classes that have started
+  // Course-wide classes go to everyone who bought the course, not the academy's whole contact list.
+  const audienceCount = courseWide ? courseLive.buyers(s.courseId).length : info.audience.length;
+  const doCancel = async () => {
+    setCancelling(true);
+    setCancelErr(null);
+    try {
+      await courseLive.cancel(userId, id, reason);
+      setCancelOpen(false);
+      router.replace('/educator/live');
+    } catch (e) {
+      setCancelErr(e instanceof ApiError ? e.message : 'Could not cancel the class.');
+    } finally {
+      setCancelling(false);
+    }
+  };
   const go = () => {
     try {
       liveAdmin.start(userId, id);
@@ -117,7 +141,7 @@ export default function PreJoin() {
               ))}
               <View style={[styles.note, { backgroundColor: c.surfaceMuted }]}>
                 <Txt variant="caption" color={c.inkSoft}>
-                  {info.audience.length} students will be notified the moment you go live. {s.settings.chat ? 'Chat' : 'No chat'} · {s.settings.qa ? 'Q&A on' : 'Q&A off'} · {s.settings.trackAttendance ? 'Auto attendance' : 'Manual attendance'}
+                  {audienceCount} {audienceCount === 1 ? 'student' : 'students'} will be notified the moment you go live. {s.settings.chat ? 'Chat' : 'No chat'} · {s.settings.qa ? 'Q&A on' : 'Q&A off'} · {s.settings.trackAttendance ? 'Auto attendance' : 'Manual attendance'}
                 </Txt>
               </View>
             </View>
@@ -127,8 +151,21 @@ export default function PreJoin() {
         </ScrollView>
         <View style={[styles.footer, { borderTopColor: c.border, backgroundColor: c.surface }]}>
           <Button title={early ? 'Open room early' : 'Go live now'} iconLeft="radio" disabled={net !== 'good'} onPress={go} style={{ width: '100%', maxWidth: layout.contentMaxWidth, backgroundColor: '#E8A21B' }} />
+          {canCancel && (
+            <Button title="Cancel this class" variant="outline" iconLeft="close-circle-outline" onPress={() => { setCancelErr(null); setCancelOpen(true); }} style={{ width: '100%', maxWidth: layout.contentMaxWidth, marginTop: 8 }} />
+          )}
         </View>
       </SafeAreaView>
+      <BottomSheet
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title="Cancel this class?"
+        footer={<Button title="Cancel and notify students" size="md" style={{ flex: 1, backgroundColor: c.danger }} loading={cancelling} onPress={doCancel} />}
+      >
+        <Txt variant="bodyStrong">{s.title}</Txt>
+        <Txt color={c.muted}>{audienceCount} {audienceCount === 1 ? 'student gets' : 'students get'} a notification with your reason. The class leaves their Live tab.</Txt>
+        <TextField label="Reason (students see this)" value={reason} onChangeText={(t) => { setReason(t); setCancelErr(null); }} placeholder="e.g. Trainer unwell, moved to next week" error={cancelErr ?? undefined} maxLength={200} />
+      </BottomSheet>
     </View>
   );
 }
