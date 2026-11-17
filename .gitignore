@@ -4,4 +4,5 @@ preview/
 .expo/
 *.log
 .env*
+.vercel/
 .playwright-mcp/
