@@ -1404,7 +1404,7 @@ export const educator = {
     await wait(300);
     const ctx = educator.context(userId);
     if (!ctx) throw new ApiError('no_workspace', 'You don’t manage a workspace yet.');
-    const courses = educator.courses(userId);
+    const courses = educator.courses(userId).filter((c) => !!c?.title?.trim());
     const ids = new Set(courses.map((c) => c.id));
     const now = Date.now();
     const sessions = unified().filter((s) => canHost(userId, s) && s.state !== 'cancelled');
@@ -2600,7 +2600,7 @@ export type AssessDraftKind = 'quiz' | 'exam' | 'assignment';
 export const assessAdmin = {
   async list(userId: string) {
     await wait(220);
-    const courses = educator.courses(userId);
+    const courses = educator.courses(userId).filter((c) => !!c?.title?.trim());
     const ids = new Set(courses.map((c) => c.id));
     const rows = ASSESSMENTS.filter((a) => ids.has(a.courseId)).map((a) => {
       const subs = db.submissions.filter((s) => s.assessmentId === a.id && s.status !== 'draft');
@@ -2868,7 +2868,7 @@ export type DoubtFilter = 'open' | 'answered';
 export const doubts = {
   async list(userId: string, filter: DoubtFilter, courseId?: string) {
     await wait(200);
-    const courses = educator.courses(userId);
+    const courses = educator.courses(userId).filter((c) => !!c?.title?.trim());
     const ids = new Set(courses.map((c) => c.id));
     const all = db.questions.filter((q) => ids.has(q.courseId) && (!courseId || q.courseId === courseId));
     const pick = (f: DoubtFilter) => all.filter((q) => (f === 'open' ? !q.answer : !!q.answer));

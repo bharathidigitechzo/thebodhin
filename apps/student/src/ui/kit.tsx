@@ -178,7 +178,9 @@ export function ProgressBar({ pct, color, height = 6 }: { pct: number; color?: s
   );
 }
 
-export function Pill({ text, tone = 'neutral', icon }: { text: string; tone?: 'neutral' | 'live' | 'success' | 'warning' | 'info' | 'gold'; icon?: IconName }) {
+export function Pill({ text, tone = 'neutral', icon }: { text?: string | null; tone?: 'neutral' | 'live' | 'success' | 'warning' | 'info' | 'gold'; icon?: IconName }) {
+  const content = (text || '').trim();
+  if (!content && !icon) return null;
   const { c } = useTheme();
   const map = {
     neutral: [c.surfaceMuted, c.inkSoft],
@@ -188,18 +190,22 @@ export function Pill({ text, tone = 'neutral', icon }: { text: string; tone?: 'n
     info: [c.infoBg, c.info],
     gold: ['#FCE7A8', '#7A4B00'],
   } as const;
-  const [bg, fg] = map[tone];
+  const [bg, fg] = map[tone] ?? map.neutral;
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
       {icon && <Ionicons name={icon} size={12} color={fg} />}
-      <Txt variant="caption" color={fg} style={{ fontWeight: '700' }}>
-        {text}
-      </Txt>
+      {!!content && (
+        <Txt variant="caption" color={fg} style={{ fontWeight: '700' }}>
+          {content}
+        </Txt>
+      )}
     </View>
   );
 }
 
-export function Chip({ label, icon, active, onPress }: { label: string; icon?: IconName; active?: boolean; onPress: () => void }) {
+export function Chip({ label, icon, active, onPress }: { label?: string | null; icon?: IconName; active?: boolean; onPress: () => void }) {
+  const text = (label || '').trim();
+  if (!text && !icon) return null;
   const { c } = useTheme();
   return (
     <Pressable
@@ -209,9 +215,11 @@ export function Chip({ label, icon, active, onPress }: { label: string; icon?: I
       style={({ pressed }) => [styles.chip, { backgroundColor: active ? c.primary : c.surface, borderColor: active ? c.primary : c.border }, pressed && { transform: [{ scale: 0.95 }] }]}
     >
       {icon && <Ionicons name={icon} size={16} color={active ? '#fff' : c.primary} />}
-      <Txt variant="label" color={active ? '#fff' : c.ink}>
-        {label}
-      </Txt>
+      {!!text && (
+        <Txt variant="label" color={active ? '#fff' : c.ink}>
+          {text}
+        </Txt>
+      )}
     </Pressable>
   );
 }
