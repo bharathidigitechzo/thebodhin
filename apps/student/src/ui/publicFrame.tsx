@@ -33,11 +33,11 @@ const SITEMAP: [string, [string, string][]][] = [
 export type Cta = { title: string; to: string };
 
 /** Serif headline used across the site (the "textbook title" voice). */
-export function Headline({ children, size = 'lg', color, center }: { children: React.ReactNode; size?: 'xl' | 'lg' | 'md'; color?: string; center?: boolean }) {
+export function Headline({ children, size = 'lg', color, center, role = 'header' }: { children: React.ReactNode; size?: 'xl' | 'lg' | 'md'; color?: string; center?: boolean; role?: 'header' | 'none' }) {
   const { c } = useTheme();
-  const { isDesktop } = useLayout();
-  const fs = size === 'xl' ? (isDesktop ? 56 : 36) : size === 'lg' ? (isDesktop ? 38 : 28) : isDesktop ? 26 : 22;
-  return <Txt accessibilityRole="header" center={center} color={color ?? c.primaryDeep} style={{ fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia, "Times New Roman", serif' }), fontSize: fs, lineHeight: Math.round(fs * 1.16), fontWeight: '700', letterSpacing: -0.4 }}>{children}</Txt>;
+  const { isDesktop, isTablet } = useLayout();
+  const fs = size === 'xl' ? (isDesktop ? 56 : isTablet ? 44 : 34) : size === 'lg' ? (isDesktop ? 38 : isTablet ? 32 : 26) : isDesktop ? 26 : 22;
+  return <Txt accessibilityRole={role === 'none' ? undefined : 'header'} center={center} color={color ?? c.primaryDeep} style={{ fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia, "Times New Roman", serif' }), fontSize: fs, lineHeight: Math.round(fs * 1.16), fontWeight: '700', letterSpacing: -0.4 }}>{children}</Txt>;
 }
 /** Small uppercase label above a section title. */
 export function Eyebrow({ children, color }: { children: string; color?: string }) {
@@ -47,7 +47,7 @@ export function Eyebrow({ children, color }: { children: string; color?: string 
 
 export function PublicFrame({ children, primary, secondary, seo }: { children: React.ReactNode; primary?: Cta; secondary?: Cta; seo?: { title: string; description: string } }) {
   const { c } = useTheme();
-  const { isDesktop } = useLayout();
+  const { isDesktop, isTablet } = useLayout();
   const { session } = useAuth();
   const path = usePathname();
   const [menu, setMenu] = useState(false);
@@ -67,7 +67,7 @@ export function PublicFrame({ children, primary, secondary, seo }: { children: R
       {m && <Seo title={m.title} description={m.description} path={path} />}
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         <View style={{ backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border, zIndex: 5 }}>
-          <View style={styles.head}>
+          <View style={[styles.head, { paddingHorizontal: isDesktop ? 32 : isTablet ? 24 : 16 }]}>
             <Pressable onPress={() => go('/welcome')} accessibilityRole="link" accessibilityLabel="Bodhin home" hitSlop={8}><BrandLogo size="sm" /></Pressable>
             {isDesktop ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26 }}>
@@ -90,8 +90,8 @@ export function PublicFrame({ children, primary, secondary, seo }: { children: R
                 )}
               </View>
             ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Txt variant="caption" color={c.muted}>{NAV.find((n) => n.to === path)?.label ?? ''}</Txt>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {!session && <Button title="Sign in" size="md" variant="outline" onPress={() => go('/sign-in')} />}
                 <Pressable onPress={() => setMenu(true)} accessibilityRole="button" accessibilityLabel="Open menu" style={styles.burger}><Ionicons name="menu" size={26} color={c.primaryDeep} /></Pressable>
               </View>
             )}
@@ -103,7 +103,7 @@ export function PublicFrame({ children, primary, secondary, seo }: { children: R
           onContentSizeChange={(_w: number, h: number) => { size.current.content = h; }} onLayout={(e) => { size.current.view = e.nativeEvent.layout.height; }}
           contentContainerStyle={{ alignItems: 'center', paddingBottom: isDesktop ? 0 : 12 }}>
           <ScrollYCtx.Provider value={y}>
-            <PageEnter key={path} style={{ width: '100%', maxWidth: 1160, paddingHorizontal: isDesktop ? 32 : 16, gap: isDesktop ? 88 : 52, paddingTop: isDesktop ? 40 : 20 }}>{children}</PageEnter>
+            <PageEnter key={path} style={{ width: '100%', maxWidth: 1160, paddingHorizontal: isDesktop ? 32 : isTablet ? 24 : 16, gap: isDesktop ? 76 : isTablet ? 56 : 44, paddingTop: isDesktop ? 36 : isTablet ? 28 : 20 }}>{children}</PageEnter>
           </ScrollYCtx.Provider>
           <View style={[styles.foot, { backgroundColor: c.primaryDeep, marginTop: isDesktop ? 96 : 56 }]}>
             <View style={{ width: '100%', maxWidth: 1160, gap: 24 }}>

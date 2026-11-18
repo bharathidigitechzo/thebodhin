@@ -1,5 +1,5 @@
 -- Bodhin — complete database setup (paste this whole file into Supabase → SQL Editor → Run).
--- Generated 2026-11-16. Contains: 0001_tables, 0002_rules, 0003_security, seed, 0004_refunds_and_listing, 0005_live, 0006_playground, 0007_growth, 0008_scale, 0009_launch_rules, 0010_academy_workflows. Run ONCE on a NEW project.
+-- Generated 2026-11-18. Contains: 0001_tables, 0002_rules, 0003_security, seed, 0004_refunds_and_listing, 0005_live, 0006_playground, 0007_growth, 0008_scale, 0009_launch_rules, 0010_academy_workflows, 0011_app_store_sync. Run ONCE on a NEW project.
 -- Already ran an older bodhin_setup_all.sql (Nov 6)? Then run ONLY migrations/0005_live.sql, 0006_playground.sql, 0007_growth.sql, 0008_scale.sql, 0009_launch_rules.sql and 0010_academy_workflows.sql, in that order.
 -- Already ran the Nov 14 version? Then run ONLY migrations/0010_academy_workflows.sql.
 
@@ -2090,6 +2090,45 @@ begin
   end loop;
 end $$;
 
+-- ════════════════════════════════════════════════════════════════════
+-- Bodhin · 0011 — app_store_sync (cross-device real-time state sync)
+-- ════════════════════════════════════════════════════════════════════
+create table if not exists public.app_store (
+  field       text not null,
+  key         text not null,
+  ord         double precision not null default 0,
+  data        jsonb not null,
+  updated_at  timestamptz not null default now(),
+  updated_by  uuid default auth.uid(),
+  primary key (field, key)
+);
+alter table public.app_store enable row level security;
+drop policy if exists "signed-in read" on public.app_store;
+create policy "signed-in read" on public.app_store for select to authenticated using (true);
+drop policy if exists "signed-in insert" on public.app_store;
+create policy "signed-in insert" on public.app_store for insert to authenticated with check (true);
+drop policy if exists "signed-in update" on public.app_store;
+create policy "signed-in update" on public.app_store for update to authenticated using (true) with check (true);
+drop policy if exists "signed-in delete" on public.app_store;
+create policy "signed-in delete" on public.app_store for delete to authenticated using (true);
+
+create or replace function public.app_store_touch() returns trigger
+language plpgsql set search_path = '' as $$
+begin new.updated_at := now(); new.updated_by := auth.uid(); return new; end $$;
+drop trigger if exists app_store_touch on public.app_store;
+create trigger app_store_touch before insert or update on public.app_store for each row execute function public.app_store_touch();
+
+-- Sign in with a mobile number: find the account's email.
+create or replace function public.login_email(p_phone text) returns text
+language sql stable security definer set search_path = '' as $$
+  select data->>'email' from public.app_store
+   where field = 'users' and right(regexp_replace(coalesce(data->>'phone', ''), '\D', '', 'g'), 10) = right(regexp_replace(p_phone, '\D', '', 'g'), 10)
+   limit 1;
+$$;
+revoke execute on function public.login_email(text) from public;
+grant execute on function public.login_email(text) to anon, authenticated;
+
+
 -- 2) Hot paths
 create index if not exists enrollments_user_course_idx on public.enrollments (user_id, course_id);
 create index if not exists lesson_progress_user_idx     on public.lesson_progress (user_id);
@@ -2755,3 +2794,42 @@ begin
     end if;
   end loop;
 end $$;
+
+-- ════════════════════════════════════════════════════════════════════
+-- Bodhin · 0011 — app_store_sync (cross-device real-time state sync)
+-- ════════════════════════════════════════════════════════════════════
+create table if not exists public.app_store (
+  field       text not null,
+  key         text not null,
+  ord         double precision not null default 0,
+  data        jsonb not null,
+  updated_at  timestamptz not null default now(),
+  updated_by  uuid default auth.uid(),
+  primary key (field, key)
+);
+alter table public.app_store enable row level security;
+drop policy if exists "signed-in read" on public.app_store;
+create policy "signed-in read" on public.app_store for select to authenticated using (true);
+drop policy if exists "signed-in insert" on public.app_store;
+create policy "signed-in insert" on public.app_store for insert to authenticated with check (true);
+drop policy if exists "signed-in update" on public.app_store;
+create policy "signed-in update" on public.app_store for update to authenticated using (true) with check (true);
+drop policy if exists "signed-in delete" on public.app_store;
+create policy "signed-in delete" on public.app_store for delete to authenticated using (true);
+
+create or replace function public.app_store_touch() returns trigger
+language plpgsql set search_path = '' as $$
+begin new.updated_at := now(); new.updated_by := auth.uid(); return new; end $$;
+drop trigger if exists app_store_touch on public.app_store;
+create trigger app_store_touch before insert or update on public.app_store for each row execute function public.app_store_touch();
+
+-- Sign in with a mobile number: find the account's email.
+create or replace function public.login_email(p_phone text) returns text
+language sql stable security definer set search_path = '' as $$
+  select data->>'email' from public.app_store
+   where field = 'users' and right(regexp_replace(coalesce(data->>'phone', ''), '\D', '', 'g'), 10) = right(regexp_replace(p_phone, '\D', '', 'g'), 10)
+   limit 1;
+$$;
+revoke execute on function public.login_email(text) from public;
+grant execute on function public.login_email(text) to anon, authenticated;
+

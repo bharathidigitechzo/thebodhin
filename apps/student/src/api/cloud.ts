@@ -165,6 +165,7 @@ export async function pull(): Promise<void> {
   // A field only this (newer) build has: an empty array/map in the cloud has no rows, so empty it here too.
   for (const field of Object.keys(d)) {
     if (fields.has(field)) continue;
+    if (field === 'users' || field === 'memberships' || field === 'tenants' || field === 'courses') continue;
     if (Array.isArray(d[field])) d[field] = [];
     else if (MAP_FIELDS.has(field)) d[field] = {};
   }
