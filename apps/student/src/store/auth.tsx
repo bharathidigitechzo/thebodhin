@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import type { Session } from '@/core/types';
 import { AppState } from 'react-native';
 import { auth } from '@/api/client';
-import { cloud, refreshIfStale } from '@/api/cloud';
+import { cloud, pulledListeners, refreshIfStale } from '@/api/cloud';
 
 const KEY = 'bodhin.session.v1';
 const web = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -30,7 +30,7 @@ export function homePath(session: Session | null, mode: Mode | null) {
   if (!session) return '/sign-in';
   if (adminMembership(session) && mode !== 'learner') return '/admin';
   const edu = educatorMembership(session);
-  return edu && mode !== 'learner' ? '/educator/home' : '/home';
+  return edu ? '/educator/home' : '/home'; // educators always open the Educator portal
 }
 
 interface AuthState {
@@ -106,6 +106,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sub.remove();
       if (web) window.removeEventListener('focus', onFocus);
     };
+  }, []);
+
+  // Shared data reloaded (sign-in, back to the app): pick up role changes made elsewhere, e.g. Bodhin approving this educator.
+  useEffect(() => {
+    const onPulled = () =>
+      setSessionState((s) => {
+        if (!s) return s;
+        const m = auth.refreshMemberships(s.user.id);
+        if (!m || JSON.stringify(m) === JSON.stringify(s.memberships)) return s;
+        const next = { ...s, memberships: m };
+        write(KEY, JSON.stringify(next));
+        return next;
+      });
+    pulledListeners.add(onPulled);
+    return () => { pulledListeners.delete(onPulled); };
   }, []);
 
   const setSession = useCallback((s: Session | null) => {

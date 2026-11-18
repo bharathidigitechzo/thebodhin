@@ -4,7 +4,7 @@
  * body of each function with a fetch() to the real backend. Signatures stay the same,
  * so no screen code changes.
  */
-import { db, persist, uid } from './mockDb';
+import { db, loadHooks, persist, uid } from './mockDb';
 import { cloud } from './cloud';
 import { categories as seedCategories, courses as seedCourses, liveSessions as seedLive, seedReviews, tutors as seedTutors } from './catalogSeed';
 import { ASSESSMENTS, QUESTIONS } from './assessSeed';
@@ -19,7 +19,7 @@ import { attendancePct, batchStatus, generateSessions, weeksBetween, type Announ
 import type { ClassSession, LiveSummary } from '@/core/batch';
 import { LIVE_SCALE, seatMode } from '@/live/scale';
 import { findClash, instructorClashIds, slotClashes, spanOf, weekDays, weekStart, type Clash } from '@/core/timetable';
-import { rubricOf, score as scoreQuiz, type Assessment, type AssessStatus, type Attempt, type Question, type Submission } from '@/core/assess';
+import { MAX_CODE_TESTS, rubricOf, score as scoreQuiz, type Assessment, type AssessStatus, type Attempt, type Question, type Submission } from '@/core/assess';
 
 /** Apply educator-created/edited courses on top of the demo catalogue (in place, so every reader sees them). */
 function syncCourses() {
@@ -52,6 +52,7 @@ function syncCatalog() {
   for (const a of ADDON_CATALOG) if (db.catalog.addonPrices[a.kind] != null) a.monthlyInr = db.catalog.addonPrices[a.kind];
 }
 syncCatalog();
+loadHooks.push(syncCourses, syncAssessments, syncCatalog);
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public field?: string) {
@@ -111,6 +112,8 @@ async function ensureAppUser(au: { email?: string; user_metadata?: Record<string
   return u;
 }
 
+const BUSY = 'Too many new accounts were set up in the last hour. Please try again in a little while.';
+
 /** Sign-in against the shared database (Supabase Auth + Postgres): the same account and data on every device. */
 async function cloudSignIn(identifier: string, password: string): Promise<Session> {
   const email = await resolveEmail(identifier);
@@ -122,9 +125,11 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
     if (local?.password && local.password === password) {
       const up = await cloud.signUp(email, password, { name: local.name, phone: local.phone, app_user_id: local.id });
       if ('needsConfirm' in up) throw new ApiError('confirm', `Confirm your email first: open the link we sent to ${email}, then sign in.`, 'identifier');
+      if (up.error && /rate_limit/.test(up.error)) throw new ApiError('busy', BUSY, 'identifier');
       if (!up.error) r = { user: up.user };
     }
   }
+  if (r.error && /rate_limit/.test(r.error)) throw new ApiError('busy', BUSY, 'identifier');
   if (r.error === 'email_not_confirmed') throw new ApiError('confirm', `Confirm your email first: open the link we sent to ${email}, then sign in.`, 'identifier');
   if (r.error) throw new ApiError('bad_password', 'Incorrect password. Try again or reset it.', 'password');
   const u = await ensureAppUser(r.user);
@@ -162,6 +167,7 @@ export const auth = {
       }
       if (up.error) {
         const msg = 'message' in up ? up.message : '';
+        if (/rate_limit/.test(up.error)) throw new ApiError('busy', BUSY, 'email');
         if (/already|exists|registered/i.test(`${up.error} ${msg}`)) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
         throw new ApiError('signup', msg || 'Could not create your account. Try again.');
       }
@@ -694,6 +700,20 @@ export const notes = {
 
 export const questions = {
   list: (lessonId: string) => db.questions.filter((q) => q.lessonId === lessonId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+  /** A learner's doubts that tutors answered (newest answer first) — shown on the dashboard so they don't have to open each course. */
+  answeredFor(userId: string, limit = 3) {
+    return db.questions
+      .filter((q) => q.userId === userId && q.answer)
+      .sort((a, b) => b.answer!.at.localeCompare(a.answer!.at))
+      .slice(0, limit)
+      .map((q) => {
+        const course = seedCourses.find((c) => c.id === q.courseId);
+        const lesson = course?.modules.flatMap((m) => m.lessons).find((l) => l.id === q.lessonId);
+        return { q, courseTitle: course?.title ?? 'Your course', lessonTitle: lesson?.title };
+      });
+  },
+  /** How many of a learner's doubts are still waiting for an answer. */
+  openCount: (userId: string) => db.questions.filter((q) => q.userId === userId && !q.answer).length,
   async ask(input: { courseId: string; lessonId: string; userId: string; userName: string; text: string }) {
     await wait(400);
     if (input.text.trim().length < 10) throw new ApiError('short', 'Add a little more detail so the tutor can help (10+ characters).');
@@ -957,10 +977,16 @@ export const assessments = {
     return db.submissions.find((x) => x.userId === userId && x.assessmentId === assessmentId) ?? null;
   },
 
-  async saveSubmission(userId: string, assessmentId: string, patch: Pick<Submission, 'files' | 'link' | 'note'>, submit: boolean) {
+  async saveSubmission(userId: string, assessmentId: string, patch: Pick<Submission, 'files' | 'link' | 'note' | 'code'>, submit: boolean) {
     await wait(submit ? 900 : 400);
     const a = ASSESSMENTS.find((x) => x.id === assessmentId)!;
-    if (submit && !patch.files.length && !patch.link?.trim()) throw new ApiError('empty', 'Add a file or a link before submitting.');
+    if (patch.code) {
+      if (!a.accepts?.includes('Code')) throw new ApiError('no_code', 'This assignment doesn’t take code answers.');
+      if (!pgStack(patch.code.stack)?.stdin) throw new ApiError('lang', 'Pick a language.');
+      if (patch.code.code.length > 50000) throw new ApiError('too_big', 'Your code is too long (50,000 characters max).');
+    }
+    const hasCode = !!patch.code?.code.trim();
+    if (submit && !patch.files.length && !patch.link?.trim() && !hasCode) throw new ApiError('empty', a.accepts?.includes('Code') ? 'Add a file, a link or your code before submitting.' : 'Add a file or a link before submitting.');
     if (patch.link && !/^https?:\/\/\S+\.\S+/.test(patch.link.trim())) throw new ApiError('bad_link', 'Enter a full link starting with https://', 'link');
     const tooBig = patch.files.find((f) => (f.sizeMb ?? 0) > (a.maxMb ?? 50));
     if (tooBig) throw new ApiError('too_big', `${tooBig.name} is larger than ${a.maxMb} MB.`);
@@ -971,7 +997,7 @@ export const assessments = {
       s = { id: uid('sub'), userId, assessmentId, status: 'draft', files: [], note: '', updatedAt: now };
       db.submissions.push(s);
     }
-    Object.assign(s, patch, { updatedAt: now });
+    Object.assign(s, patch, { code: hasCode ? patch.code : undefined, updatedAt: now });
     if (submit) Object.assign(s, { status: 'submitted', submittedAt: now, returnNote: undefined });
     persist();
     return { ...s };
@@ -2583,7 +2609,19 @@ export const assessAdmin = {
     const isBlank = q.kind === 'fill_blank';
     let options: string[] = [];
     let correct = 0;
-    if (isBlank) {
+    let code: Question['code'];
+    if (q.kind === 'code') {
+      const spec = q.code;
+      if (!spec || !pgStack(spec.stack)?.stdin) throw new ApiError('lang', 'Pick a language for this coding question.', 'code');
+      const nl = (v: string) => v.replace(/\r\n?/g, '\n');
+      const tests = spec.tests.map((t) => ({ stdin: nl(t.stdin), expect: nl(t.expect).replace(/\s+$/, ''), ...(t.hidden ? { hidden: true } : {}) }));
+      if (!tests.length) throw new ApiError('tests', 'Add at least one test case.', 'tests');
+      if (tests.length > MAX_CODE_TESTS) throw new ApiError('tests', `Up to ${MAX_CODE_TESTS} test cases per question.`, 'tests');
+      if (tests.some((t) => !t.expect)) throw new ApiError('tests', 'Every test case needs the expected output.', 'tests');
+      if (tests.every((t) => t.hidden)) throw new ApiError('tests', 'Keep at least one test visible so learners see an example.', 'tests');
+      if (spec.starter.length > 20000) throw new ApiError('starter', 'Starter code is too long.', 'starter');
+      code = { stack: spec.stack, starter: spec.starter, tests };
+    } else if (isBlank) {
       const answer = (q.blankAnswer || q.options[0] || '').trim();
       if (!answer) throw new ApiError('blankAnswer', 'Enter the correct answer for the blank.', 'blankAnswer');
       options = [answer];
@@ -2609,6 +2647,7 @@ export const assessAdmin = {
       kind: q.kind ?? 'mcq',
       blankAnswer: isBlank ? (q.blankAnswer || options[0]) : undefined,
       marks,
+      ...(code ? { code } : {}),
     };
     const i = db.customQuestions.findIndex((x) => x.id === qid);
     i >= 0 ? (db.customQuestions[i] = row) : db.customQuestions.push(row);

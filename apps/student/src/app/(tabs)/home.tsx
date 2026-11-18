@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { learning, notifications } from '@/api/client';
+import { learning, notifications, questions } from '@/api/client';
 import { dateParts, greeting, sessionStatus, timeRange } from '@/core/time';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -25,6 +25,8 @@ export default function Home() {
   const notifs = notifications.list(userId);
   const unreadNotifs = notifs.filter((n) => !n.read).length;
   const topNotif = notifs[0];
+  const answers = questions.answeredFor(userId);
+  const openDoubts = questions.openCount(userId);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -171,6 +173,40 @@ export default function Home() {
                   </Pressable>
                 )}
 
+                {/* Tutors' answers to my doubts — no need to open each course to check */}
+                {(answers.length > 0 || openDoubts > 0) && (
+                  <>
+                    <SectionHeader title="Answers to your doubts" />
+                    <View style={[styles.doubts, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      {answers.map(({ q, courseTitle, lessonTitle }, k) => (
+                        <Pressable
+                          key={q.id}
+                          onPress={() => router.push({ pathname: '/learn/[courseId]', params: { courseId: q.courseId, lesson: q.lessonId } })}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${q.answer!.by} answered your doubt: ${q.text}`}
+                          style={({ pressed }) => [styles.doubtRow, k > 0 && { borderTopWidth: 1, borderTopColor: c.border }, pressed && { opacity: 0.85 }]}
+                        >
+                          <View style={[styles.notifIconWrap, { backgroundColor: c.successBg }]}>
+                            <Ionicons name="chatbubbles" size={18} color={c.success} />
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                            <Txt variant="caption" color={c.muted} numberOfLines={1}>{courseTitle}{lessonTitle ? ` · ${lessonTitle}` : ''}</Txt>
+                            <Txt variant="label" numberOfLines={1}>Q: {q.text}</Txt>
+                            <Txt variant="caption" color={c.inkSoft} numberOfLines={2}><Txt variant="caption" style={{ fontWeight: '700' }} color={c.success}>{q.answer!.by}: </Txt>{q.answer!.text}</Txt>
+                          </View>
+                          <Ionicons name="chevron-forward" size={18} color={c.muted} />
+                        </Pressable>
+                      ))}
+                      {openDoubts > 0 && (
+                        <View style={[styles.doubtRow, answers.length > 0 && { borderTopWidth: 1, borderTopColor: c.border }]}>
+                          <Ionicons name="time-outline" size={18} color={c.muted} />
+                          <Txt variant="caption" color={c.muted} style={{ flex: 1 }}>{openDoubts} doubt{openDoubts === 1 ? ' is' : 's are'} waiting for your tutor. You’ll see the answer here.</Txt>
+                        </View>
+                      )}
+                    </View>
+                  </>
+                )}
+
                 {/* Continue learning */}
                 {cont ? (
                   <>
@@ -293,6 +329,8 @@ export function LiveCard({ live }: { live: LiveItem }) {
 }
 
 const styles = StyleSheet.create({
+  doubts: { borderWidth: 1, borderRadius: 18, overflow: 'hidden', marginBottom: 16 },
+  doubtRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
   scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 28 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth },
   deskRow: { flexDirection: 'row', gap: 28, alignItems: 'flex-start' },

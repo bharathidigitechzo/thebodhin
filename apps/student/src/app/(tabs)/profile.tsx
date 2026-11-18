@@ -122,7 +122,7 @@ export default function Profile() {
                 <Ionicons name="chevron-forward" size={20} color="#fff" />
               </Pressable>
             )}
-            {dashboardsOf(session).length > 1 && (
+            {dashboardsOf(session).some((d) => d.area !== 'learner') && !adm && (
               <Pressable onPress={() => setSwitching(true)} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button" accessibilityLabel="Switch dashboard">
                 <Ionicons name="swap-horizontal" size={22} color={c.accent} />
                 <View style={{ flex: 1 }}>

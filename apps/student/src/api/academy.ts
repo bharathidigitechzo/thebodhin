@@ -13,10 +13,11 @@
  *  courseMedia     cover image + intro video on a course
  */
 import { db, persist, uid } from './mockDb';
-import { courses as seedCourses, liveSessions as seedLive, tutors as seedTutors } from './catalogSeed';
+import { courses as seedCourses, liveSessions as seedLive } from './catalogSeed';
 import { ASSESSMENTS } from './assessSeed';
 import { ApiError, academyHooks, catalog, courseAdmin, educator, newCertId, notifyUser, saveCourse, tenantGate, tenantHas } from './client';
 import { communityApi } from './growth';
+import { certInstructor } from './growth2';
 import { allLessons, progressOf, type Course, type LiveSession } from '@/core/catalog';
 import {
   canMentorMove, categoryNameError, categorySlug, certEligibility, mediaError, mentorLabel, mentorRequestErrors, reminderBucket, reminderErrors, rejectReasonError, requiredQuizOf,
@@ -112,7 +113,7 @@ function eligibilityOf(userId: string, c: Course) {
 function issue(userId: string, c: Course, by?: string) {
   const existing = db.certificates.find((x) => x.userId === userId && x.courseId === c.id);
   if (existing) return existing;
-  const tutor = seedTutors.find((t) => t.id === c.tutorId);
+  const tutor = { name: certInstructor({ courseId: c.id }) };
   const cert = { id: newCertId(c.id), userId, courseId: c.id, title: c.title, program: 'Course Completion', issuedAt: now(), weeks: Math.max(2, Math.round(allLessons(c).length / 4)), tutor: tutor?.name ?? 'Instructor' };
   db.certificates.push(cert);
   void by;

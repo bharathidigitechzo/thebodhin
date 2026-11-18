@@ -13,6 +13,8 @@ import { Button } from '@/ui/Button';
 import { Avatar, BottomSheet, Chip, IconButton, Pill, ProgressRing } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
 import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
+import { CodeAnswerBox } from '@/ui/CodeAnswerBox';
+import { stackOf } from '@/playground/stacks';
 
 const QUICK = ['Well researched and clearly presented.', 'Good effort — add more specific examples.', 'Follow the template format next time.', 'Great use of data to support your points.'];
 
@@ -119,6 +121,12 @@ export default function GradeSubmission() {
                 <View style={[styles.file, { borderColor: c.border }]}>
                   <View style={[styles.fileIcon, { backgroundColor: c.infoBg }]}><Ionicons name="link" size={20} color={c.info} /></View>
                   <Txt variant="label" color={c.info} numberOfLines={1} style={{ flex: 1 }}>{d.s.link}</Txt>
+                </View>
+              )}
+              {!!d.s.code && (
+                <View style={{ gap: 6 }}>
+                  <Txt variant="caption" color={c.muted}>Code · {stackOf(d.s.code.stack)?.name ?? d.s.code.stack}</Txt>
+                  <CodeAnswerBox value={d.s.code} onChange={() => {}} userId={userId} readOnly />
                 </View>
               )}
               {!!d.s.note && <Txt color={c.inkSoft}>“{d.s.note}”</Txt>}

@@ -16,6 +16,7 @@ import { TextField } from '@/ui/TextField';
 import { IconButton, Pill, ProgressBar } from '@/ui/kit';
 import { Banner, NotFound } from '@/ui/misc';
 import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
+import { CodeAnswerBox, newCodeDraft, type CodeDraft } from '@/ui/CodeAnswerBox';
 
 type Tab = 'details' | 'submission' | 'feedback';
 const fmtDue = (iso: string) => new Date(iso).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -30,7 +31,8 @@ export default function AssignmentScreen() {
   const [tab, setTab] = useState<Tab>(sub?.status === 'graded' ? 'feedback' : sub ? 'submission' : 'details');
   const [files, setFiles] = useState<PreviewFile[]>(sub?.files ?? []);
   const [previewDoc, setPreviewDoc] = useState<PreviewFile | null>(null);
-  const [mode, setMode] = useState<'file' | 'link'>(sub?.link ? 'link' : 'file');
+  const [mode, setMode] = useState<'file' | 'link' | 'code'>(sub?.code ? 'code' : sub?.link ? 'link' : 'file');
+  const [code, setCode] = useState<CodeDraft>(sub?.code ?? newCodeDraft());
   const [link, setLink] = useState(sub?.link ?? '');
   const [note, setNote] = useState(sub?.note ?? '');
   const [busy, setBusy] = useState<null | 'draft' | 'submit'>(null);
@@ -71,7 +73,7 @@ export default function AssignmentScreen() {
     setBusy(submit ? 'submit' : 'draft');
     setMsg(null);
     try {
-      const s = await assessments.saveSubmission(userId, a.id, { files: mode === 'file' ? files : [], link: mode === 'link' ? link : undefined, note }, submit);
+      const s = await assessments.saveSubmission(userId, a.id, { files: mode === 'file' ? files : [], link: mode === 'link' ? link : undefined, code: mode === 'code' ? code : undefined, note }, submit);
       setSub(s);
       setMsg({ tone: 'success', text: submit ? `Submitted. ${tutor.name.split(' ')[0]} will review it and you'll get a notification.` : 'Draft saved.' });
     } catch (e) {
@@ -164,15 +166,17 @@ export default function AssignmentScreen() {
                   <Banner tone="success" text={`Submitted on ${fmtDue(sub.submittedAt)}${submitted && !overdue ? '. You can update it until the due date.' : '.'}`} />
                 )}
                 <View style={[styles.mode, { backgroundColor: c.surfaceMuted }]}>
-                  {(['file', 'link'] as const).map((m) => (
+                  {(a.accepts?.includes('Code') ? (['file', 'link', 'code'] as const) : (['file', 'link'] as const)).map((m) => (
                     <Pressable key={m} disabled={locked} onPress={() => setMode(m)} style={[styles.modeBtn, mode === m && { backgroundColor: c.surface }]} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}>
-                      <Ionicons name={m === 'file' ? 'cloud-upload-outline' : 'link-outline'} size={18} color={mode === m ? c.primary : c.inkSoft} />
-                      <Txt variant="label" color={mode === m ? c.primary : c.inkSoft}>{m === 'file' ? 'Upload file' : 'Add link'}</Txt>
+                      <Ionicons name={m === 'file' ? 'cloud-upload-outline' : m === 'code' ? 'code-slash' : 'link-outline'} size={18} color={mode === m ? c.primary : c.inkSoft} />
+                      <Txt variant="label" color={mode === m ? c.primary : c.inkSoft}>{m === 'file' ? 'Upload file' : m === 'code' ? 'Write code' : 'Add link'}</Txt>
                     </Pressable>
                   ))}
                 </View>
 
-                {mode === 'file' ? (
+                {mode === 'code' ? (
+                  <CodeAnswerBox value={code} onChange={setCode} userId={userId} readOnly={locked} />
+                ) : mode === 'file' ? (
                   files.length ? (
                     files.map((f) => (
                       <View key={f.name} style={[styles.file, { backgroundColor: c.surface, borderColor: c.border }]}>

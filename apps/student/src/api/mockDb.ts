@@ -488,6 +488,8 @@ export const db: Db = load();
 
 /** Run after every save (api/cloud.ts pushes the change to the shared Postgres store). */
 export const persistHooks: (() => void)[] = [];
+/** Run after the shared store replaces `db` (re-apply overlays built from it, e.g. courses on the catalogue). */
+export const loadHooks: (() => void)[] = [];
 
 export function persist() {
   for (const h of persistHooks) h();

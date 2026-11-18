@@ -158,7 +158,8 @@ export function dashboardsOf(session: Session | null) {
   const adm = adminMembership(session);
   if (adm) out.push({ area: 'admin', title: 'Bodhin admin', sub: 'Platform, Bodhin courses, approvals', href: '/admin', icon: 'shield-checkmark' });
   if (edu) out.push({ area: 'educator', title: edu.role === 'tutor' ? 'Tutor dashboard' : 'Educator dashboard', sub: 'Teach, schedule and manage students', href: '/educator/home', icon: 'school' });
-  out.push({ area: 'learner', title: 'Student dashboard', sub: 'Your courses, live classes and certificates', href: '/home', icon: 'person' });
+  // Educators work only in the Educator portal (no switch to the student dashboard); Bodhin staff keep a learner view.
+  if (!edu) out.push({ area: 'learner', title: 'Student dashboard', sub: 'Your courses, live classes and certificates', href: '/home', icon: 'person' });
   return out;
 }
 

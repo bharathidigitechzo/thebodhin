@@ -10,10 +10,28 @@ export interface Question {
   topic: string;
   hint?: string;
   explanation: string;
-  kind?: 'mcq' | 'fill_blank';
+  kind?: 'mcq' | 'fill_blank' | 'code';
   blankAnswer?: string;
   marks?: number;
+  /** Coding question: the learner writes a program; marks come from the test cases it passes. */
+  code?: CodeSpec;
 }
+
+/** A coding question: language (playground stack id), starter code and input → expected-output tests. */
+export interface CodeSpec {
+  stack: string;
+  starter: string;
+  tests: { stdin: string; expect: string; hidden?: boolean }[];
+}
+
+/** A coding answer travels in the attempt's answers list as JSON (code + how many tests it passed when last run). */
+export interface CodeAnswer { code: string; passed: number; total: number; ran: boolean }
+export const encodeCodeAnswer = (a: CodeAnswer) => JSON.stringify(a);
+export function decodeCodeAnswer(v: number | string | undefined): CodeAnswer | null {
+  if (typeof v !== 'string' || !v.startsWith('{')) return null;
+  try { const a = JSON.parse(v) as CodeAnswer; return typeof a.code === 'string' ? a : null; } catch { return null; }
+}
+export const MAX_CODE_TESTS = 5;
 
 export interface Assessment {
   id: string;
@@ -75,6 +93,8 @@ export interface Submission {
   status: 'draft' | 'submitted' | 'graded';
   files: { name: string; sizeMb?: number; uri?: string }[];
   link?: string;
+  /** "Write code" answer (assignments that accept Code). */
+  code?: { stack: string; code: string };
   note: string;
   updatedAt: string;
   submittedAt?: string;
@@ -94,7 +114,14 @@ export function score(questions: Question[], answers: (number | string)[], marks
     let isCorrect = false;
     const ans = answers[i];
 
-    if (q.kind === 'fill_blank') {
+    if (q.kind === 'code') {
+      // Partial marks: share of test cases passed on the learner's last run (real backend: re-run the tests on the server).
+      const a = decodeCodeAnswer(ans);
+      const total = q.code?.tests.length ?? 0;
+      const passed = a && a.ran && a.total === total ? Math.min(a.passed, total) : 0;
+      isCorrect = total > 0 && passed === total;
+      if (!isCorrect && total > 0 && passed > 0) earnedMarks += Math.round(((qMarks * passed) / total) * 10) / 10;
+    } else if (q.kind === 'fill_blank') {
       const target = (q.blankAnswer ?? q.options[q.correct] ?? '').trim().toLowerCase();
       const userAns = typeof ans === 'string' ? ans.trim().toLowerCase() : (typeof ans === 'number' && ans >= 0 ? (q.options[ans] ?? '').trim().toLowerCase() : '');
       isCorrect = target.length > 0 && userAns === target;

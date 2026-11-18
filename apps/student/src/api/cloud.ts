@@ -12,7 +12,7 @@
  * EXPO_PUBLIC_CLOUD=off to run on local demo data only.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { db, persistHooks } from './mockDb';
+import { db, loadHooks, persistHooks } from './mockDb';
 
 const URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xxfukitplxbjbspzcfom.supabase.co';
 const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_51qHExHC2em522VcSEfjHA_ajJQmzgV';
@@ -134,6 +134,9 @@ function schedule() {
 }
 persistHooks.push(schedule);
 
+/** Called after every load from the cloud (e.g. to refresh the signed-in user's roles). */
+export const pulledListeners = new Set<() => void>();
+
 /** Loads the whole shared store into `db` (the cloud is the source of truth). An empty store is filled from this device. */
 export async function pull(): Promise<void> {
   const supabase = sb();
@@ -165,6 +168,8 @@ export async function pull(): Promise<void> {
     if (Array.isArray(d[field])) d[field] = [];
     else if (MAP_FIELDS.has(field)) d[field] = {};
   }
+  for (const h of loadHooks) h();
+  for (const h of pulledListeners) h();
   schedule(); // pushes any single-object fields the cloud doesn't have yet
 }
 
