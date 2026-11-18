@@ -207,6 +207,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
             backgroundColor: '#000',
           } as any}
           playsInline
+          preload="auto"
           onTimeUpdate={(e) => setT((e.currentTarget as HTMLVideoElement).currentTime)}
           onLoadedMetadata={(e) => {
             const el = e.currentTarget as HTMLVideoElement;

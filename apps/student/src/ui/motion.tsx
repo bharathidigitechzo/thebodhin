@@ -76,15 +76,16 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 export function ChalkUnderline({ width, color, delay = 300 }: { width: number; color: string; delay?: number }) {
   const reduce = useReduceMotion();
   const a = useRef(new Animated.Value(0)).current;
-  const len = width * 1.08;
+  const len = Math.max(width, 24) * 1.08;
   useEffect(() => {
     if (reduce) { a.setValue(1); return; }
     Animated.timing(a, { toValue: 1, duration: 480, delay, easing: out, useNativeDriver: false }).start();
   }, [a, reduce, delay, width]);
   if (width <= 0) return null;
-  const d = `M2 9 C ${width * 0.25} 2, ${width * 0.45} 13, ${width * 0.7} 6 S ${width - 8} 4, ${width - 2} 8`;
+  const w = Math.max(width, 24);
+  const d = `M2 9 C ${w * 0.25} 2, ${w * 0.45} 13, ${w * 0.7} 6 S ${w - 8} 4, ${w - 2} 8`;
   return (
-    <Svg width={width} height={14} style={{ marginTop: -4 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <Svg width={w} height={16} style={{ marginTop: -2 }}>
       <AnimatedPath d={d} stroke={color} strokeWidth={4} strokeLinecap="round" fill="none" strokeDasharray={`${len}`} strokeDashoffset={a.interpolate({ inputRange: [0, 1], outputRange: [len, 0] })} />
     </Svg>
   );
@@ -98,16 +99,34 @@ export function WordRotator({ words, color, variant = 'display', style, every = 
   useEffect(() => {
     if (reduce || words.length < 2) return;
     const id = setInterval(() => {
-      Animated.timing(a, { toValue: 0, duration: 180, easing: Easing.in(Easing.cubic), useNativeDriver: native }).start(() => {
-        setI((x) => (x + 1) % words.length);
-        a.setValue(0);
-        Animated.timing(a, { toValue: 1, duration: 260, easing: out, useNativeDriver: native }).start();
+      Animated.timing(a, {
+        toValue: 0,
+        duration: 200,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        setI((prev) => (prev + 1) % words.length);
+        Animated.timing(a, {
+          toValue: 1,
+          duration: 260,
+          easing: out,
+          useNativeDriver: false,
+        }).start();
       });
     }, every);
     return () => clearInterval(id);
   }, [reduce, words.length, a, every]);
   return (
-    <Animated.View onLayout={(e) => onWidth?.(e.nativeEvent.layout.width)} style={{ alignSelf: 'flex-start', opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }} accessibilityLabel={words.join(', ')}>
+    <Animated.View
+      onLayout={(e) => onWidth?.(e.nativeEvent.layout.width)}
+      style={{
+        alignSelf: 'flex-start',
+        opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+      }}
+      accessibilityLabel={words.join(', ')}
+    >
       <Txt variant={variant} color={color} style={style}>{words[i]}</Txt>
     </Animated.View>
   );
@@ -166,7 +185,7 @@ export function Marquee({ children, speed = 28 }: { children: React.ReactNode; s
     <View style={{ overflow: 'hidden' }}>
       <Animated.View style={{ flexDirection: 'row', alignSelf: 'flex-start', transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [0, -w] }) }] }}>
         <View style={{ flexDirection: 'row' }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>{children}</View>
-        {!reduce && <View style={{ flexDirection: 'row' }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{children}</View>}
+        {!reduce && <View style={{ flexDirection: 'row' }} aria-hidden={true}>{children}</View>}
       </Animated.View>
     </View>
   );
@@ -178,7 +197,7 @@ export function Tap({ children, onPress, style, label, role = 'button', fill }: 
   const to = (v: number) => Animated.timing(a, { toValue: v, duration: dur.micro, easing: out, useNativeDriver: native }).start();
   return (
     <Pressable onPress={onPress} onPressIn={() => to(1)} onPressOut={() => to(0)} onHoverIn={() => to(-1)} onHoverOut={() => to(0)} accessibilityRole={role} accessibilityLabel={label} style={fill ? { flex: 1 } : undefined}>
-      <Animated.View style={[style, { transform: [{ scale: a.interpolate({ inputRange: [-1, 0, 1], outputRange: [1.015, 1, 0.975] }) }, { translateY: a.interpolate({ inputRange: [-1, 0, 1], outputRange: [-3, 0, 0] }) }] }]}>{children}</Animated.View>
+      <Animated.View style={[style, fill ? { flex: 1, width: '100%' } : undefined, { transform: [{ scale: a.interpolate({ inputRange: [-1, 0, 1], outputRange: [1.015, 1, 0.975] }) }, { translateY: a.interpolate({ inputRange: [-1, 0, 1], outputRange: [-3, 0, 0] }) }] }]}>{children}</Animated.View>
     </Pressable>
   );
 }

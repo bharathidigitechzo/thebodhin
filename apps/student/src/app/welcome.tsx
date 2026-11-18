@@ -1,7 +1,7 @@
 /** thebodhin.com home. Two clear paths from the first screen: learn (→ Explore) or teach (→ For educators). */
 import React, { useState } from 'react';
 import { trialDays } from '@/api/growth2';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { marketing, showcaseApi } from '@/api/growth2';
@@ -21,66 +21,94 @@ const LEARN_STEPS: [string, string][] = [['Watch a free preview', 'Every course 
 
 export default function Welcome() {
   const { c } = useTheme();
-  const { isDesktop } = useLayout();
+  const { isDesktop, isTablet, isPhone } = useLayout();
   const d = marketing.home();
   const [ww, setWw] = useState(0);
   const wall = showcaseApi.wall();
   const [clip, setClip] = useState<(typeof wall.rows)[number] | null>(null);
   const first = d.showcase[0];
-  const serif = { fontFamily: 'Georgia, serif', fontSize: isDesktop ? 56 : 36, lineHeight: isDesktop ? 64 : 42, fontWeight: '700' as const };
+  const headlineFs = isDesktop ? 56 : isTablet ? 44 : 34;
+  const headlineLh = Math.round(headlineFs * 1.16);
+  const serif = {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia, "Times New Roman", serif' }),
+    fontSize: headlineFs,
+    lineHeight: headlineLh,
+    fontWeight: '700' as const,
+  };
   return (
     <PublicFrame primary={{ title: 'I want to teach', to: '/for-educators' }} secondary={{ title: 'I want to learn', to: '/explore' }}>
       {/* ── hero ── */}
-      <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 48 : 28, alignItems: 'center' }}>
-        <View style={{ flex: 1, gap: 16, width: '100%' }}>
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>{Array.from({ length: 9 }).map((_, i) => <View key={i} style={{ height: 1, backgroundColor: c.border, marginTop: isDesktop ? 46 : 38, opacity: 0.45 }} />)}</View>
+      <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 48 : isTablet ? 36 : 28, alignItems: isDesktop ? 'center' : 'stretch', width: '100%' }}>
+        <View style={{ flex: 1, gap: 18, width: '100%', maxWidth: isDesktop ? undefined : 680, alignSelf: isDesktop ? undefined : 'center' }}>
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <View key={i} style={{ height: 1, backgroundColor: c.border, marginTop: isDesktop ? 44 : 36, opacity: 0.35 }} />
+            ))}
+          </View>
           <Eyebrow>For learners and educators</Eyebrow>
           <View accessibilityRole="header" accessibilityLabel={`Teach ${SUBJECTS.join(', ')} on a platform that carries your name`}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', columnGap: 12 }}>
-              <Headline size="xl">Teach</Headline>
-              <View>
-                <WordRotator words={SUBJECTS} color={c.primary} style={serif} onWidth={setWw} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 4 }}>
+              <Headline size="xl" role="none">Teach</Headline>
+              <View style={{ alignItems: 'flex-start' }}>
+                <WordRotator words={SUBJECTS} color={c.primaryDeep} style={serif} onWidth={setWw} />
                 <ChalkUnderline width={ww} color={c.accent} />
               </View>
             </View>
-            <Headline size="xl">on a platform that carries your name.</Headline>
+            <Headline size="xl" role="none">on a platform that carries your name.</Headline>
           </View>
-          <Reveal delay={120}><Txt color={c.inkSoft} style={{ fontSize: 17, lineHeight: 26, maxWidth: 520 }}>Bodhin is where tutors and academies run courses, live classes and students — and where learners find a teacher worth their time.</Txt></Reveal>
-          <Reveal delay={220} style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12 }}>
-            <Tap onPress={() => router.push('/explore')} label="I want to learn. Explore courses" role="link" fill={isDesktop} style={[styles.path, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <Reveal delay={120}>
+            <Txt color={c.inkSoft} style={{ fontSize: isDesktop ? 18 : 16, lineHeight: isDesktop ? 28 : 24, maxWidth: 540 }}>
+              Bodhin is where tutors and academies run courses, live classes and students — and where learners find a teacher worth their time.
+            </Txt>
+          </Reveal>
+          <Reveal delay={220} style={{ flexDirection: isPhone ? 'column' : 'row', gap: 14, width: '100%', maxWidth: isDesktop ? 580 : isTablet ? 600 : '100%', marginTop: 4 }}>
+            <Tap onPress={() => router.push('/explore')} label="I want to learn. Explore courses" role="link" fill={!isPhone} style={[styles.path, { backgroundColor: c.surface, borderColor: c.border }]}>
               <View style={[styles.pathIcon, { backgroundColor: c.primarySoft }]}><Ionicons name="book-outline" size={22} color={c.primary} /></View>
-              <View style={{ flex: 1 }}><Txt variant="bodyStrong">I want to learn</Txt><Txt variant="caption" color={c.muted}>Browse courses, watch free previews</Txt></View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Txt variant="bodyStrong">I want to learn</Txt>
+                <Txt variant="caption" color={c.muted} numberOfLines={1}>Browse courses, watch free previews</Txt>
+              </View>
               <Ionicons name="arrow-forward" size={20} color={c.primary} />
             </Tap>
-            <Tap onPress={() => router.push('/for-educators')} label="I want to teach. See how Bodhin works for educators" role="link" fill={isDesktop} style={[styles.path, { backgroundColor: c.primaryDeep, borderColor: c.primaryDeep }]}>
+            <Tap onPress={() => router.push('/for-educators')} label="I want to teach. See how Bodhin works for educators" role="link" fill={!isPhone} style={[styles.path, { backgroundColor: c.primaryDeep, borderColor: c.primaryDeep }]}>
               <View style={[styles.pathIcon, { backgroundColor: '#ffffff22' }]}><Ionicons name="school-outline" size={22} color="#fff" /></View>
-              <View style={{ flex: 1 }}><Txt variant="bodyStrong" color="#fff">I want to teach</Txt><Txt variant="caption" color="#ffffffb3">Launch your academy · {trialDays()}-day trial</Txt></View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Txt variant="bodyStrong" color="#fff">I want to teach</Txt>
+                <Txt variant="caption" color="#ffffffb3" numberOfLines={1}>Launch your academy · {trialDays()}‑day trial</Txt>
+              </View>
               <Ionicons name="arrow-forward" size={20} color={c.accent} />
             </Tap>
           </Reveal>
-          <View style={{ flexDirection: 'row', gap: isDesktop ? 40 : 22, marginTop: 6 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: isDesktop ? 48 : isTablet ? 36 : 24, marginTop: 16, paddingTop: 4 }}>
             {([[d.stats.learners, 'learners'], [d.stats.courses, 'courses'], [d.stats.academies, 'academies']] as [number, string][]).map(([n, l]) => (
-              <View key={l}><CountUp to={n} color={c.primaryDeep} /><Txt variant="caption" color={c.muted}>{l}</Txt></View>
+              <View key={l} style={{ minWidth: 84, gap: 2 }}>
+                <CountUp to={n} color={c.primaryDeep} />
+                <Txt variant="caption" color={c.muted} style={{ fontSize: 13, textTransform: 'capitalize' }}>{l}</Txt>
+              </View>
             ))}
           </View>
         </View>
-        <Reveal delay={150} style={{ width: isDesktop ? 300 : '100%' }}>
-          <Parallax travel={isDesktop ? 44 : 0}>
-          <Carousel height={430} slides={[
-            { label: 'Course', node: <PhoneFrame><CourseSlide title={first?.c.title ?? 'Your course'} tutor={first?.tutor?.name ?? 'Your academy'} price={first ? inr(first.c.priceInr) : ''} color={first?.tutor?.color ?? c.primary} /></PhoneFrame> },
-            { label: 'Live class', node: <PhoneFrame><LiveSlide /></PhoneFrame> },
-            { label: 'Playground', node: <PhoneFrame><PlaygroundSlide /></PhoneFrame> },
-            { label: 'Certificate', node: <PhoneFrame><CertSlide academy={first?.tutor?.name ?? 'Your academy'} /></PhoneFrame> },
-          ]} />
+        <Reveal delay={150} style={{ width: isDesktop ? 320 : '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <Parallax travel={isDesktop ? 36 : 0}>
+            <Carousel height={430} slides={[
+              { label: 'Course', node: <PhoneFrame><CourseSlide title={first?.c.title ?? 'Your course'} tutor={first?.tutor?.name ?? 'Your academy'} price={first ? inr(first.c.priceInr) : ''} color={first?.tutor?.color ?? c.primary} /></PhoneFrame> },
+              { label: 'Live class', node: <PhoneFrame><LiveSlide /></PhoneFrame> },
+              { label: 'Playground', node: <PhoneFrame><PlaygroundSlide /></PhoneFrame> },
+              { label: 'Certificate', node: <PhoneFrame><CertSlide academy={first?.tutor?.name ?? 'Your academy'} /></PhoneFrame> },
+            ]} />
           </Parallax>
         </Reveal>
       </View>
 
       {/* ── what people teach here ── */}
-      <View style={{ gap: 10 }}>
-        <Txt variant="caption" color={c.muted} center>Taught on Bodhin right now</Txt>
+      <View style={{ gap: 12, marginVertical: isDesktop ? 10 : 4 }}>
+        <Txt variant="caption" color={c.muted} center style={{ letterSpacing: 0.5 }}>Taught on Bodhin right now</Txt>
         <Marquee>
-          {d.showcase.concat(d.showcase).map(({ c: co }, i) => <View key={co.id + i} style={[styles.tag, { borderColor: c.border, backgroundColor: c.surface }]}><Txt variant="label" color={c.inkSoft} numberOfLines={1}>{co.title}</Txt></View>)}
+          {d.showcase.concat(d.showcase).map(({ c: co }, i) => (
+            <View key={co.id + i} style={[styles.tag, { borderColor: c.border, backgroundColor: c.surface }]}>
+              <Txt variant="label" color={c.inkSoft} numberOfLines={1}>{co.title}</Txt>
+            </View>
+          ))}
         </Marquee>
       </View>
 
@@ -100,8 +128,8 @@ export default function Welcome() {
       {/* ── learner path ── */}
       <View style={{ gap: 20 }}>
         <Reveal><Eyebrow>For learners</Eyebrow><Headline>Watch before you join.</Headline></Reveal>
-        <Grid cols={isDesktop ? 3 : 1} gap={14}>
-          {d.showcase.slice(0, isDesktop ? 6 : 3).map(({ c: co, tutor, preview }, i) => (
+        <Grid cols={isDesktop ? 3 : isTablet ? 2 : 1} gap={16}>
+          {d.showcase.slice(0, isDesktop ? 6 : isTablet ? 4 : 3).map(({ c: co, tutor, preview }, i) => (
             <Reveal key={co.id} delay={i * 70}>
               <Tap onPress={() => router.push({ pathname: '/course/[id]', params: { id: co.id } })} label={`${co.title} by ${tutor?.name}. ${preview ? 'Free preview available' : ''}`} role="link" style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
                 <View style={[styles.video, { backgroundColor: tutor?.color ?? c.primaryDeep }]}>
@@ -118,7 +146,7 @@ export default function Welcome() {
           ))}
         </Grid>
         <DrawLine color={c.accent} />
-        <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 28 : 14 }}>
+        <View style={{ flexDirection: isPhone ? 'column' : 'row', gap: isDesktop ? 28 : isTablet ? 20 : 14 }}>
           {LEARN_STEPS.map(([t, s], i) => (
             <Reveal key={t} delay={i * 90} style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', gap: 12 }}>
@@ -148,7 +176,7 @@ export default function Welcome() {
       {/* ── educators ── */}
       <View style={{ gap: 16 }}>
         <Reveal><Eyebrow>People, not a catalogue</Eyebrow><Headline>Educators on Bodhin</Headline></Reveal>
-        <Grid cols={isDesktop ? 3 : 1} gap={12}>
+        <Grid cols={isDesktop ? 3 : isTablet ? 2 : 1} gap={14}>
           {d.tutors.map(({ t, courses, learners }, i) => (
             <Reveal key={t.id} delay={i * 60}>
               <View style={[styles.tutor, { borderColor: c.border, backgroundColor: c.surface }]}>
@@ -180,12 +208,12 @@ export default function Welcome() {
 }
 
 const styles = StyleSheet.create({
-  path: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 18, padding: 14, minHeight: 72 },
+  path: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 14, minHeight: 76, justifyContent: 'center' },
   pathIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  tag: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 10, maxWidth: 260 },
+  tag: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9, marginRight: 12, maxWidth: 280 },
   card: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
   video: { height: 150, alignItems: 'center', justifyContent: 'center' },
-  band: { borderWidth: 1, borderRadius: 28, padding: 24, gap: 24, alignItems: 'center' },
-  tutor: { flexDirection: 'row', gap: 12, borderWidth: 1, borderRadius: 18, padding: 14, alignItems: 'center' },
-  final: { borderRadius: 28, padding: 28, gap: 18 },
+  band: { borderWidth: 1, borderRadius: 28, padding: 28, gap: 24, alignItems: 'center' },
+  tutor: { flexDirection: 'row', gap: 14, borderWidth: 1, borderRadius: 18, padding: 16, alignItems: 'center' },
+  final: { borderRadius: 28, padding: 32, gap: 20 },
 });
