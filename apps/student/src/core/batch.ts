@@ -61,7 +61,7 @@ export interface ClassSession {
   startsAt: string;
   endsAt: string;
   mode: 'online' | 'offline';
-  status: 'scheduled' | 'conducted' | 'cancelled';
+  status: 'scheduled' | 'live' | 'conducted' | 'cancelled';
   recording?: boolean;
   description?: string;
   instructorId?: string;

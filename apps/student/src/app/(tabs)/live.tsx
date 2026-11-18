@@ -16,6 +16,8 @@ import { Button } from '@/ui/Button';
 import { AppHeader, BottomSheet, ErrorState, Pill, Skeleton, useAsync } from '@/ui/kit';
 import { WeekTimetable } from '@/ui/WeekTimetable';
 import { mentorship } from '@/api/academy';
+import { useDbTick } from '@/live/useDbTick';
+import { enableSystemAlerts, systemAlertState, useAnnounced } from '@/live/useLiveWatch';
 
 /** 1:1 mentorship: confirmed sessions (join when it's time) and a way to book one. */
 function MentorCard({ userId }: { userId: string }) {
@@ -57,8 +59,14 @@ export default function Live() {
   const [seg, setSeg] = useState<'upcoming' | 'week' | 'past'>('upcoming');
   const [wk, setWk] = useState(0);
   const [calOpen, setCalOpen] = useState(false);
-  const { data, loading, error, reload } = useAsync(() => liveTab.schedule(userId, tenant?.id ?? null), [userId, tenant?.id]);
+  const { data: first, error, reload } = useAsync(() => liveTab.schedule(userId, tenant?.id ?? null), [userId, tenant?.id]);
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  // Re-read on every data change and every few seconds, so "Live now" appears the moment the teacher goes live.
+  const tick = useDbTick(4000);
+  const announced = useAnnounced();
+  const data = first ? liveTab.scheduleNow(userId, tenant?.id ?? null) : null;
+  void tick;
+  const [alerts, setAlerts] = useState(systemAlertState());
 
   const join = (id: string) => router.push({ pathname: '/live-room/[id]', params: { id } });
 
@@ -91,6 +99,16 @@ export default function Live() {
             ) : seg === 'upcoming' ? (
               <View style={{ gap: 12, marginTop: 14 }}>
                 {data.liveNow.map((r) => <LiveNowCard key={r.session.id} row={r} onJoin={() => join(r.session.id)} />)}
+                {alerts === 'default' && (
+                  <Pressable onPress={async () => setAlerts(await enableSystemAlerts())} style={[styles.cal, { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Turn on class alerts">
+                    <Ionicons name="notifications-outline" size={26} color={c.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Txt variant="bodyStrong">Get an alert when a class goes live</Txt>
+                      <Txt variant="caption" color={c.inkSoft}>Your browser will show a notification the moment your teacher starts, even if this tab is in the background.</Txt>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={c.muted} />
+                  </Pressable>
+                )}
                 {data.upcoming.length === 0 && data.liveNow.length === 0 && (
                   <Txt color={c.muted} center style={{ paddingVertical: 30 }}>No live classes scheduled. Your tutors' sessions will appear here.</Txt>
                 )}
@@ -157,12 +175,12 @@ function groupByDay(rows: Row[]) {
 }
 
 function LiveNowCard({ row, onJoin }: { row: Row; onJoin: () => void }) {
-  const mins = Math.round((Date.now() - new Date(row.session.startsAt).getTime()) / 6e4);
+  const mins = Math.max(0, Math.round((Date.now() - new Date(row.startedAt ?? row.session.startsAt).getTime()) / 6e4));
   return (
     <LinearGradient colors={['#071F44', '#12407F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.liveNow}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Pill text="LIVE NOW" tone="live" icon="radio" />
-        <Txt variant="caption" color="rgba(255,255,255,0.75)">Started {mins} min ago</Txt>
+        <Txt variant="caption" color="rgba(255,255,255,0.75)">{mins < 1 ? 'Just started' : `Started ${mins} min ago`}</Txt>
       </View>
       <Txt variant="heading" color="#fff" style={{ fontSize: 20, lineHeight: 26 }}>{row.session.title}</Txt>
       <Txt variant="label" color="rgba(255,255,255,0.8)" style={{ fontWeight: '500' }}>{row.tutor.name} · {row.course.title}</Txt>
@@ -180,7 +198,8 @@ function UpcomingRow({ row, userId, onJoin, onChange }: { row: Row; userId: stri
   const d = dateParts(row.session.startsAt);
   const st = sessionStatus(row.session.startsAt, row.session.endsAt);
   const offline = row.session.mode === 'offline';
-  const canJoin = st.state === 'soon' && !offline;
+  const waiting = (row as { waiting?: boolean }).waiting === true; // the class time has come but the teacher has not started yet
+  const canJoin = (st.state === 'soon' || st.state === 'live') && !offline;
   return (
     <View style={[styles.row, { backgroundColor: c.surface, borderColor: canJoin ? c.live : c.border }]}>
       <View style={[styles.date, { backgroundColor: c.primarySoft }]}>
@@ -195,10 +214,10 @@ function UpcomingRow({ row, userId, onJoin, onChange }: { row: Row; userId: stri
           <Ionicons name="time-outline" size={13} color={c.muted} />
           <Txt variant="caption" color={c.inkSoft}>{timeRange(row.session.startsAt, row.session.endsAt)}{offline ? ' · In person' : ''}</Txt>
         </View>
-        <Txt variant="caption" color={canJoin ? c.live : c.info} style={{ fontWeight: '700' }}>{st.label}</Txt>
+        <Txt variant="caption" color={canJoin ? c.live : c.info} style={{ fontWeight: '700' }}>{waiting ? 'Waiting for the teacher to start' : st.label}</Txt>
       </View>
       {canJoin ? (
-        <Button title="Join" size="md" onPress={onJoin} />
+        <Button title={waiting ? 'Open room' : 'Join'} size="md" onPress={onJoin} />
       ) : (
         <Pressable
           onPress={async () => { await liveApi.toggleReminder(userId, row.session.id); onChange(); }}

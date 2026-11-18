@@ -64,12 +64,12 @@ export default function LiveTab() {
                 {data.live.map((s) => (
                   <LinearGradient key={s.id} colors={['#071F44', '#12407F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.liveCard}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Pill text="LIVE NOW" tone="live" icon="radio" />
-                      <Txt variant="caption" color="rgba(255,255,255,0.75)">Started {Math.max(1, Math.round((Date.now() - new Date(s.startsAt).getTime()) / 6e4))} min ago</Txt>
+                      <Pill text={s.started ? 'LIVE NOW' : 'READY TO START'} tone={s.started ? 'live' : 'warning'} icon="radio" />
+                      <Txt variant="caption" color="rgba(255,255,255,0.75)">{s.started ? `Started ${Math.max(1, Math.round((Date.now() - new Date(s.startedAt ?? s.startsAt).getTime()) / 6e4))} min ago` : 'Students are waiting — start when you are ready'}</Txt>
                     </View>
                     <Txt variant="heading" color="#fff">{s.title}</Txt>
                     <Txt variant="label" color="rgba(255,255,255,0.8)" style={{ fontWeight: '500' }}>{s.batchName ?? data.courseOf(s.courseId).title} · {tm(s.startsAt)} – {tm(s.endsAt)}</Txt>
-                    <Button title="Join as host" iconRight="arrow-forward" style={{ backgroundColor: '#E8A21B', marginTop: 4 }} onPress={() => router.push({ pathname: '/edu/prejoin/[id]', params: { id: s.id } })} />
+                     <Button title={s.started ? 'Return to class' : 'Start class'} iconRight="arrow-forward" style={{ backgroundColor: '#E8A21B', marginTop: 4 }} onPress={() => router.push({ pathname: '/edu/prejoin/[id]', params: { id: s.id } })} />
                   </LinearGradient>
                 ))}
 

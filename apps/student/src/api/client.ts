@@ -18,6 +18,7 @@ import { PLANS, type Plan, type PlanId } from '@/core/plans';
 import { attendancePct, batchStatus, generateSessions, weeksBetween, type Announcement, type AttendanceMark, type Batch, type Mark, type MemberStatus, type Person } from '@/core/batch';
 import type { ClassSession, LiveSummary } from '@/core/batch';
 import { LIVE_SCALE, seatMode } from '@/live/scale';
+import { roomName } from '@/live/protocol';
 import { findClash, instructorClashIds, slotClashes, spanOf, weekDays, weekStart, type Clash } from '@/core/timetable';
 import { MAX_CODE_TESTS, rubricOf, score as scoreQuiz, type Assessment, type AssessStatus, type Attempt, type Question, type Submission } from '@/core/assess';
 
@@ -834,10 +835,55 @@ export function recordingWindow(endsAt: string, keepDays: number, now = Date.now
   return { available: left > 0, until: until.toISOString(), daysLeft: Math.max(0, left) };
 }
 
+
+/**
+ * Media access for a live room. With `EXPO_PUBLIC_LIVE_TOKEN_URL` set (an HTTPS endpoint such as the `live-token`
+ * Edge Function that signs LiveKit tokens after checking enrolment) the room runs on the self-hosted LiveKit server.
+ * Without it the app uses its built-in peer-to-peer room (WebRTC, signalled over the shared realtime channel):
+ * real camera, microphone and screen share for a normal class size, no server to run.
+ */
+async function mediaToken(userId: string, sessionId: string, role: 'host' | 'student') {
+  const endpoint = process.env.EXPO_PUBLIC_LIVE_TOKEN_URL;
+  if (!endpoint) return { provider: 'mesh' as 'mesh' | 'livekit', url: '', token: uid('room') }; // the built-in room needs no server token; this id only marks the grant
+  const u = db.users.find((x) => x.id === userId);
+  const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, role, identity: userId, name: u?.name ?? 'Guest' }) }).catch(() => null);
+  if (!res || !res.ok) throw new ApiError('busy', 'Could not reach the live server. Trying again…');
+  const j = (await res.json()) as { url: string; token: string };
+  return { provider: 'livekit' as 'mesh' | 'livekit', url: j.url, token: j.token };
+}
+
+/** Room name (tenant-scoped) and host details shared by host and learner joins. */
+function roomFacts(sessionId: string) {
+  const cs = db.classSessions.find((x) => x.id === sessionId);
+  const courseId = cs ? db.batches.find((b) => b.id === cs.batchId)?.courseId : seedLive.find((x) => x.id === sessionId)?.courseId;
+  const tenantId = seedCourses.find((c) => c.id === courseId)?.tenantId ?? 'public';
+  return { room: roomName(tenantId, sessionId), tenantId, host: db.liveMeta?.[sessionId] ?? null, hostIds: hostIdsOf(sessionId, tenantId, courseId ?? '', cs) };
+}
+
+/** Everyone allowed to act as host of a class: the academy owner, the batch instructors / assigned tutors, and whoever started it. */
+function hostIdsOf(sessionId: string, tenantId: string, courseId: string, cs?: ClassSession) {
+  const ids = new Set<string>();
+  db.memberships.filter((m) => m.tenantId === tenantId && m.role === 'owner').forEach((m) => ids.add(m.userId));
+  if (cs) {
+    db.batches.find((b) => b.id === cs.batchId)?.instructorIds.forEach((i) => ids.add(i));
+    if (cs.instructorId) ids.add(cs.instructorId);
+  } else {
+    db.tutorAssignments.filter((a) => a.courseId === courseId).forEach((a) => ids.add(a.userId));
+  }
+  const live = db.liveMeta?.[sessionId];
+  if (live) ids.add(live.hostId);
+  return [...ids];
+}
+
 export const liveTab = {
   /** Upcoming + live + past (with attendance) for courses the learner is enrolled in. */
   async schedule(userId: string, tenantId: string | null) {
     await wait(250);
+    return liveTab.scheduleNow(userId, tenantId);
+  },
+
+  /** Same as `schedule`, without the network wait (used by the live-class banner and screens that poll). */
+  scheduleNow(userId: string, tenantId: string | null) {
     const mine = new Set(db.enrollments.filter((e) => e.userId === userId).map((e) => e.courseId));
     const now = Date.now();
     const courseRows = seedLive
@@ -857,10 +903,19 @@ export const liveTab = {
     const rows = [...courseRows, ...batchRows].filter((r) => !tenantId || r.course.tenantId === tenantId);
     // A class the host has ended counts as past even if its scheduled end time hasn't arrived.
     const ended = (id: string) => db.sessionStatus[id] === 'conducted' || db.classSessions.find((x) => x.id === id)?.status === 'conducted';
-    const liveNow = rows.filter((r) => !ended(r.session.id) && new Date(r.session.startsAt).getTime() <= now && new Date(r.session.endsAt).getTime() > now);
-    const upcoming = rows.filter((r) => !ended(r.session.id) && new Date(r.session.startsAt).getTime() > now).sort((a, b) => a.session.startsAt.localeCompare(b.session.startsAt));
+    const startedBy = (id: string) => {
+      const st = db.sessionStatus[id] ?? db.classSessions.find((x) => x.id === id)?.status;
+      return st === 'live' ? db.liveMeta?.[id] ?? null : null;
+    };
+    // "Live now" means the educator actually started the class (and it has not been ended or timed out).
+    const isLive = (r: { session: { id: string; endsAt: string } }) => !ended(r.session.id) && !!startedBy(r.session.id) && now < new Date(r.session.endsAt).getTime() + OVERRUN_MS;
+    const liveNow = rows.filter(isLive).map((r) => ({ ...r, startedAt: startedBy(r.session.id)!.startedAt, waiting: false }));
+    const upcoming = rows
+      .filter((r) => !isLive(r) && !ended(r.session.id) && new Date(r.session.endsAt).getTime() > now)
+      .map((r) => ({ ...r, startedAt: null as string | null, waiting: new Date(r.session.startsAt).getTime() <= now })) // slot has begun, host has not pressed Go live yet
+      .sort((a, b) => a.session.startsAt.localeCompare(b.session.startsAt));
     const keepDays = db.platformConfig.recordingRetentionDays ?? 180;
-    const past = rows.filter((r) => ended(r.session.id) || new Date(r.session.endsAt).getTime() <= now).sort((a, b) => b.session.startsAt.localeCompare(a.session.startsAt))
+    const past = rows.filter((r) => !isLive(r) && (ended(r.session.id) || new Date(r.session.endsAt).getTime() <= now)).sort((a, b) => b.session.startsAt.localeCompare(a.session.startsAt))
       .map((r) => ({ ...r, recording: recordingWindow(r.session.endsAt, keepDays, now) }));
     const attended = past.filter((p) => p.attendance).length;
     return {
@@ -901,17 +956,29 @@ export const liveTab = {
     if (!learning.isEnrolled(userId, s.courseId) && !inBatch) throw new ApiError('not_enrolled', 'Only enrolled learners can join this class.');
     if (!tenantHas(seedCourses.find((c) => c.id === s.courseId)?.tenantId, 'live_classes')) throw new ApiError('module', 'This academy has switched off live classes.');
     if (tenantGate(seedCourses.find((c) => c.id === s.courseId)?.tenantId).locked) throw new ApiError('academy_paused', 'Live classes from this academy are paused right now. Your recordings and lessons are still available.');
-    if (Date.now() < new Date(s.startsAt).getTime() - 10 * 6e4) throw new ApiError('too_early', 'The room opens 10 minutes before the class starts.');
+    // a class the teacher has already started is open, whatever the clock says
+    if (!db.liveMeta?.[sessionId] && Date.now() < new Date(s.startsAt).getTime() - 10 * 6e4) throw new ApiError('too_early', 'The room opens 10 minutes before the class starts.');
     if (!db.attendance.some((a) => a.userId === userId && a.sessionId === sessionId)) {
       db.attendance.push({ userId, sessionId, minutes: 0, joinedAt: new Date().toISOString() });
       persist();
     }
     // Seats: the first N learners get an interactive (WebRTC) seat; the rest watch the broadcast copy (live/scale.ts).
-    // Mock: the room already has 247 people (demo). Real: live_join_check counts interactive joins in Postgres.
-    const already = 247 + db.attendance.filter((a) => a.sessionId === sessionId && a.userId !== userId).length;
+    // Real count = learners who have joined this class (join log), not including this learner.
+    const already = db.attendance.filter((a) => a.sessionId === sessionId && a.userId !== userId).length;
     const seat = seatMode(already, { seats: db.platformConfig.liveInteractiveSeats ?? LIVE_SCALE.interactiveSeats });
-    // Mock room. Real backend: POST supabase/functions/live-token → { provider: 'livekit', url, token, mode, hlsUrl } (see docs/SCALE_10K.md).
-    return { provider: 'mock' as 'mock' | 'livekit', url: '', token: uid('room'), participants: already + 1, mode: seat, hlsUrl: seat === 'broadcast' ? `https://cdn.thebodhin.com/live/${sessionId}/index.m3u8` : undefined as string | undefined };
+    const media = await mediaToken(userId, sessionId, 'student');
+    return { ...media, participants: already + 1, mode: seat, hlsUrl: seat === 'broadcast' ? `https://cdn.thebodhin.com/live/${sessionId}/index.m3u8` : undefined as string | undefined, ...roomFacts(sessionId) };
+  },
+
+  /** Where a class stands right now, for the waiting room and the Live tab: not started / live / over. */
+  roomState(sessionId: string) {
+    const status = db.sessionStatus[sessionId] ?? db.classSessions.find((x) => x.id === sessionId)?.status;
+    const meta = db.liveMeta?.[sessionId] ?? null;
+    const settings = unified().find((x) => x.id === sessionId)?.settings ?? LIVE_DEFAULTS;
+    if (status === 'conducted') return { state: 'ended' as const, host: null, startedAt: null as string | null, settings };
+    if (status === 'cancelled') return { state: 'cancelled' as const, host: null, startedAt: null as string | null, settings };
+    if (status === 'live' && meta) return { state: 'live' as const, host: { id: meta.hostId, name: meta.hostName }, startedAt: meta.startedAt as string | null, settings };
+    return { state: 'waiting' as const, host: null, startedAt: null as string | null, settings };
   },
 
   leave(userId: string, sessionId: string, minutes: number) {
@@ -1981,7 +2048,7 @@ export const batchesApi = {
   importFromLive(sessionId: string): { personId: string; status: Mark; note?: string }[] {
     const rows = batchesApi.attendance(sessionId);
     return rows.map(({ person }, i) => {
-      const realJoin = person.userId ? db.attendance.find((a) => a.userId === person.userId) : null;
+      const realJoin = person.userId ? db.attendance.find((a) => a.userId === person.userId && a.sessionId === sessionId) : null;
       if (person.userId) return { personId: person.id, status: realJoin ? 'present' : 'absent', note: realJoin ? `Joined ${Math.max(1, realJoin.minutes)} min` : 'Did not join' };
       const k = (i * 7 + sessionId.length) % 20;
       return { personId: person.id, status: k === 0 ? 'absent' : k === 1 ? 'late' : 'present', note: k === 1 ? 'Joined 14 min late' : undefined };
@@ -2213,27 +2280,35 @@ export interface UnifiedSession {
   endsAt: string;
   mode: 'online' | 'offline';
   state: LiveState;
+  /** The educator pressed "Go live" and has not ended the class yet. Learners only see "Live now" when this is true. */
+  started: boolean;
+  startedAt?: string;
   instructorId?: string;
   settings: NonNullable<ClassSession['settings']>;
 }
 const LIVE_DEFAULTS = { record: true, saveToCourse: true, qa: true, chat: true, trackAttendance: true };
 
-function stateOf(startsAt: string, endsAt: string, stored?: 'scheduled' | 'conducted' | 'cancelled'): LiveState {
+/** A class the host started may overrun its slot by this much before it is treated as over. */
+const OVERRUN_MS = 30 * 6e4;
+function stateOf(startsAt: string, endsAt: string, stored?: 'scheduled' | 'live' | 'conducted' | 'cancelled'): LiveState {
   if (stored === 'cancelled') return 'cancelled';
   if (stored === 'conducted') return 'conducted';
   const now = Date.now();
+  if (stored === 'live') return now < new Date(endsAt).getTime() + OVERRUN_MS ? 'live' : 'conducted';
   if (now >= new Date(startsAt).getTime() && now < new Date(endsAt).getTime()) return 'live';
   if (now >= new Date(endsAt).getTime()) return 'conducted';
   return 'upcoming';
 }
+/** Is this class running because its host started it (not just because the clock is inside its slot)? */
+const isStarted = (id: string, stored?: string) => stored === 'live' && !!db.liveMeta?.[id];
 
 /** All live sessions (batch classes + course-wide sessions) normalised to one shape. */
 function unified(): UnifiedSession[] {
   const fromBatch = db.classSessions.map((s) => {
     const b = db.batches.find((x) => x.id === s.batchId);
-    return { id: s.id, kind: 'batch' as const, courseId: b?.courseId ?? '', batchId: s.batchId, batchName: b?.name, title: s.title, topic: s.topic, startsAt: s.startsAt, endsAt: s.endsAt, mode: s.mode, state: stateOf(s.startsAt, s.endsAt, s.status), instructorId: s.instructorId, settings: s.settings ?? LIVE_DEFAULTS };
+    return { id: s.id, kind: 'batch' as const, courseId: b?.courseId ?? '', batchId: s.batchId, batchName: b?.name, title: s.title, topic: s.topic, startsAt: s.startsAt, endsAt: s.endsAt, mode: s.mode, state: stateOf(s.startsAt, s.endsAt, s.status), started: isStarted(s.id, s.status), startedAt: db.liveMeta?.[s.id]?.startedAt, instructorId: s.instructorId, settings: s.settings ?? LIVE_DEFAULTS };
   });
-  const fromCourse = seedLive.map((s) => ({ id: s.id, kind: 'course' as const, courseId: s.courseId, title: s.title, topic: s.title, startsAt: s.startsAt, endsAt: s.endsAt, mode: 'online' as const, state: stateOf(s.startsAt, s.endsAt, db.sessionStatus[s.id]), settings: LIVE_DEFAULTS }));
+  const fromCourse = seedLive.map((s) => ({ id: s.id, kind: 'course' as const, courseId: s.courseId, title: s.title, topic: s.title, startsAt: s.startsAt, endsAt: s.endsAt, mode: 'online' as const, state: stateOf(s.startsAt, s.endsAt, db.sessionStatus[s.id]), started: isStarted(s.id, db.sessionStatus[s.id]), startedAt: db.liveMeta?.[s.id]?.startedAt, settings: LIVE_DEFAULTS }));
   return [...fromBatch, ...fromCourse];
 }
 
@@ -2266,11 +2341,13 @@ function clashText(c: Clash) {
 }
 
 export const liveAdmin = {
-  /** Host token. Real: POST live-token (role resolves to 'host' for the academy's educators). Mock: no media server. */
+  /** Host access to the room (media token). Only the academy's educators who teach this class get one. */
   async joinHost(userId: string, sessionId: string) {
-    await wait(300);
-    if (!canHost(userId, unified().find((x) => x.id === sessionId)!)) throw new ApiError('forbidden', 'You can’t host this class.');
-    return { provider: 'mock' as 'mock' | 'livekit', url: '', token: uid('host') };
+    await wait(120);
+    const s = unified().find((x) => x.id === sessionId);
+    if (!s || !canHost(userId, s)) throw new ApiError('forbidden', 'You can’t host this class.');
+    const media = await mediaToken(userId, sessionId, 'host');
+    return { ...media, ...roomFacts(sessionId) };
   },
   async list(userId: string) {
     await wait(220);
@@ -2367,19 +2444,36 @@ export const liveAdmin = {
     return { start: ws.toISOString(), days, total: days.reduce((n, d) => n + d.items.length, 0), clashes: rows.filter((r) => r.clash && new Date(r.startsAt) >= ws).length };
   },
 
-  /** Host goes live: learners get a "class is live" notification (real: push + realtime room). */
+  /**
+   * Host goes live. The class becomes "Live now" for learners, and every learner expected in it gets a notification
+   * with a link straight into the room. Calling it again for a class that is already live only re-attaches the host
+   * (no second notification), so a refresh or a dropped connection never spams students.
+   */
   start(userId: string, id: string) {
     const lc = educator.context(userId);
     if (lc?.locked) throw new ApiError('locked', `${lc.gate.title}. Live classes resume when you choose a plan.`);
     const r = liveAdmin.get(userId, id);
     if (!r) throw new ApiError('forbidden', 'You can’t host this class.');
-    if (r.session.kind === 'batch') {
-      const row = db.classSessions.find((x) => x.id === id)!;
-      if (row.status === 'cancelled') throw new ApiError('cancelled', 'This class was cancelled. Restore it from the batch schedule first.');
+    if (r.session.mode === 'offline') throw new ApiError('offline', 'This class is in person, so there is no online room to open.');
+    if (r.session.state === 'conducted') throw new ApiError('ended', 'This class has already ended.');
+    if (r.session.state === 'cancelled') throw new ApiError('cancelled', 'This class was cancelled. Restore it from the batch schedule first.');
+    if (!db.flags.liveClasses) throw new ApiError('paused', 'Live classes are paused by Bodhin right now.');
+    const first = !db.liveMeta[id];
+    const me = db.users.find((u) => u.id === userId);
+    // Another teacher of the same class took over (e.g. the first one lost their laptop): they become the host, no new alert.
+    if (!first && db.liveMeta[id].hostId !== userId) db.liveMeta[id] = { ...db.liveMeta[id], hostId: userId, hostName: me?.name ?? db.liveMeta[id].hostName };
+    if (first) {
+      db.liveMeta[id] = { hostId: userId, hostName: me?.name ?? 'Your instructor', startedAt: new Date().toISOString() };
+      if (r.session.kind === 'batch') db.classSessions.find((x) => x.id === id)!.status = 'live';
+      else db.sessionStatus[id] = 'live';
+      const link = { pathname: '/live-room/[id]', params: { id } };
+      r.audience.forEach((p) => {
+        if (!p.userId) return;
+        db.notifications.push({ id: uid('n'), userId: p.userId, kind: 'live', title: `${r.session.title} is live now`, body: `${db.liveMeta[id].hostName} has started the class. Tap to join.`, at: new Date().toISOString(), read: false, link });
+      });
     }
-    r.audience.forEach((p) => notifyPerson(p, 'Your class is live now', `${r.session.title} has started. Tap to join.`, 'live'));
     persist();
-    return r;
+    return { ...r, first };
   },
 
   /** Ends a class: attendance from join logs, live-hour usage, summary for the recording page. */
@@ -2387,6 +2481,7 @@ export const liveAdmin = {
     const r = liveAdmin.get(userId, id);
     if (!r) throw new ApiError('forbidden', 'You can’t end this class.');
     const s = r.session;
+    delete db.liveMeta[id];
     let attended = 0;
     if (s.kind === 'batch') {
       const row = db.classSessions.find((x) => x.id === id)!;
@@ -2408,8 +2503,8 @@ export const liveAdmin = {
     const course = r.course;
     db.sessionSummaries[id] = {
       sessionId: id, endedAt: new Date().toISOString(), durationSec: Math.max(60, data.elapsedSec), peak: data.peak, attended, total: r.audience.length,
-      text: `In this session we covered ${s.topic}. We walked through the key ideas with examples from ${course.title}, answered ${data.qa.length} questions and ran ${data.polls.length} live poll${data.polls.length === 1 ? '' : 's'}.`,
-      takeaways: [`${s.topic}: core concepts and where it fits`, 'A worked example you can reuse', 'Common mistakes and how to avoid them'],
+      text: `${s.topic}: held for ${Math.max(1, Math.round(data.elapsedSec / 60))} min. ${attended} of ${r.audience.length} students attended (${data.peak} at peak), ${data.qa.length} question${data.qa.length === 1 ? '' : 's'} asked and ${data.polls.length} poll${data.polls.length === 1 ? '' : 's'} run.`,
+      takeaways: [`${attended} of ${r.audience.length} students attended`, `${data.chatCount} chat message${data.chatCount === 1 ? '' : 's'}`, `${data.qa.length} question${data.qa.length === 1 ? '' : 's'} · ${data.polls.length} poll${data.polls.length === 1 ? '' : 's'}`],
       chapters: data.chapters.length ? data.chapters : [{ atSec: 0, label: 'Class introduction' }],
       materials: data.materials, qa: data.qa, polls: data.polls, chatCount: data.chatCount, recordingPublished: s.settings.record && s.settings.saveToCourse,
     };

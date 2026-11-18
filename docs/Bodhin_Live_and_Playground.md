@@ -4,6 +4,15 @@
 `livekit-client` SDK; every pixel (stage, chat, Q&A, polls, whiteboard, controls) is Bodhin's own UI, so no
 logo / watermark / "powered by" is drawn. (Jitsi and BigBlueButton were rejected: both ship their own UI and branding.)
 
+## How a class runs now (real, no scripted data)
+1. Educator opens **Live → Start class** → pre-join check (real camera preview, mic level meter, device choice) → **Go live**.
+2. Go live marks the class *live*, writes a "class is live now" notification for every learner in the class and announces it on the realtime channel. Learners see a **Live now** card + a banner with **Join** within seconds (and a browser notification if they allowed it).
+3. Learner lobby: camera/mic check → **Join class**. The teacher sees them in **People** (mic/camera state, raised hand); chat, Q&A, polls, whiteboard and "mute all / allow to speak" all run between the two sides.
+4. **End** tells everyone, marks attendance from who joined, stores the real duration/peak in the summary.
+
+**Media provider.** Default = built-in WebRTC room (`live/mesh.ts`): teacher ↔ each learner, signalled over `live/signal.ts` (BroadcastChannel for tabs of one browser + Supabase Realtime broadcast for other devices). Works for normal class sizes with no server; add a TURN server (`EXPO_PUBLIC_TURN_URL/USER/PASS`) for strict networks. For big classes set `EXPO_PUBLIC_LIVE_TOKEN_URL` to the endpoint that signs LiveKit tokens (see below): the same screens then run on LiveKit (`live/livekit.ts`).
+Not included in the built-in room: server-side recording (needs LiveKit Egress), learner-to-learner video, phone camera/mic (needs the dev build with native WebRTC).
+
 ## What runs where
 | Piece | File |
 |---|---|
