@@ -12,7 +12,7 @@ import type { Coupon, EducatorApplication, Role, Session, Tenant, User } from '@
 import { ROLE_PERMS, isAdminRole, type AdminPerm, type AdminRole, type AuditEntry } from '@/core/admin';
 import type { Category } from '@/core/catalog';
 import { resolveHost } from '@/core/tenant';
-import { COUPONS, allLessons, isPublished, onMarketplace, onWorkspace, matchesQuery, nextLesson, progressOf, ratingSplit, sortCourses, type Course, type CourseQuery, type Lesson, type Module, type Order, type PaymentMethod, type Review } from '@/core/catalog';
+import { COUPONS, allLessons, isPublished, onMarketplace, onWorkspace, matchesQuery, nextLesson, progressOf, ratingSplit, sortCourses, type Course, type CourseQuery, type Enrollment, type Lesson, type Module, type Order, type PaymentMethod, type Review } from '@/core/catalog';
 import { ADDON_CATALOG, ADDON_SIZES, MODULES, PLAN_FEATURES, daysLeft, entitlements, paymentRoute, payoutDateFor, planBlockers, splitOrder, subGate, usageReport, type Feature, type SubGate, type TenantSubscription } from '@/core/business';
 import { PLANS, type Plan, type PlanId } from '@/core/plans';
 import { attendancePct, batchStatus, generateSessions, weeksBetween, type Announcement, type AttendanceMark, type Batch, type Mark, type MemberStatus, type Person } from '@/core/batch';
@@ -20,6 +20,7 @@ import type { ClassSession, LiveSummary } from '@/core/batch';
 import { LIVE_SCALE, seatMode } from '@/live/scale';
 import { findClash, instructorClashIds, slotClashes, spanOf, weekDays, weekStart, type Clash } from '@/core/timetable';
 import { MAX_CODE_TESTS, rubricOf, score as scoreQuiz, type Assessment, type AssessStatus, type Attempt, type Question, type Submission } from '@/core/assess';
+import { sendEducatorApprovalEmail } from './mailer';
 
 /** Apply educator-created/edited courses on top of the demo catalogue (in place, so every reader sees them). */
 function syncCourses() {
@@ -74,8 +75,31 @@ const wait = (ms = 450) => new Promise((r) => setTimeout(r, ms));
 const publicUser = ({ password: _pw, ...u }: User & { password: string }): User => u;
 const normPhone = (p: string) => (p.startsWith('+') ? p : '+91' + p.replace(/\D/g, ''));
 
+function acceptPendingInvites(u: User) {
+  const email = u.email.toLowerCase();
+  const pending = db.invites.filter((i) => i.email.toLowerCase() === email);
+  if (!pending.length) return;
+
+  for (const inv of pending) {
+    if (!db.memberships.some((m) => m.userId === u.id && m.tenantId === inv.tenantId && m.role === 'tutor')) {
+      db.memberships.push({ userId: u.id, tenantId: inv.tenantId, role: 'tutor' });
+    }
+    for (const cid of inv.courseIds) {
+      if (!db.tutorAssignments.some((a) => a.userId === u.id && a.courseId === cid)) {
+        db.tutorAssignments.push({ userId: u.id, courseId: cid });
+      }
+    }
+    const usage = db.usage[inv.tenantId];
+    if (usage) usage.tutorSeats = Math.max(usage.tutorSeats ?? 1, db.memberships.filter((m) => m.tenantId === inv.tenantId && m.role === 'tutor').length + 1);
+    notifyUser(u.id, 'system', 'Tutor access granted 🎉', `You have been added as a tutor in ${db.tenants.find((t) => t.id === inv.tenantId)?.branding.displayName ?? 'the academy'}.`);
+  }
+  db.invites = db.invites.filter((i) => i.email.toLowerCase() !== email);
+  persist();
+}
+
 function sessionFor(userId: string): Session {
   const u = db.users.find((x) => x.id === userId)!;
+  if (u) acceptPendingInvites(u);
   return { user: publicUser(u), memberships: db.memberships.filter((m) => m.userId === userId), token: uid('tok') };
 }
 
@@ -95,24 +119,27 @@ async function resolveEmail(identifier: string) {
   return (await cloud.emailForPhone(id)) ?? findByIdentifier(id)?.email ?? null;
 }
 
-/** The app account for a Supabase Auth user — created on first sign-in (e.g. after confirming the email). */
+/**
+ * The app account for a Supabase Auth user, matched by the signed-in email (never by user metadata,
+ * which the user can edit). Created on first sign-in.
+ */
 async function ensureAppUser(au: { email?: string; user_metadata?: Record<string, unknown> } | null | undefined) {
-  if (!au) throw new ApiError('auth', 'Sign-in failed. Try again.');
+  if (!au?.email) throw new ApiError('auth', 'Sign-in failed. Try again.');
   const meta = (au.user_metadata ?? {}) as Record<string, string | undefined>;
-  const email = (au.email ?? '').toLowerCase();
-  let u = (meta.app_user_id && db.users.find((x) => x.id === meta.app_user_id)) || db.users.find((x) => x.email.toLowerCase() === email);
+  const email = au.email.toLowerCase();
+  let u = db.users.find((x) => x.email.toLowerCase() === email);
   if (!u) {
-    u = { id: meta.app_user_id || uid('u'), name: meta.name || email.split('@')[0], email, phone: meta.phone ? normPhone(meta.phone) : '', phoneVerified: false, password: '', createdAt: new Date().toISOString() };
+    u = { id: uid('u'), name: meta.name || email.split('@')[0], email, phone: meta.phone ? normPhone(meta.phone) : '', phoneVerified: false, password: '', createdAt: new Date().toISOString() };
     db.users.push(u);
     db.memberships.push({ userId: u.id, tenantId: 't_bodhin', role: 'student' });
     if (meta.role === 'tutor') db.applications.push({ id: uid('app'), userId: u.id, status: 'draft' });
     persist();
   }
-  if (meta.app_user_id !== u.id) cloud.linkAppUser(u.id).catch(() => {});
+  acceptPendingInvites(u);
   return u;
 }
 
-const BUSY = 'Too many new accounts were set up in the last hour. Please try again in a little while.';
+const BUSY = 'Lots of people are signing up right now. Please try again in a minute.';
 
 /** Sign-in against the shared database (Supabase Auth + Postgres): the same account and data on every device. */
 async function cloudSignIn(identifier: string, password: string): Promise<Session> {
@@ -123,13 +150,11 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
     // An account that so far exists only in this device's demo data (e.g. the seeded demo users) moves to the cloud on first sign-in.
     const local = findByIdentifier(email);
     if (local?.password && local.password === password) {
-      const up = await cloud.signUp(email, password, { name: local.name, phone: local.phone, app_user_id: local.id });
-      if ('needsConfirm' in up) throw new ApiError('confirm', `Confirm your email first: open the link we sent to ${email}, then sign in.`, 'identifier');
-      if (up.error && /rate_limit/.test(up.error)) throw new ApiError('busy', BUSY, 'identifier');
+      const up = await cloud.signUp(email, password, { name: local.name, phone: local.phone });
+      if (up.error === 'busy') throw new ApiError('busy', BUSY, 'identifier');
       if (!up.error) r = { user: up.user };
     }
   }
-  if (r.error && /rate_limit/.test(r.error)) throw new ApiError('busy', BUSY, 'identifier');
   if (r.error === 'email_not_confirmed') throw new ApiError('confirm', `Confirm your email first: open the link we sent to ${email}, then sign in.`, 'identifier');
   if (r.error) throw new ApiError('bad_password', 'Incorrect password. Try again or reset it.', 'password');
   const u = await ensureAppUser(r.user);
@@ -143,6 +168,17 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
 export const auth = {
   /** Current roles for a signed-in user (real: refresh the JWT so new claims, e.g. "approved educator", apply at once). */
   refreshMemberships: (userId: string) => (db.users.some((u) => u.id === userId) ? sessionFor(userId).memberships : null),
+  async setInitialPassword(userId: string, next: string): Promise<Session> {
+    await wait(300);
+    const u = db.users.find((x) => x.id === userId);
+    if (!u) throw new ApiError('not_found', 'User not found.');
+    if (next.length < 6) throw new ApiError('weak', 'Use at least 6 characters.', 'next');
+    u.password = next;
+    u.mustChangePassword = false;
+    delete (u as any).mustChangePassword;
+    persist();
+    return sessionFor(userId);
+  },
   async signIn(identifier: string, password: string): Promise<Session> {
     if (cloud.enabled) return cloudSignIn(identifier, password);
     await wait();
@@ -161,15 +197,10 @@ export const auth = {
     if (cloud.enabled) {
       if (await cloud.emailForPhone(phone)) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
       const up = await cloud.signUp(email, input.password, { name: input.name.trim(), phone, role: input.role });
-      if ('needsConfirm' in up) {
-        if (up.user && !up.user.identities?.length) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
-        throw new ApiError('confirm_email', `We sent a confirmation link to ${email}. Open it, then sign in.`, 'email');
-      }
       if (up.error) {
-        const msg = 'message' in up ? up.message : '';
-        if (/rate_limit/.test(up.error)) throw new ApiError('busy', BUSY, 'email');
-        if (/already|exists|registered/i.test(`${up.error} ${msg}`)) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
-        throw new ApiError('signup', msg || 'Could not create your account. Try again.');
+        if (up.error === 'email_exists') throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+        if (up.error === 'busy') throw new ApiError('busy', BUSY, 'email');
+        throw new ApiError('signup', up.message || 'Could not create your account. Try again.');
       }
       const user = await ensureAppUser(up.user);
       return { userId: user.id, otpSentTo: phone };
@@ -663,12 +694,28 @@ export const player = {
   },
 
   setComplete(userId: string, courseId: string, lessonId: string, done = true) {
-    const e = db.enrollments.find((x) => x.userId === userId && x.courseId === courseId);
-    if (!e) return;
-    const has = e.completedLessonIds.includes(lessonId);
-    if (done && !has) e.completedLessonIds.push(lessonId);
-    if (!done && has) e.completedLessonIds = e.completedLessonIds.filter((x) => x !== lessonId);
-    e.lastActiveAt = new Date().toISOString();
+    let e = db.enrollments.find((x) => x.userId === userId && x.courseId === courseId);
+    if (!e) {
+      const until = new Date();
+      until.setFullYear(until.getFullYear() + 1);
+      const newEnr: Enrollment = {
+        userId,
+        courseId,
+        enrolledAt: new Date().toISOString(),
+        validTill: until.toISOString(),
+        completedLessonIds: [],
+        lastLessonId: lessonId,
+        lastActiveAt: new Date().toISOString(),
+        source: 'direct',
+      };
+      db.enrollments.push(newEnr);
+      e = newEnr;
+    }
+    const target = e!;
+    const has = target.completedLessonIds.includes(lessonId);
+    if (done && !has) target.completedLessonIds.push(lessonId);
+    if (!done && has) target.completedLessonIds = target.completedLessonIds.filter((x) => x !== lessonId);
+    target.lastActiveAt = new Date().toISOString();
     persist();
     if (done && !has) fireProgress(userId, courseId);
   },
@@ -1032,6 +1079,7 @@ export const account = {
     if (patch.name.trim().length < 2) throw new ApiError('name', 'Enter your full name.', 'name');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(patch.email.trim())) throw new ApiError('email', 'Enter a valid email address.', 'email');
     if (db.users.some((x) => x.id !== userId && x.email === patch.email.trim().toLowerCase())) throw new ApiError('email_taken', 'Another account uses this email.', 'email');
+    if (cloud.enabled && patch.email.trim().toLowerCase() !== u.email.toLowerCase()) throw new ApiError('email_locked', 'Your sign-in email can’t be changed here yet. Contact support@thebodhin.com to change it.', 'email');
     u.name = patch.name.trim();
     u.email = patch.email.trim().toLowerCase();
     persist();
@@ -1872,6 +1920,17 @@ export const batchesApi = {
       const clash = lead && findClash(db.classSessions, db.batches, { batchId: b.id, instructorId: lead, span: spanOf(g) });
       if (clash) throw new ApiError('slots', clashText(clash).replace('Pick another time or instructor.', 'Change the weekly slot or the lead instructor.'), 'slots');
     }
+    // Plan limit: this month's online classes must fit the live room-hours left (later months use their own allowance).
+    const hours = ctx.usage.rows.find((r) => r.key === 'liveHours');
+    if (hours && hours.limit != null) {
+      const now = new Date();
+      const monthHours = gen
+        .filter((s) => s.mode === 'online' && new Date(s.startsAt).getMonth() === now.getMonth() && new Date(s.startsAt).getFullYear() === now.getFullYear())
+        .reduce((h, s) => h + (new Date(s.endsAt).getTime() - new Date(s.startsAt).getTime()) / 36e5, 0);
+      if (monthHours > 0 && hours.used + monthHours > hours.limit) {
+        throw new ApiError('limit', `This batch needs about ${Math.round(monthHours)} live room-hours this month, but only ${Math.max(0, Math.round((hours.limit - hours.used) * 10) / 10)} of ${hours.limit} h are left. Start it next month, add a live-hours top-up, or upgrade.`, 'slots');
+      }
+    }
     db.batches.push(b);
     db.classSessions.push(...gen);
     for (const pid of addPersonIds) {
@@ -2262,6 +2321,21 @@ export const liveAdmin = {
     const endsAt = new Date(start + input.durationMin * 6e4).toISOString();
     const clash = findClash(db.classSessions, db.batches, { batchId: b.id, instructorId: input.instructorId || null, span: { start, end: new Date(endsAt).getTime() } });
     if (clash) throw new ApiError('time', clashText(clash), 'time');
+    const targetInstructor = input.instructorId || b.instructorIds[0] || userId;
+    const end = start + input.durationMin * 6e4;
+    const liveClash = seedLive.find((s) => {
+      if (db.sessionStatus[s.id] === 'cancelled' || db.sessionStatus[s.id] === 'conducted') return false;
+      const sStart = new Date(s.startsAt).getTime();
+      const sEnd = new Date(s.endsAt).getTime();
+      if (!(sStart < end && start < sEnd)) return false;
+      const sCourse = seedCourses.find((x) => x.id === s.courseId) || db.courses.find((x) => x.id === s.courseId);
+      const sInst = sCourse?.tutorId || (sCourse?.tenantId && db.tenants.find((t) => t.id === sCourse.tenantId)?.ownerUserId);
+      return sInst === targetInstructor || sInst === userId;
+    });
+    if (liveClash) {
+      const at = new Date(liveClash.startsAt).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+      throw new ApiError('time', `${userName(targetInstructor)} is already teaching “${liveClash.title}” at ${at}. An instructor can only be assigned to one class at a time.`, 'time');
+    }
     if (input.mode === 'online') {
       const h = ctx.usage.rows.find((r) => r.key === 'liveHours')!;
       if (h.limit != null && h.used + input.durationMin / 60 > h.limit) throw new ApiError('limit', `Not enough live room-hours this month (${h.used} of ${h.limit} h used). Add a live-hours top-up or upgrade. Classes already scheduled are not affected.`);
@@ -2291,6 +2365,20 @@ export const liveAdmin = {
     const b = db.batches.find((x) => x.id === row.batchId)!;
     const clash = findClash(db.classSessions, db.batches, { batchId: row.batchId, instructorId: row.instructorId ?? b.instructorIds[0] ?? null, span: { start, end }, excludeId: id });
     if (clash) throw new ApiError('time', clashText(clash), 'time');
+    const targetInstructor = row.instructorId ?? b.instructorIds[0] ?? userId;
+    const liveClash = seedLive.find((s) => {
+      if (s.id === id || db.sessionStatus[s.id] === 'cancelled' || db.sessionStatus[s.id] === 'conducted') return false;
+      const sStart = new Date(s.startsAt).getTime();
+      const sEnd = new Date(s.endsAt).getTime();
+      if (!(sStart < end && start < sEnd)) return false;
+      const sCourse = seedCourses.find((x) => x.id === s.courseId) || db.courses.find((x) => x.id === s.courseId);
+      const sInst = sCourse?.tutorId || (sCourse?.tenantId && db.tenants.find((t) => t.id === sCourse.tenantId)?.ownerUserId);
+      return sInst === targetInstructor || sInst === userId;
+    });
+    if (liveClash) {
+      const at = new Date(liveClash.startsAt).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+      throw new ApiError('time', `${userName(targetInstructor)} is already teaching “${liveClash.title}” at ${at}. An instructor can only be assigned to one class at a time.`, 'time');
+    }
     if (row.mode === 'online') {
       const ctx = ctxOrThrow(userId);
       const h = ctx.usage.rows.find((x) => x.key === 'liveHours')!;
@@ -2304,6 +2392,50 @@ export const liveAdmin = {
     membersOf(b.id).filter((p) => memberEntry(p, b.id).status !== 'pending').forEach((p) => notifyPerson(p, 'Class time changed', `${row.title}: ${f(before)} → ${f(new Date(start))}`, 'live'));
     persist();
     return row;
+  },
+
+  /** Check if a proposed class time clashes with any existing class of the same instructor (live preview). */
+  checkClash(userId: string, input: { target: 'batch' | 'course'; courseId?: string; batchId?: string; instructorId?: string; startsAt: string; durationMin: number }): string | null {
+    const start = new Date(input.startsAt).getTime();
+    if (!Number.isFinite(start)) return null;
+    const end = start + (input.durationMin || 60) * 6e4;
+    const course = input.courseId ? (seedCourses.find((c) => c.id === input.courseId) || db.courses.find((c) => c.id === input.courseId)) : null;
+    const batch = input.batchId ? db.batches.find((b) => b.id === input.batchId) : null;
+    const targetInstructor = input.instructorId || course?.tutorId || batch?.instructorIds[0] || userId;
+
+    // 1. Check seedLive
+    const liveClash = seedLive.find((s) => {
+      if (db.sessionStatus[s.id] === 'cancelled' || db.sessionStatus[s.id] === 'conducted') return false;
+      const sStart = new Date(s.startsAt).getTime();
+      const sEnd = new Date(s.endsAt).getTime();
+      if (!(sStart < end && start < sEnd)) return false;
+      if (input.target === 'course' && s.courseId === input.courseId) return true;
+      const sCourse = seedCourses.find((x) => x.id === s.courseId) || db.courses.find((x) => x.id === s.courseId);
+      const sInst = sCourse?.tutorId || (sCourse?.tenantId && db.tenants.find((t) => t.id === sCourse.tenantId)?.ownerUserId);
+      return sInst === targetInstructor || sInst === userId;
+    });
+    if (liveClash) {
+      const at = new Date(liveClash.startsAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+      return `Clashes with “${liveClash.title}” (${at}). An instructor can only be assigned to one class at a time.`;
+    }
+
+    // 2. Check db.classSessions
+    const batchClash = db.classSessions.find((s) => {
+      if (s.status !== 'scheduled') return false;
+      const sStart = new Date(s.startsAt).getTime();
+      const sEnd = new Date(s.endsAt).getTime();
+      if (!(sStart < end && start < sEnd)) return false;
+      if (input.target === 'batch' && s.batchId === input.batchId) return true;
+      const b = db.batches.find((x) => x.id === s.batchId);
+      const bInst = s.instructorId || b?.instructorIds[0];
+      return bInst === targetInstructor || bInst === userId;
+    });
+    if (batchClash) {
+      const at = new Date(batchClash.startsAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+      return `Clashes with “${batchClash.title}” (${at}). An instructor can only be assigned to one class at a time.`;
+    }
+
+    return null;
   },
 
   /** Educator week timetable across every batch they can host, with instructor-clash flags. */
@@ -3135,9 +3267,54 @@ export const teamApi = {
     const email = input.email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new ApiError('email', 'Enter a valid email.', 'email');
     if (g.members.some((m) => m.u.email === email) || g.invites.some((i) => i.email === email)) throw new ApiError('email', 'This person is already on your team or invited.', 'email');
-    if (!input.courseIds.length) throw new ApiError('courses', 'Assign at least one course.', 'courses');
-    db.invites.push({ id: uid('iv'), tenantId: g.ctx.tenant.id, name: input.name.trim(), email, courseIds: input.courseIds, sentAt: new Date().toISOString() });
+    const courseIds = input.courseIds.length ? input.courseIds : (g.courses.length === 0 ? ['all'] : []);
+    if (!courseIds.length) throw new ApiError('courses', 'Assign at least one course.', 'courses');
+
+    // Generate temporary password for the invited tutor
+    const tempPassword = `Bodhin@${Math.floor(1000 + Math.random() * 9000)}`;
+
+    let tutorUser = db.users.find((u) => u.email.toLowerCase() === email);
+    if (!tutorUser) {
+      tutorUser = {
+        id: uid('u'),
+        name: input.name.trim(),
+        email,
+        phone: '',
+        phoneVerified: false,
+        password: tempPassword,
+        mustChangePassword: true,
+        createdAt: new Date().toISOString()
+      };
+      db.users.push(tutorUser);
+      db.memberships.push({ userId: tutorUser.id, tenantId: 't_bodhin', role: 'student' });
+    } else {
+      tutorUser.password = tempPassword;
+      tutorUser.mustChangePassword = true;
+    }
+
+    db.invites.push({ id: uid('iv'), tenantId: g.ctx.tenant.id, name: input.name.trim(), email, courseIds, sentAt: new Date().toISOString() });
+    acceptPendingInvites(tutorUser);
     persist();
+
+    // Send invitation email via SMTP
+    try {
+      const tenantName = g.ctx.tenant.branding.displayName;
+      const assignedCourseTitles = courseIds.includes('all') || !g.courses.length
+        ? 'All workspace courses (Co-instructor)'
+        : g.courses.filter((c) => courseIds.includes(c.id)).map((c) => c.title).join(', ');
+      fetch(`${process.env.EXPO_PUBLIC_MAILER_URL || 'http://localhost:3001'}/api/send-mail`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: email,
+          subject: `🎉 You have been invited as a Tutor at ${tenantName} - Bodhin`,
+          text: `Dear ${input.name},\n\nYou have been invited to join ${tenantName} as a Tutor on Bodhin.\n\nYour Login Credentials:\n- Login URL: http://localhost:8081/sign-in\n- Email (Gmail ID): ${email}\n- Temporary Password: ${tempPassword}\n\nAssigned Courses: ${assignedCourseTitles}\n\n* When you sign in, a popup will prompt you to set your own new password.\n\nWarm regards,\n${tenantName} & The Bodhin Team`,
+          html: `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #0B3B73; border-radius: 12px; background: #fff;"><div style="text-align: center; background: linear-gradient(135deg, #0B3B73 0%, #071F44 100%); padding: 20px; border-radius: 8px; color: #fff;"><h2 style="margin: 0;">🎉 Tutor Invitation</h2><p style="margin: 4px 0 0; color: #D99A1E; font-weight: bold;">${tenantName} &bull; Bodhin Platform</p></div><p style="margin-top: 20px; font-size: 15px;">Dear <strong>${input.name}</strong>,</p><p style="font-size: 15px; color: #334155;">You have been invited to join <strong>${tenantName}</strong> as a Tutor on Bodhin.</p><div style="background: #F1F5F9; border-left: 4px solid #D99A1E; padding: 12px 16px; margin: 16px 0; border-radius: 4px;"><p style="margin: 0; font-size: 14px;"><strong>Assigned Courses:</strong> ${assignedCourseTitles}</p></div><div style="background: #F8FAFC; border: 1.5px solid #0B3B73; border-radius: 10px; padding: 16px 18px; margin: 18px 0;"><h3 style="color: #0B3B73; margin: 0 0 10px 0; font-size: 16px;">🔐 Your Login Credentials</h3><p style="margin: 6px 0; font-size: 14px;"><strong>Login Portal:</strong> <a href="http://localhost:8081/sign-in" style="color: #0B3B73; font-weight: 600;">http://localhost:8081/sign-in</a></p><p style="margin: 6px 0; font-size: 14px;"><strong>Login Email (Gmail ID):</strong> <span style="font-family: monospace; background: #E2E8F0; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${email}</span></p><p style="margin: 6px 0; font-size: 14px;"><strong>Temporary Password:</strong> <span style="font-family: monospace; font-size: 16px; font-weight: bold; background: #FEF3C7; color: #92400E; padding: 3px 8px; border-radius: 4px; border: 1px dashed #D97706;">${tempPassword}</span></p><p style="margin: 12px 0 0; font-size: 13px; color: #DC2626; font-style: italic;">⚠️ Note: When you sign in, a popup will immediately prompt you to change this temporary password to your own new password.</p></div><div style="text-align: center; margin: 24px 0;"><a href="http://localhost:8081/sign-in" style="display: inline-block; background: #0B3B73; color: #fff !important; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">Log in to Tutor Dashboard &rarr;</a></div></div>`
+        })
+      }).catch(() => {});
+    } catch {}
+
+    return { tempPassword };
   },
   revoke(userId: string, inviteId: string) {
     const ctx = ownerOrThrow(userId);
@@ -3568,8 +3745,25 @@ export const approvals = {
     ensureTutorProfile(tid, u.id); // the new academy's own instructor card for course pages
     notifyUser(u.id, 'system', 'Your educator workspace is ready 🎉', `${slug}.thebodhin.com is live with a ${cfg.trialDays}-day free ${PLANS.find((p) => p.id === cfg.trialPlan)!.name} trial. Sign in again to open your dashboard.`);
     audit(userId, 'application.approve', { kind: 'application', id, label: a.workspaceName ?? u.name }, `Approved · created ${slug}.thebodhin.com with ${cfg.trialDays}-day trial`);
+
+    // Dispatch approval email via SMTP (from thebodhin@gmail.com with admin copy)
+    let emailResult = null;
+    try {
+      emailResult = await sendEducatorApprovalEmail({
+        educatorEmail: u.email,
+        educatorName: u.name,
+        workspaceName: a.workspaceName ?? `${u.name} Academy`,
+        slug,
+        trialDays: cfg.trialDays,
+        trialPlan: PLANS.find((p) => p.id === cfg.trialPlan)?.name ?? 'Growth',
+        adminEmail: 'thebodhin@gmail.com'
+      });
+    } catch (mailErr: any) {
+      console.warn('[SMTP Dispatch Notice] Could not complete mail dispatch:', mailErr?.message);
+    }
+
     persist();
-    return { slug, tenantId: tid };
+    return { slug, tenantId: tid, educatorEmail: u.email, emailResult };
   },
 
   async decideEducator(userId: string, id: string, decision: 'rejected' | 'changes_requested', note: string) {
@@ -4479,6 +4673,95 @@ import { PLAYGROUND_LIMITS as PG_LIM, ISSUE_TEXT as PG_ISSUE, validateProject as
 import { stackOf as pgStack } from '@/playground/stacks';
 import type { PFile } from '@/playground/stacks';
 import type { RunResult } from '@/playground/types';
+import { customErrors as pgCustomErrors, expandCustom as pgExpand, IO_STACKS as PG_IO_STACKS, starterTemplate as pgStarter, type CustomChallenge } from '@/playground/custom';
+
+/** Bodhin-team challenges join the built-in list (in place, so the list, challenge screen, checking and points all see them). */
+function syncPlaygroundChallenges() {
+  db.playgroundChallenges ??= [];
+  for (let i = PG_CHALLENGES.length - 1; i >= 0; i--) if (PG_CHALLENGES[i].custom) PG_CHALLENGES.splice(i, 1);
+  for (const c of db.playgroundChallenges) if (c.status === 'published') PG_CHALLENGES.push(...pgExpand(c));
+}
+syncPlaygroundChallenges();
+loadHooks.push(syncPlaygroundChallenges);
+
+type CustomInput = Omit<CustomChallenge, 'id' | 'status' | 'createdBy' | 'createdAt' | 'updatedAt'> & { id?: string };
+const nl = (v: string) => v.replace(/\r\n?/g, '\n');
+
+/** Super Admin → Playground challenges: add, edit, publish, unpublish, delete. */
+export const playgroundAdmin = {
+  list(userId: string) {
+    adminGuard(userId, 'content.bodhin');
+    return db.playgroundChallenges
+      .slice()
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map((c) => {
+        const ids = pgExpand(c).map((x) => x.id);
+        return { c, solvers: new Set(db.playgroundSolved.filter((s) => ids.includes(s.challengeId)).map((s) => s.userId)).size, langs: c.kind === 'sql' ? ['SQL'] : c.langs.map((l) => pgStack(l.stack)?.name ?? l.stack) };
+      });
+  },
+  get(userId: string, id: string) {
+    adminGuard(userId, 'content.bodhin');
+    return db.playgroundChallenges.find((c) => c.id === id) ?? null;
+  },
+  ioLanguages: () => PG_IO_STACKS.map((id) => pgStack(id)!).filter(Boolean),
+  starterFor: (stack: string) => pgStarter(stack),
+  /** Save as draft, or publish straight away (publishing needs tests / an expected result). */
+  save(userId: string, input: CustomInput, publish: boolean) {
+    adminGuard(userId, 'content.bodhin');
+    const ex = input.id ? db.playgroundChallenges.find((c) => c.id === input.id) : undefined;
+    if (input.id && !ex) throw new ApiError('not_found', 'This challenge was deleted.');
+    const langs = input.langs.filter((l, i, all) => all.findIndex((x) => x.stack === l.stack) === i).map((l) => ({ stack: l.stack, starter: nl(l.starter) }));
+    const clean: CustomInput = {
+      ...input,
+      title: input.title.trim(),
+      prompt: input.prompt.trim(),
+      points: Math.round(input.points),
+      langs: input.kind === 'io' ? langs : [],
+      tests: input.kind === 'io' ? input.tests.map((t, i) => ({ name: t.name?.trim() || `Test ${i + 1}`, stdin: nl(t.stdin), expect: nl(t.expect).replace(/\s+$/, '') })) : [],
+      setup: input.kind === 'sql' ? nl(input.setup ?? '') : undefined,
+      expect: input.kind === 'sql' ? input.expect ?? [] : undefined,
+      ordered: input.kind === 'sql' ? !!input.ordered : undefined,
+      sqlStarter: input.kind === 'sql' ? nl(input.sqlStarter ?? '') : undefined,
+      sqlSolution: input.kind === 'sql' ? nl(input.sqlSolution ?? '') : undefined,
+    };
+    const status = publish ? 'published' : ex?.status ?? 'draft';
+    const errs = pgCustomErrors(clean, status === 'published');
+    if (errs.length) throw new ApiError(errs[0].field, errs[0].msg, errs[0].field);
+    const taken = [...PG_CHALLENGES.filter((x) => !x.custom).map((x) => x.title), ...db.playgroundChallenges.filter((c) => c.id !== ex?.id).map((c) => c.title)];
+    if (taken.some((t) => t.toLowerCase() === clean.title.toLowerCase())) throw new ApiError('title', 'A challenge with this title already exists. Pick another title.', 'title');
+    const now = new Date().toISOString();
+    const rec: CustomChallenge = { ...(clean as Omit<CustomChallenge, 'id' | 'status' | 'createdBy' | 'createdAt' | 'updatedAt'>), id: ex?.id ?? Math.random().toString(36).slice(2, 8), status, createdBy: ex?.createdBy ?? userId, createdAt: ex?.createdAt ?? now, updatedAt: now };
+    if (ex) Object.assign(ex, rec);
+    else db.playgroundChallenges.push(rec);
+    audit(userId, ex ? 'playground.challenge.edit' : 'playground.challenge.create', { kind: 'playground', id: rec.id, label: rec.title }, `${ex ? 'Edited' : 'Added'} “${rec.title}” (${rec.kind === 'sql' ? 'SQL' : rec.langs.length + ' languages'}) · ${status}`);
+    persist();
+    syncPlaygroundChallenges();
+    return rec;
+  },
+  setStatus(userId: string, id: string, status: 'draft' | 'published') {
+    adminGuard(userId, 'content.bodhin');
+    const c = db.playgroundChallenges.find((x) => x.id === id);
+    if (!c) throw new ApiError('not_found', 'This challenge was deleted.');
+    if (status === 'published') {
+      const errs = pgCustomErrors(c, true);
+      if (errs.length) throw new ApiError(errs[0].field, errs[0].msg);
+    }
+    c.status = status;
+    c.updatedAt = new Date().toISOString();
+    audit(userId, status === 'published' ? 'playground.challenge.publish' : 'playground.challenge.unpublish', { kind: 'playground', id: c.id, label: c.title }, status === 'published' ? 'Published — learners can see it' : 'Moved to draft — hidden from learners');
+    persist();
+    syncPlaygroundChallenges();
+  },
+  remove(userId: string, id: string) {
+    adminGuard(userId, 'content.bodhin');
+    const c = db.playgroundChallenges.find((x) => x.id === id);
+    if (!c) return;
+    db.playgroundChallenges = db.playgroundChallenges.filter((x) => x.id !== id);
+    audit(userId, 'playground.challenge.delete', { kind: 'playground', id: c.id, label: c.title }, 'Deleted (learners keep the points they earned)');
+    persist();
+    syncPlaygroundChallenges();
+  },
+};
 
 type PgTransport = (req: { language: string; files: { name: string; code: string }[]; stdins: string[] }) => Promise<{ results: PistonResp[]; runsLeft?: number }>;
 /** Real: POST supabase/functions/playground-run (Piston behind it). Preview: no code server → a clear "not connected" answer, nothing is charged. */

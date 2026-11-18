@@ -45,18 +45,39 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const width = useRef(1);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const barRef = useRef<any>(null);
 
   const videoSrc = lesson.videoUri || course.intro?.uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
+  const setMediaTime = (targetTime: number) => {
+    if (!isFinite(targetTime) || isNaN(targetTime)) return;
+    const safeTime = Math.max(0, Math.min(duration - 1, targetTime));
+    setT(safeTime);
+    if (Platform.OS === 'web' && videoRef.current) {
+      if (videoRef.current.readyState >= 1) {
+        try {
+          videoRef.current.currentTime = safeTime;
+        } catch (e) {
+          // ignore seek error
+        }
+      }
+    }
+  };
+
   // reset when lesson changes
   useEffect(() => {
-    setT(Math.min(startAt, duration - 1));
+    const initialT = Math.min(startAt, duration - 1);
+    setT(initialT);
     setPlaying(false);
     setRealPlaying(false);
     setVideoError(false);
     setChrome(true);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = Math.min(startAt, duration - 1);
+    if (Platform.OS === 'web' && videoRef.current && videoRef.current.readyState >= 1) {
+      try {
+        videoRef.current.currentTime = initialT;
+      } catch (e) {
+        // ignore
+      }
     }
   }, [lesson.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -106,11 +127,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   }, [playing, chrome]);
 
   const seek = (d: number) => {
-    const nextT = Math.max(0, Math.min(duration - 1, t + d));
-    setT(nextT);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = nextT;
-    }
+    setMediaTime(t + d);
   };
 
   /** Single tap toggles controls; double tap on left/right third seeks ∓10s. */
@@ -133,12 +150,22 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
     }, 290);
   };
 
-  const scrub = (e: GestureResponderEvent) => {
-    const nextT = Math.max(0, Math.min(duration - 1, (e.nativeEvent.locationX / barW) * duration));
-    setT(nextT);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = nextT;
+  const scrub = (e: any) => {
+    let ratio = 0;
+    if (Platform.OS === 'web') {
+      const native = e.nativeEvent || e;
+      const clientX = native.clientX ?? (native.touches && native.touches[0]?.clientX);
+      const rect = barRef.current?.getBoundingClientRect ? barRef.current.getBoundingClientRect() : null;
+      if (rect && clientX != null && rect.width > 0) {
+        ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      } else if (barW > 0) {
+        ratio = Math.max(0, Math.min(1, (native.locationX ?? 0) / barW));
+      }
+    } else if (barW > 0) {
+      ratio = Math.max(0, Math.min(1, (e.nativeEvent?.locationX ?? 0) / barW));
     }
+    const nextT = ratio * duration;
+    setMediaTime(nextT);
   };
   const pct = (t / duration) * 100;
 
@@ -152,13 +179,23 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
         React.createElement('video', {
           ref: (el: HTMLVideoElement | null) => {
             videoRef.current = el;
-            if (el && startAt > 0 && Math.abs(el.currentTime - startAt) > 1) {
-              el.currentTime = startAt;
-            }
           },
           src: videoSrc,
           playsInline: true,
           preload: 'auto',
+          onLoadedMetadata: (e: React.SyntheticEvent<HTMLVideoElement>) => {
+            const el = e.currentTarget;
+            if (startAt > 0 && isFinite(startAt)) {
+              const dur = el.duration || duration;
+              const target = Math.max(0, Math.min(startAt, dur - 1));
+              try {
+                el.currentTime = target;
+                setT(target);
+              } catch (err) {
+                // ignore
+              }
+            }
+          },
           onPlay: () => { setPlaying(true); setRealPlaying(true); },
           onPause: () => { setPlaying(false); setRealPlaying(false); },
           onError: () => setVideoError(true),
@@ -234,8 +271,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
             <Pressable
               onPress={() => {
                 if (t >= duration - 1) {
-                  setT(0);
-                  if (videoRef.current) videoRef.current.currentTime = 0;
+                  setMediaTime(0);
                 }
                 setPlaying((p) => !p);
               }}
@@ -252,6 +288,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
 
           <View style={styles.bottom} pointerEvents="box-none">
             <Pressable
+              ref={barRef}
               onLayout={(e) => setBarW(e.nativeEvent.layout.width)}
               onPress={scrub}
               onResponderMove={scrub}
@@ -260,10 +297,10 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
               accessibilityRole="adjustable"
               accessibilityLabel={`Position ${fmt(t)} of ${fmt(duration)}`}
             >
-              <View style={styles.track}>
-                <View style={[styles.fill, { width: `${pct}%` }]} />
+              <View style={styles.track} pointerEvents="none">
+                <View style={[styles.fill, { width: `${pct}%` }]} pointerEvents="none" />
               </View>
-              <View style={[styles.knob, { left: `${pct}%` }]} />
+              <View style={[styles.knob, { left: `${pct}%` }]} pointerEvents="none" />
             </Pressable>
             <View style={styles.timeRow}>
               <Txt variant="caption" color="#fff" style={{ fontVariant: ['tabular-nums'] }}>
@@ -296,7 +333,7 @@ const styles = StyleSheet.create({
   big: { width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(0,0,0,0.45)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center' },
   small: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   bottom: { paddingHorizontal: 14, paddingBottom: 8 },
-  barHit: { height: 28, justifyContent: 'center' },
+  barHit: { height: 28, justifyContent: 'center', cursor: 'pointer' as any },
   track: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.35)', overflow: 'hidden' },
   fill: { height: 4, backgroundColor: '#F5A524' },
   knob: { position: 'absolute', width: 16, height: 16, borderRadius: 8, marginLeft: -8, backgroundColor: '#F5A524', top: 6 },

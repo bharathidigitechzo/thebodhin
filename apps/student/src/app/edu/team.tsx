@@ -42,9 +42,9 @@ export default function Team() {
     setBusy(true);
     setFe(null);
     try {
-      await teamApi.invite(userId, f);
+      const res = await teamApi.invite(userId, f);
       setInv(false);
-      setMsg(`Invite sent to ${f.email}. They join with their own Bodhin login.`);
+      setMsg(`Invite sent to ${f.email}. Login credentials emailed (Temp password: ${res?.tempPassword || 'emailed'}).`);
       load();
     } catch (e) {
       setFe(e instanceof ApiError ? { field: e.field, msg: e.message } : { msg: 'Could not invite.' });
@@ -119,15 +119,37 @@ export default function Team() {
       </SafeAreaView>
 
       <BottomSheet open={inv} onClose={() => setInv(false)} title="Invite a tutor" footer={<Button title="Send invite" size="md" loading={busy} style={{ flex: 1 }} onPress={invite} />}>
-        <View style={{ gap: 10 }}>
-          <TextField label="Name" value={f.name} onChangeText={(v) => setF({ ...f, name: v })} error={fe?.field === 'name' ? fe.msg : undefined} />
-          <TextField label="Email" value={f.email} onChangeText={(v) => setF({ ...f, email: v })} keyboardType="email-address" autoCapitalize="none" error={fe?.field === 'email' ? fe.msg : undefined} />
+        <View style={{ gap: 12 }}>
+          <TextField label="Name" value={f.name} onChangeText={(v) => setF({ ...f, name: v })} error={fe?.field === 'name' ? fe.msg : undefined} placeholder="e.g. Bharathi P" />
+          <TextField label="Email" value={f.email} onChangeText={(v) => setF({ ...f, email: v })} keyboardType="email-address" autoCapitalize="none" error={fe?.field === 'email' ? fe.msg : undefined} placeholder="e.g. bharathidigitechzo@gmail.com" />
           <Txt variant="label">Courses they’ll teach</Txt>
-          {d.courses.map((co) => (
-            <Checkbox key={co.id} label={co.title} checked={f.courseIds.includes(co.id)} onChange={(v) => setF({ ...f, courseIds: v ? [...f.courseIds, co.id] : f.courseIds.filter((x) => x !== co.id) })}>
-              <Txt variant="label" style={{ flex: 1 }}>{co.title}</Txt>
-            </Checkbox>
-          ))}
+          {d.courses.length === 0 ? (
+            <View style={{ backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, gap: 6, borderWidth: 1, borderColor: c.border }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="sparkles" size={18} color={c.primary} />
+                <Txt variant="bodyStrong">All workspace courses (Co-instructor)</Txt>
+              </View>
+              <Txt variant="caption" color={c.inkSoft}>
+                You haven’t created specific courses in this workspace yet. When you invite this tutor, they will automatically be granted teaching access to all courses created in this academy.
+              </Txt>
+            </View>
+          ) : (
+            <View style={{ gap: 8 }}>
+              <Checkbox
+                label="Select all courses"
+                checked={d.courses.length > 0 && f.courseIds.length === d.courses.length}
+                onChange={(v) => setF({ ...f, courseIds: v ? d.courses.map((co) => co.id) : [] })}
+              >
+                <Txt variant="bodyStrong">Select all courses ({d.courses.length})</Txt>
+              </Checkbox>
+              <View style={{ height: 1, backgroundColor: c.border, marginVertical: 2 }} />
+              {d.courses.map((co) => (
+                <Checkbox key={co.id} label={co.title} checked={f.courseIds.includes(co.id)} onChange={(v) => setF({ ...f, courseIds: v ? [...f.courseIds, co.id] : f.courseIds.filter((x) => x !== co.id) })}>
+                  <Txt variant="label" style={{ flex: 1 }}>{co.title}</Txt>
+                </Checkbox>
+              ))}
+            </View>
+          )}
           {fe && (fe.field === 'courses' || !fe.field) && <Banner text={fe.msg} />}
         </View>
       </BottomSheet>

@@ -199,10 +199,19 @@ export const cloud = {
     watchForeground();
     return { user: data.user };
   },
+  /**
+   * Creates the account through public.app_sign_up (already confirmed, no email sent), then signs in.
+   * Supabase's own signUp sends a confirmation email, and its built-in mailer allows only a few an hour —
+   * that failed every new learner and educator with "email rate limit exceeded".
+   */
   async signUp(email: string, password: string, meta: Record<string, string>) {
-    const { data, error } = await sb()!.auth.signUp({ email, password, options: { data: meta } });
+    const { error: rpcError } = await sb()!.rpc('app_sign_up', { p_email: email, p_password: password, p_meta: meta });
+    if (rpcError) {
+      const m = rpcError.message ?? '';
+      return { error: /email_taken/.test(m) ? 'email_exists' : /busy/.test(m) ? 'busy' : rpcError.code ?? 'signup_failed', message: /email_taken|busy/.test(m) ? '' : m };
+    }
+    const { data, error } = await sb()!.auth.signInWithPassword({ email, password });
     if (error) return { error: error.code ?? error.message, message: error.message };
-    if (!data.session) return { needsConfirm: true as const, user: data.user };
     await pull();
     watchForeground();
     return { user: data.user };
@@ -210,9 +219,6 @@ export const cloud = {
   async authUser() {
     const { data } = await sb()!.auth.getUser();
     return data.user;
-  },
-  async linkAppUser(appUserId: string) {
-    await sb()!.auth.updateUser({ data: { app_user_id: appUserId } });
   },
   async emailForPhone(phone: string) {
     const { data } = await sb()!.rpc('login_email', { p_phone: phone });

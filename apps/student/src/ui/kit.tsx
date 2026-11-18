@@ -245,7 +245,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: { open: 
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
       </Animated.View>
       <Animated.View
-        pointerEvents="box-none"
+        pointerEvents="auto"
         style={[
           dialog ? [styles.dialog, { backgroundColor: c.surface, maxHeight: height * 0.86, top: height * 0.07, opacity: y.interpolate({ inputRange: [0, height], outputRange: [1, 0] }), transform: [{ scale: y.interpolate({ inputRange: [0, height], outputRange: [1, 0.96] }) }] }]
                  : [styles.sheet, { backgroundColor: c.surface, paddingBottom: Math.max(insets.bottom, 12), maxHeight: height * 0.88, transform: [{ translateY: y }] }],
@@ -261,7 +261,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: { open: 
             </Pressable>
           </View>
         </View>
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12, gap: 18 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ flexShrink: 1, maxHeight: height * 0.62 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 16, gap: 14 }} showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
         {footer && <View style={[styles.sheetFooter, { borderTopColor: c.border }]}>{footer}</View>}
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, minHeight: 42, borderRadius: radius.pill, borderWidth: 1.2 },
   deskSearch: { flex: 1, maxWidth: 520, marginRight: 'auto', flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14 },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 28, borderTopRightRadius: 28, width: '100%', maxWidth: 640, alignSelf: 'center' },
-  dialog: { position: 'absolute', alignSelf: 'center', width: '92%', maxWidth: 600, borderRadius: 24, paddingBottom: 12, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 40, shadowOffset: { width: 0, height: 16 } },
+  dialog: { position: 'absolute', alignSelf: 'center', width: '92%', maxWidth: 600, borderRadius: 24, paddingBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 40, shadowOffset: { width: 0, height: 16 } },
   sheetTop: { paddingTop: 10, paddingHorizontal: 20, paddingBottom: 8 },
   handle: { width: 44, height: 5, borderRadius: 3, alignSelf: 'center', marginBottom: 12 },
   sheetTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

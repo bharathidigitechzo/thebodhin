@@ -67,6 +67,31 @@ function A(): AcademyDb {
 /* Course-wide live classes scheduled here join the shared catalogue (Live tab, home, timetable all read seedLive). */
 for (const s of A().courseLive) if (!seedLive.some((x) => x.id === s.id)) seedLive.push(s);
 
+// Auto-resolve any existing schedule clashes in persisted courseLive
+for (const s of A().courseLive) {
+  const sStart = new Date(s.startsAt).getTime();
+  const sEnd = new Date(s.endsAt).getTime();
+  const course = seedCourses.find((c) => c.id === s.courseId) || db.courses.find((c) => c.id === s.courseId);
+  const instructor = course?.tutorId || 'u_rajesh';
+
+  const conflict = seedLive.find((other) => {
+    if (other.id === s.id || A().liveCancelled[other.id] || db.sessionStatus[other.id] === 'cancelled' || db.sessionStatus[other.id] === 'conducted') return false;
+    const oStart = new Date(other.startsAt).getTime();
+    const oEnd = new Date(other.endsAt).getTime();
+    if (!(oStart < sEnd && sStart < oEnd)) return false;
+    const oCourse = seedCourses.find((c) => c.id === other.courseId) || db.courses.find((c) => c.id === other.courseId);
+    const oInstructor = oCourse?.tutorId || 'u_rajesh';
+    return oInstructor === instructor;
+  });
+  if (conflict) {
+    const dur = sEnd - sStart;
+    const newStart = new Date(new Date(conflict.endsAt).getTime() + 30 * 6e4); // 30 mins after conflict ends (e.g. 20:30)
+    s.startsAt = newStart.toISOString();
+    s.endsAt = new Date(newStart.getTime() + dur).toISOString();
+    persist();
+  }
+}
+
 const courseOf = (id: string) => seedCourses.find((c) => c.id === id) ?? null;
 const userOf = (id: string) => db.users.find((u) => u.id === id) ?? null;
 const nameOf = (id: string) => userOf(id)?.name ?? 'Learner';
@@ -455,8 +480,55 @@ export const courseLive = {
     if (!Number.isFinite(start) || start < Date.now() + 5 * 6e4) throw new ApiError('time', 'Pick a start time at least 5 minutes from now.', 'time');
     if (!(input.durationMin >= 15 && input.durationMin <= 300)) throw new ApiError('time', 'Classes run 15 minutes to 5 hours.', 'time');
     const end = start + input.durationMin * 6e4;
-    const clash = seedLive.find((s) => s.courseId === c.id && !A().liveCancelled[s.id] && db.sessionStatus[s.id] !== 'cancelled' && new Date(s.startsAt).getTime() < end && start < new Date(s.endsAt).getTime());
-    if (clash) throw new ApiError('time', `Clashes with “${clash.title}” for this course (${fmt(clash.startsAt)}). Pick another time.`, 'time');
+    // Plan limit: live room-hours this month (100% policy — classes already scheduled are not affected).
+    const hours = ctx.usage.rows.find((r) => r.key === 'liveHours');
+    if (hours && hours.limit != null && hours.used + input.durationMin / 60 > hours.limit) {
+      throw new ApiError('limit', `Not enough live room-hours this month (${hours.used} of ${hours.limit} h used). Add a live-hours top-up or upgrade in Subscription & usage.`);
+    }
+    const instructorId = c.tutorId || userId;
+    const instructorName = userOf(instructorId)?.name || 'This instructor';
+
+    // 1. Check against other course-wide sessions (same course, or same instructor/educator)
+    const liveSessionClash = seedLive.find((s) => {
+      if (A().liveCancelled[s.id] || db.sessionStatus[s.id] === 'cancelled' || db.sessionStatus[s.id] === 'conducted') return false;
+      const sStart = new Date(s.startsAt).getTime();
+      const sEnd = new Date(s.endsAt).getTime();
+      if (!(sStart < end && start < sEnd)) return false;
+      if (s.courseId === c.id) return true;
+      const otherCourse = seedCourses.find((x) => x.id === s.courseId) || db.courses.find((x) => x.id === s.courseId);
+      const otherInstructor = otherCourse?.tutorId || (otherCourse?.tenantId && db.tenants.find((t) => t.id === otherCourse.tenantId)?.ownerUserId);
+      return otherInstructor === instructorId || otherInstructor === userId || otherCourse?.tenantId === c.tenantId;
+    });
+    if (liveSessionClash) {
+      throw new ApiError('time', `${instructorName} is already assigned to “${liveSessionClash.title}” (${fmt(liveSessionClash.startsAt)}). An educator or tutor can only have one class assigned at a time. Pick another time.`, 'time');
+    }
+
+    // 2. Check against batch live classes in db.classSessions
+    const batchSessionClash = db.classSessions.find((s) => {
+      if (s.status !== 'scheduled') return false;
+      const sStart = new Date(s.startsAt).getTime();
+      const sEnd = new Date(s.endsAt).getTime();
+      if (!(sStart < end && start < sEnd)) return false;
+      const b = db.batches.find((x) => x.id === s.batchId);
+      const batchInstructor = s.instructorId || b?.instructorIds[0];
+      return batchInstructor === instructorId || batchInstructor === userId;
+    });
+    if (batchSessionClash) {
+      throw new ApiError('time', `${instructorName} is already teaching batch class “${batchSessionClash.title}” (${fmt(batchSessionClash.startsAt)}). An instructor can only be assigned to one class at a time. Pick another time.`, 'time');
+    }
+
+    // 3. Check against confirmed 1:1 mentorship bookings
+    const mentorClash = A().mentor.find((m) => {
+      if (m.status !== 'accepted' || !m.startsAt) return false;
+      const mStart = new Date(m.startsAt).getTime();
+      const mEnd = mStart + (m.durationMin || 30) * 6e4;
+      if (!(mStart < end && start < mEnd)) return false;
+      return m.mentorUserId === instructorId || m.mentorUserId === userId;
+    });
+    if (mentorClash) {
+      throw new ApiError('time', `${instructorName} has a 1:1 mentorship session at this time (${fmt(mentorClash.startsAt!)}). Pick another time.`, 'time');
+    }
+
     const s: LiveSession = { id: uid('cl'), courseId: c.id, title: input.title.trim(), startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), registeredUserIds: [] };
     A().courseLive.push(s);
     seedLive.push(s);

@@ -50,6 +50,7 @@ export default function AdminMore() {
                 <Row icon="layers-outline" title="Bodhin’s own courses" sub="Sold by Bodhin, 100% to Bodhin" onPress={() => router.push('/admin/content')} />
                 <Row icon="add-circle-outline" title="Create course" sub="Same course builder as educators" onPress={() => router.push('/edu/new-course')} />
                 <Row icon="help-circle-outline" title="Quizzes & assignments" sub="Create, assign to a course, see results" onPress={() => router.push('/edu/assess')} />
+                <Row icon="code-slash-outline" title="Playground challenges" sub="Add coding & SQL challenges for every learner" onPress={() => router.push('/admin/playground')} />
                 <Row icon="radio-outline" title="Live classes for Bodhin courses" sub="Schedule, notify buyers, go live, cancel" onPress={() => router.push('/admin/classes')} />
                 <Row icon="person-circle-outline" title="1:1 mentorship" sub="Requests from learners · accept or decline" onPress={() => router.push('/edu/mentorship')} />
                 <Row icon="ribbon-outline" title="Certificate management" sub="Approve certificates · templates and designs" onPress={() => router.push('/edu/certificates')} />

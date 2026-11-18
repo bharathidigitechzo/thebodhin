@@ -36,7 +36,7 @@ export default function BatchesTab() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <View style={[styles.head, wide && { maxWidth: 1080 }]}>
-          <AppHeader profileHref="/educator/more" action={owner ? { title: seg === 'batches' ? 'New batch' : 'Invite students', icon: seg === 'batches' ? 'add' : 'person-add', onPress: () => (seg === 'batches' ? (ctx?.ent.has('batches') ? router.push('/edu/batch-new') : router.push({ pathname: '/educator-soon', params: { f: 'Upgrade to use batches', step: 'E6' } })) : setInvite(true)) } : undefined} />
+          <AppHeader profileHref="/educator/more" action={owner ? { title: seg === 'batches' ? 'New batch' : 'Invite students', icon: seg === 'batches' ? 'add' : 'person-add', onPress: () => (seg === 'batches' ? (ctx?.ent.has('batches') ? router.push('/edu/batch-new') : router.push({ pathname: '/edu/subscription', params: { reason: 'Batches are available from the Creator plan. Upgrade to create batches.' } })) : setInvite(true)) } : undefined} />
           <TwoTone lead={seg === 'batches' ? 'Batches &' : 'Your'} accent={seg === 'batches' ? 'Cohorts' : 'Students'} variant="title" />
           <View style={[styles.seg, { backgroundColor: c.surfaceMuted }]} accessibilityRole="tablist">
             {(['batches', 'students'] as const).map((s) => (
@@ -50,7 +50,7 @@ export default function BatchesTab() {
 
         {owner && !isDesktop && (
           <Pressable
-            onPress={() => (seg === 'batches' ? (ctx?.ent.has('batches') ? router.push('/edu/batch-new') : router.push({ pathname: '/educator-soon', params: { f: 'Upgrade to use batches', step: 'E6' } })) : setInvite(true))}
+            onPress={() => (seg === 'batches' ? (ctx?.ent.has('batches') ? router.push('/edu/batch-new') : router.push({ pathname: '/edu/subscription', params: { reason: 'Batches are available from the Creator plan. Upgrade to create batches.' } })) : setInvite(true))}
             style={[styles.fab, { backgroundColor: c.primary }]}
             accessibilityRole="button"
           >
