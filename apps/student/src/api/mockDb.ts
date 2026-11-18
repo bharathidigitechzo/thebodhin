@@ -479,7 +479,23 @@ function load(): Db {
   if (canPersist) {
     try {
       const raw = window.localStorage.getItem(KEY);
-      if (raw) return fixSavedCertificates({ ...seed(), ...(JSON.parse(raw) as Db) }); // new fields fall back to seed defaults
+      if (raw) {
+        const parsed = JSON.parse(raw) as Db;
+        const initial = seed();
+        const mergedUsers = [...(parsed.users || [])];
+        for (const u of initial.users) {
+          if (!mergedUsers.some((x) => x.id === u.id || x.email.toLowerCase() === u.email.toLowerCase())) {
+            mergedUsers.push(u);
+          }
+        }
+        const mergedMemberships = [...(parsed.memberships || [])];
+        for (const m of initial.memberships) {
+          if (!mergedMemberships.some((x) => x.userId === m.userId && x.tenantId === m.tenantId && x.role === m.role)) {
+            mergedMemberships.push(m);
+          }
+        }
+        return fixSavedCertificates({ ...initial, ...parsed, users: mergedUsers, memberships: mergedMemberships });
+      }
     } catch {
       /* storage blocked → fall back to seed */
     }

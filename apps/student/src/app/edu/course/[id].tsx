@@ -80,7 +80,7 @@ export default function CourseBuilder() {
   const save = (silent = false) => {
     try {
       const base: Partial<Course> = { title: c.title, subtitle: c.subtitle, description: c.description, categoryId: c.categoryId, level: c.level, language: c.language, art: c.art, intro: c.intro, outcomes: c.outcomes.filter((o) => o.trim()) };
-      const pricing: Partial<Course> = owner ? { priceInr: c.priceInr, compareAtInr: c.compareAtInr, offerEndsAt: c.offerEndsAt, format: c.format, accessMonths: c.accessMonths, drip: c.drip, ...(meta.state === 'draft' ? { visibility: c.visibility } : {}) } : {};
+      const pricing: Partial<Course> = owner ? { priceInr: c.priceInr, compareAtInr: c.compareAtInr, offerEndsAt: c.offerEndsAt, format: c.format, accessMonths: c.accessMonths, drip: c.drip, visibility: c.visibility } : {};
       const saved = courseAdmin.update(userId, c.id, { ...base, ...pricing });
       setC(saved);
       if (!silent) flash('Saved');
@@ -770,7 +770,6 @@ function Pricing({ c, set, state, payReady, host }: { c: Course; set: (p: Partia
       </Section>
 
       <Section icon="storefront-outline" title="Where to sell" sub="Private by default. Listing and promotion are separate choices you can change any time.">
-        {published && <Banner tone="info" text="Change listing for a published course from My Courses → course menu." />}
         {([
           ['private', 'lock-closed-outline', 'Only my students', `Sell on ${host} and private links. You collect the payment directly. No commission.`],
           ['public', 'storefront-outline', 'Also list on Bodhin marketplace', 'Bodhin reviews it first (24–48 h). Sales made on Bodhin are collected by Bodhin and paid out to you after commission.'],
@@ -778,7 +777,7 @@ function Pricing({ c, set, state, payReady, host }: { c: Course; set: (p: Partia
         ] as const).map(([v, icon, l, sub]) => {
           const on = c.visibility === v;
           return (
-            <Pressable key={v} disabled={published} onPress={() => set({ visibility: v })} style={[styles.sell, { borderColor: on ? t.primary : t.border, backgroundColor: on ? t.primarySoft : t.surface, opacity: published && !on ? 0.5 : 1 }, on && { borderWidth: 2 }]} accessibilityRole="radio" accessibilityState={{ checked: on, disabled: published }}>
+            <Pressable key={v} onPress={() => set({ visibility: v })} style={[styles.sell, { borderColor: on ? t.primary : t.border, backgroundColor: on ? t.primarySoft : t.surface }, on && { borderWidth: 2 }]} accessibilityRole="radio" accessibilityState={{ checked: on }}>
               <Ionicons name={icon} size={24} color={t.primary} />
               <View style={{ flex: 1 }}>
                 <Txt variant="bodyStrong">{l}</Txt>
