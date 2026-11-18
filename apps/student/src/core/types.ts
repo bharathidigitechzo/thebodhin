@@ -12,6 +12,7 @@ export interface User {
   phoneVerified: boolean;
   avatarUrl?: string;
   createdAt: string;
+  mustChangePassword?: boolean;
 }
 
 /** A user's role inside one workspace (a user can belong to several tenants). */

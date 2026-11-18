@@ -10,7 +10,7 @@ import type { PFile } from './stacks';
 export type Level = 'Beginner' | 'Intermediate' | 'Advanced';
 export type IoTest = { name: string; stdin: string; expect: string };
 export type DomCheck = { name: string; selector: string; count?: number; text?: string; style?: [prop: string, value: string] };
-type Base = { id: string; stack: string; title: string; level: Level; points: number; prompt: string; files: PFile[]; solution: PFile[] };
+type Base = { id: string; stack: string; title: string; level: Level; points: number; prompt: string; files: PFile[]; solution: PFile[]; /** Added by the Bodhin team (playground/custom.ts), not built in. */ custom?: true };
 export type Challenge =
   | (Base & { kind: 'io'; tests: IoTest[] })
   | (Base & { kind: 'sql'; setup: string; expect: (string | number | null)[][]; ordered: boolean })
@@ -157,4 +157,22 @@ export function twinChallenge(c: Challenge, stackId: string): Challenge | undefi
   if (c.stack === stackId) return c;
   const task = c.id.slice(c.id.indexOf('-') + 1);
   return CHALLENGES.find((x) => x.stack === stackId && x.id.slice(x.id.indexOf('-') + 1) === task);
+}
+
+/** The task a challenge belongs to across languages (js-sum, rust-sum → "sum"). */
+export const taskOf = (c: Challenge) => c.id.slice(c.id.indexOf('-') + 1);
+
+/**
+ * One entry per task for the challenge list: "Add two numbers" once, not once per language.
+ * The language picker inside the challenge switches between its versions (see twinChallenge).
+ * A function, because Bodhin-team challenges are merged into CHALLENGES at runtime.
+ */
+export function challengeGroups(): { task: string; main: Challenge; all: Challenge[] }[] {
+  return CHALLENGES.reduce<{ task: string; main: Challenge; all: Challenge[] }[]>((out, c) => {
+    const task = taskOf(c);
+    const g = out.find((x) => x.task === task);
+    if (g) g.all.push(c);
+    else out.push({ task, main: c, all: [c] });
+    return out;
+  }, []);
 }

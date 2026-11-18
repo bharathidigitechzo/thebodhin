@@ -112,7 +112,7 @@ export function ApplicationReview({ id, userId, onDone }: { id: string; userId: 
           <Button title="Approve" size="md" iconLeft="checkmark" disabled={blocked} style={{ flex: 1.3 }} onPress={() => setSheet('approve')} />
         </View>
       )}
-      <DecisionSheet open={sheet === 'approve'} title="Approve educator" cta="Approve & create workspace" onClose={() => setSheet(null)} onSubmit={async () => { const r = await approvals.approveEducator(userId, id, slug); setSheet(null); onDone(`Approved · ${r.slug}.thebodhin.com created`); }}>
+      <DecisionSheet open={sheet === 'approve'} title="Approve educator" cta="Approve & create workspace" onClose={() => setSheet(null)} onSubmit={async () => { const r = await approvals.approveEducator(userId, id, slug); setSheet(null); const mailNote = r?.educatorEmail ? ` · Approval email sent to ${r.educatorEmail}` : ''; onDone(`Approved · ${r.slug}.thebodhin.com created${mailNote}`); }}>
         <TextField label="Workspace address" value={slug} onChangeText={(v) => setSlug(v.toLowerCase().replace(/[^a-z0-9-]/g, ''))} autoCapitalize="none" hint={`${slug}.thebodhin.com · they can change it later`} />
       </DecisionSheet>
       <DecisionSheet open={sheet === 'changes'} title="Ask for changes" templates={REJECT_EDU} cta="Send to applicant" onClose={() => setSheet(null)} onSubmit={async (n) => { await approvals.decideEducator(userId, id, 'changes_requested', n); setSheet(null); onDone('Changes requested · applicant notified'); }} />

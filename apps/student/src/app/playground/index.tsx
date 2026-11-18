@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { playground } from '@/api/client';
-import { CHALLENGES } from '@/playground/challenges';
+import { challengeGroups } from '@/playground/challenges';
 import { GROUPS, STACKS, stackOf } from '@/playground/stacks';
 import { PLAYGROUND_LIMITS, levelOf } from '@/playground/checks';
 import { useAuth } from '@/store/auth';
@@ -26,6 +26,7 @@ export default function PlaygroundHome() {
   useFocusEffect(useCallback(() => reload(), [userId])); // eslint-disable-line react-hooks/exhaustive-deps
   const o = data ?? playground.overview(userId);
   const lvl = levelOf(o.points);
+  const groups = challengeGroups(); // built-in + Bodhin-team challenges, one card per task
 
   const del = (id: string) => {
     playground.remove(userId, id);
@@ -48,7 +49,7 @@ export default function PlaygroundHome() {
             <View style={[styles.stats, { backgroundColor: c.surface, borderColor: c.border }]}>
               {([
                 ['trophy-outline', `${o.points} pts`, lvl.name, '#B7791F'],
-                ['checkmark-done-outline', `${o.solved.length}/${CHALLENGES.length}`, 'Challenges solved', c.success],
+                ['checkmark-done-outline', `${groups.filter((g) => g.all.some((x) => o.solved.includes(x.id))).length}/${groups.length}`, 'Challenges solved', c.success],
                 ['cloud-outline', `${o.runsLeft}/${PLAYGROUND_LIMITS.remoteRunsPerDay}`, 'Server runs left today', c.primary],
               ] as const).map(([icon, v, l, col]) => (
                 <View key={l} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
@@ -100,14 +101,17 @@ export default function PlaygroundHome() {
 
             <SectionHeader title="Challenges" />
             <Grid cols={isDesktop ? Math.min(2, cols(420)) : 1} gap={12}>
-              {CHALLENGES.map((ch) => {
-                const done = o.solved.includes(ch.id);
+              {groups.map(({ main: ch, all }) => {
+                // One card per challenge; the language is picked inside (the picker switches to the same task).
+                const solvedIn = all.filter((x) => o.solved.includes(x.id)).map((x) => stackOf(x.stack)?.name ?? x.stack);
+                const done = solvedIn.length > 0;
+                const langs = all.length > 1 ? `${all.length} languages` : stackOf(ch.stack)?.name;
                 return (
-                  <Pressable key={ch.id} onPress={() => router.push({ pathname: '/playground/[stack]', params: { stack: ch.stack, challenge: ch.id } })} accessibilityRole="button" accessibilityLabel={`Challenge: ${ch.title} in ${stackOf(ch.stack)?.name}${done ? ', solved' : ''}`} style={({ hovered }: any) => [styles.card, { backgroundColor: hovered ? c.surfaceMuted : c.surface, borderColor: done ? c.success : c.border }]}>
+                  <Pressable key={ch.id} onPress={() => router.push({ pathname: '/playground/[stack]', params: { stack: ch.stack, challenge: ch.id } })} accessibilityRole="button" accessibilityLabel={`Challenge: ${ch.title}, ${langs}${done ? ', solved' : ''}`} style={({ hovered }: any) => [styles.card, { backgroundColor: hovered ? c.surfaceMuted : c.surface, borderColor: done ? c.success : c.border }]}>
                     <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={done ? c.success : c.muted} />
                     <View style={{ flex: 1, gap: 2 }}>
                       <Txt variant="bodyStrong">{ch.title}</Txt>
-                      <Txt variant="caption" color={c.muted}>{stackOf(ch.stack)?.name} · {ch.points} pts</Txt>
+                      <Txt variant="caption" color={c.muted}>{langs} · {ch.points} pts{all.length > 1 && done ? ` · solved in ${solvedIn.join(', ')}` : ''}</Txt>
                     </View>
                     <Pill text={ch.level} tone={levelTone[ch.level]} />
                   </Pressable>

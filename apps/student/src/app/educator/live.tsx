@@ -124,7 +124,12 @@ export default function LiveTab() {
                             <Txt variant="label" color={c.primaryDeep}>{tm(s.startsAt).replace(' ', '\n')}</Txt>
                           </View>
                           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                            <Txt variant="bodyStrong" numberOfLines={2} style={s.state === 'cancelled' ? { textDecorationLine: 'line-through' } : undefined}>{s.title}</Txt>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Txt variant="bodyStrong" numberOfLines={2} style={[{ flex: 1 }, s.state === 'cancelled' ? { textDecorationLine: 'line-through' } : undefined]}>{s.title}</Txt>
+                              {g.rows.some((other) => other.id !== s.id && other.state !== 'cancelled' && other.state !== 'conducted' && new Date(s.startsAt).getTime() < new Date(other.endsAt).getTime() && new Date(other.startsAt).getTime() < new Date(s.endsAt).getTime()) && (
+                                <Pill text="Clash" tone="live" icon="alert-circle" />
+                              )}
+                            </View>
                             <Txt variant="caption" color={c.muted} numberOfLines={1}>{s.batchName ?? `${data.courseOf(s.courseId).title} · all learners`}</Txt>
                           </View>
                           {s.state === 'conducted' ? <Pill text="Summary" tone="success" icon="play-circle" /> : s.state === 'upcoming' && new Date(s.startsAt).getTime() - Date.now() < 30 * 6e4 ? (

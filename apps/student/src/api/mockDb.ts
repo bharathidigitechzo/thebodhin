@@ -38,6 +38,8 @@ interface Db {
   r2?: import('@/core/growth2').R2Db;
   playgroundProjects: { id: string; userId: string; stack: string; title: string; files: { name: string; lang: string; code: string }[]; updatedAt: string }[];
   playgroundSolved: { userId: string; challengeId: string; at: string }[];
+  /** Playground challenges added by the Bodhin team (Super Admin → Playground challenges). */
+  playgroundChallenges: import('@/playground/custom').CustomChallenge[];
   playgroundUsage: Record<string, number>; // `${userId}:${yyyy-mm-dd}` → server runs used
   attempts: Attempt[];
   submissions: Submission[];
@@ -105,12 +107,14 @@ const seed = (): Db => mergeExtras({
     },
     { id: 'u_rajesh', name: 'Rajesh Kumar', email: 'rajesh@demo.in', phone: '+919840012345', phoneVerified: true, password: 'demo123', createdAt: '2025-11-02T10:00:00Z' },
     { id: 'u_meera', name: 'Meera Iyer', email: 'meera@demo.in', phone: '+919841122334', phoneVerified: true, password: 'demo123', createdAt: '2026-03-10T10:00:00Z' },
+    { id: 'u_admin', name: 'Admin Bodhin', email: 'admin@demo.in', phone: '+919800000000', phoneVerified: true, password: 'demo123', createdAt: '2025-10-01T10:00:00Z' },
   ],
   memberships: [
     { userId: 'u_arjun', tenantId: 't_bodhin', role: 'student' },
     { userId: 'u_rajesh', tenantId: 't_rajesh', role: 'owner' },
     { userId: 'u_rajesh', tenantId: 't_bodhin', role: 'student' },
     { userId: 'u_meera', tenantId: 't_rajesh', role: 'tutor' },
+    { userId: 'u_admin', tenantId: 't_bodhin', role: 'super_admin' },
   ],
   applications: [],
   tenants: [
@@ -169,6 +173,7 @@ const seed = (): Db => mergeExtras({
   calendarSync: {},
   playgroundProjects: [],
   playgroundSolved: [],
+  playgroundChallenges: [],
   playgroundUsage: {},
   attempts: seedAttempts(),
   submissions: [
@@ -463,7 +468,7 @@ function seedEnrollment(courseId: string, done: number, enrolledAt: string, hour
   };
 }
 
-const KEY = 'bodhin.mockdb.v26';
+const KEY = 'bodhin.mockdb.v28';
 
 /** Demo data saved by older builds linked Arjun's earlier certificates to c_dm_ai (see the seed). Unlink them once. */
 const UNLINKED_SEED_CERTS = ['BODHIN-DM-AI-2026-0487', 'BODHIN-SEO-2026-0412'];
@@ -474,6 +479,7 @@ function fixSavedCertificates(d: Db): Db {
 const canPersist = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
 function load(): Db {
+  const s = seed();
   if (canPersist) {
     try {
       const raw = window.localStorage.getItem(KEY);
@@ -498,7 +504,7 @@ function load(): Db {
       /* storage blocked → fall back to seed */
     }
   }
-  return seed();
+  return s;
 }
 
 export const db: Db = load();

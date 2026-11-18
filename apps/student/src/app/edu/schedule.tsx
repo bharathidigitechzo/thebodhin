@@ -75,8 +75,23 @@ export default function ScheduleClass() {
   const ends = new Date(startsAt.getTime() + dur * 6e4);
   const instructors = team.filter((u) => !batch || batch.instructorIds.includes(u.id) || u.role === 'owner');
 
+  const liveClash = useMemo(() => {
+    return liveAdmin.checkClash(userId, {
+      target,
+      courseId: target === 'course' ? courseId : undefined,
+      batchId: target === 'batch' ? batchId : undefined,
+      instructorId: target === 'batch' ? instructorId : undefined,
+      startsAt: startsAt.toISOString(),
+      durationMin: dur,
+    });
+  }, [userId, target, courseId, batchId, instructorId, startsAt, dur]);
+
   const submit = async () => {
     setErr(null);
+    if (liveClash) {
+      setErr({ field: 'time', msg: liveClash });
+      return;
+    }
     setBusy(true);
     try {
       if (target === 'course') {
@@ -153,6 +168,14 @@ export default function ScheduleClass() {
                 <Txt variant="caption" color={err?.field === 'time' ? c.danger : c.muted}>
                   {err?.field === 'time' ? err.msg : `${startsAt.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })} · ${fmtTime(time)} – ${fmtTime(ends.toTimeString().slice(0, 5))} (IST)`}
                 </Txt>
+                {liveClash && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEE4E2', padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#F04438', marginTop: 6 }}>
+                    <Ionicons name="alert-circle" size={18} color="#D92D20" />
+                    <Txt variant="caption" color="#B42318" style={{ flex: 1, fontWeight: '600' }}>
+                      {liveClash}
+                    </Txt>
+                  </View>
+                )}
               </Card>
 
               {target === 'batch' && <Card title="Instructor & mode">

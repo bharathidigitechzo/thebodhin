@@ -1,0 +1,24 @@
+{
+  "name": "bodhin-poc",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bodhin Multi-Tenant LMS Platform",
+  "scripts": {
+    "start": "npm --prefix apps/student start",
+    "web": "npm --prefix apps/student run web",
+    "android": "npm --prefix apps/student run android",
+    "ios": "npm --prefix apps/student run ios",
+    "build": "npm --prefix apps/student run build",
+    "export:web": "npm --prefix apps/student run export:web",
+    "typecheck": "npm --prefix apps/student run typecheck",
+    "backend:local": "node backend/local_server.js",
+    "backend:start": "npx supabase start",
+    "backend:stop": "npx supabase stop",
+    "backend:status": "npx supabase status",
+    "backend:reset": "npx supabase db reset",
+    "backend:functions": "npx supabase functions serve"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}
