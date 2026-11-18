@@ -20,6 +20,7 @@ import { Banner } from '@/ui/misc';
 import { RoomClient, prepareNative } from '@/live/livekit';
 import { RoomVideo } from '@/ui/RoomVideo';
 import { SmartBoard } from '@/ui/SmartBoard';
+import { RealtimeRoomSession, type RoomParticipant } from '@/live/realtimeRoom';
 
 type Stage = 'slides' | 'screen' | 'board';
 type PanelTab = 'chat' | 'qa' | 'polls' | 'people';
@@ -28,8 +29,6 @@ type Q = { id: string; q: string; by: string; votes: number; answered: boolean; 
 type Poll = { q: string; options: string[]; votes: number[]; open: boolean };
 type Stroke = { color: string; w: number; pts: [number, number][] };
 
-const CHAT_LINES = ['Sir, audio is clear 👍', 'Can you zoom in a little?', 'Got it, thank you!', 'Will this be in the recording?', 'Very useful example', 'Can we get the slides after class?', 'Yes, visible now', 'Doing this for a client right now 🙌'];
-const QUESTIONS = ['How is this different from what we did last week?', 'What budget should a small business start with?', 'Can we use this for a local shop?', 'Which tool do you recommend for beginners?', 'How long before we see results?'];
 const COLORS = ['#0E1B33', '#E5383B', '#1D5FD0', '#15803D', '#E8A21B'];
 const fmt = (s: number) => `${Math.floor(s / 3600) ? `${Math.floor(s / 3600)}:` : ''}${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 let seq = 0;
@@ -98,70 +97,61 @@ export default function HostRoom() {
     return () => clearInterval(t);
   }, []);
 
-  // Real room (provider = livekit): publish media, receive chat / Q&A / hands / votes. Mock: the scripted classroom below.
-  const room = useRef<RoomClient | null>(null);
-  const [real, setReal] = useState(false);
-  const [people, setPeople] = useState(0);
-  const [screenOn, setScreenOn] = useState(false);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [attendees, setAttendees] = useState<RoomParticipant[]>([]);
+  const realtime = useRef<RealtimeRoomSession | null>(null);
+
   useEffect(() => {
-    if (!info) return;
-    let dead = false;
-    liveAdmin
-      .joinHost(userId, id)
-      .then(async (r) => {
-        if (r.provider !== 'livekit' || dead) return;
-        await prepareNative();
-        const rc = new RoomClient({
-          onState: () => {},
-          onVideo: () => {},
-          onPeople: (p) => setPeople(p.length - 1),
-          onMsg: (m, from) => {
-            if (m.t === 'chat') setMsgs((x) => [...x.slice(-60), { id: m.id, by: from.name, text: m.text }]);
-            else if (m.t === 'qa') setQs((q) => [...q, { id: m.id, q: m.text, by: from.name, votes: 0, answered: false }]);
-            else if (m.t === 'hand') setHands((h) => (m.up ? (h.includes(m.by) ? h : [...h, m.by]) : h.filter((y) => y !== m.by)));
-            else if (m.t === 'vote') setPoll((p) => (p && p.open && m.option < p.votes.length ? { ...p, votes: p.votes.map((v, i) => (i === m.option ? v + 1 : v)) } : p));
-          },
-        });
-        await rc.connect(r.url, r.token);
-        room.current = rc;
-        setReal(true);
-        rc.setMic(micP !== '0').catch(() => {});
-        rc.setCam(camP !== '0').catch(() => {});
-      })
-      .catch(() => {});
+    if (!info || !session) return;
+    const sess = new RealtimeRoomSession(id, {
+      id: userId,
+      name: session.user.name,
+      role: 'host',
+    }, {
+      onParticipants: (pList) => {
+        const studentParticipants = pList.filter((p) => !p.isHost && p.id !== userId);
+        setAttendees(studentParticipants);
+        setJoined(studentParticipants.length);
+        setPeak((p) => Math.max(p, studentParticipants.length));
+      },
+      onChat: (m) => {
+        setMsgs((prev) => [...prev.slice(-60), { id: m.id, by: m.by, text: m.text }]);
+        if (tabRef.current !== 'chat') setUnread((u) => u + 1);
+      },
+      onQA: (q) => {
+        setQs((prev) => [...prev, { id: q.id, q: q.q, by: q.by, votes: q.votes, answered: false }]);
+      },
+      onHand: (who, up) => {
+        setHands((h) => (up ? (h.includes(who) ? h : [...h, who]) : h.filter((x) => x !== who)));
+      },
+      onPoll: (p) => {
+        if (p) setPoll(p);
+      },
+    });
+
+    realtime.current = sess;
+    sess.announceJoin();
+
+    // Start local camera & mic
+    sess.startCamera(cam, mic).then((st) => {
+      setLocalStream(st);
+    });
+
     return () => {
-      dead = true;
-      room.current?.disconnect();
+      sess.dispose();
+      realtime.current = null;
     };
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const tx = (m: Parameters<RoomClient['send']>[0]) => {
-    if (real) room.current?.send(m).catch(() => {});
-  };
 
-  // Simulated classroom: students join, chat, ask, raise hands and vote.
-  useEffect(() => {
-    if (!info || real) return;
-    const total = Math.max(1, Math.round(audience.length * 0.92));
-    const t = setInterval(() => {
-      setJoined((j) => {
-        const n = Math.min(total, j + Math.ceil(total / 6));
-        setPeak((p) => Math.max(p, n));
-        return n;
-      });
-      const who = names[Math.floor(Math.random() * names.length)] ?? 'Student';
-      const r = Math.random();
-      if (r < 0.4 && info.session.settings.chat) {
-        setMsgs((m) => [...m.slice(-60), { id: nid(), by: who, text: CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)] }]);
-        if (tabRef.current !== 'chat') setUnread((u) => u + 1);
-      } else if (r < 0.6 && info.session.settings.qa) {
-        setQs((q) => (q.length >= QUESTIONS.length ? q.map((x) => (Math.random() < 0.3 && !x.answered ? { ...x, votes: x.votes + 1 } : x)) : [...q, { id: nid(), q: QUESTIONS[q.length], by: who, votes: 1 + Math.floor(Math.random() * 4), answered: false }]));
-      } else if (r < 0.7) {
-        setHands((h) => (h.includes(who) || h.length >= 3 ? h : [...h, who]));
-      }
-      setPoll((p) => (p && p.open ? { ...p, votes: p.votes.map((v, i) => v + (Math.random() < 0.55 - i * 0.1 ? 1 + Math.floor(Math.random() * 3) : 0)) } : p));
-    }, 2600);
-    return () => clearInterval(t);
-  }, [info]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tx = (m: any) => {
+    if (m.t === 'slide') realtime.current?.changeSlide(m.index);
+    else if (m.t === 'stage') realtime.current?.changeStage(m.mode);
+    else if (m.t === 'allow_speak') realtime.current?.allowSpeak(m.who, m.on);
+    else if (m.t === 'chat') realtime.current?.sendChat(m.text);
+    else if (m.t === 'poll') realtime.current?.launchPoll(m.id, m.q, m.options);
+    else if (m.t === 'poll_close') realtime.current?.closePoll(m.id);
+  };
 
   const pan = useMemo(
     () =>
@@ -263,16 +253,18 @@ export default function HostRoom() {
       )}
       {stage === 'screen' && (
         <View style={styles.slide}>
-          <View style={[styles.fakeWin, { backgroundColor: '#fff' }]}>
-            <View style={{ flexDirection: 'row', gap: 4, padding: 6, backgroundColor: '#E4E8EF' }}>
-              {['#E5383B', '#E8A21B', '#15803D'].map((x) => <View key={x} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: x }} />)}
+          {screenStream ? (
+            <RoomVideo stream={screenStream} fit="contain" style={{ width: '100%', height: '100%' }} />
+          ) : (
+            <View style={{ alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              <Ionicons name="desktop-outline" size={48} color="#fff" />
+              <Txt variant="title" color="#fff">Ready to share screen</Txt>
+              <Button title="Start sharing screen" onPress={async () => { const scr = await realtime.current?.startScreen(); setScreenStream(scr ?? null); }} />
             </View>
-            <View style={{ padding: 10, gap: 6 }}>
-              <View style={{ height: 10, width: '60%', backgroundColor: '#CBD3DF', borderRadius: 4 }} />
-              <View style={{ flexDirection: 'row', gap: 6 }}>{[70, 45, 90, 60].map((h, i) => <View key={i} style={{ flex: 1, height: h * 0.6, alignSelf: 'flex-end', backgroundColor: '#1D5FD0', opacity: 0.4 + i * 0.15, borderRadius: 4 }} />)}</View>
-            </View>
+          )}
+          <View style={{ position: 'absolute', bottom: 12, left: 12 }}>
+            <Pill text="You are sharing your screen" tone="info" icon="desktop-outline" />
           </View>
-          <Pill text="You are sharing your screen" tone="info" icon="desktop-outline" />
         </View>
       )}
       {stage === 'board' && (
@@ -280,10 +272,18 @@ export default function HostRoom() {
           <SmartBoard compact onOp={(op) => tx(op)} />
         </View>
       )}
-      {stage !== 'board' && <View style={styles.selfTile} pointerEvents="none">
-        {cam ? <Ionicons name="person" size={30} color="rgba(255,255,255,0.7)" /> : <Avatar name={session.user.name} size={36} />}
-        {!mic && <Ionicons name="mic-off" size={12} color="#fff" style={styles.selfMic} />}
-      </View>}
+      {stage !== 'board' && (
+        <View style={styles.selfTile} pointerEvents="none">
+          {cam && localStream ? (
+            <RoomVideo stream={localStream} muted={true} style={StyleSheet.absoluteFill} />
+          ) : cam ? (
+            <Ionicons name="videocam" size={28} color="rgba(255,255,255,0.7)" />
+          ) : (
+            <Avatar name={session.user.name} size={36} />
+          )}
+          {!mic && <Ionicons name="mic-off" size={12} color="#fff" style={styles.selfMic} />}
+        </View>
+      )}
       {speaking && <View style={styles.speaking} pointerEvents="none"><Pill text={`${speaking.split(' ')[0]} is speaking`} tone="success" icon="mic" /></View>}
     </View>
   );
@@ -292,7 +292,24 @@ export default function HostRoom() {
     <View style={styles.tools}>
       <View style={[styles.seg, { backgroundColor: c.surfaceMuted }]}>
         {([['slides', 'easel-outline', 'Slides'], ['screen', 'desktop-outline', 'Screen'], ['board', 'brush-outline', 'Board']] as const).map(([k, ic, l]) => (
-          <Pressable key={k} onPress={() => { setStage(k); tx({ t: 'stage', mode: k }); chapter(k === 'board' ? 'Whiteboard explanation' : k === 'screen' ? 'Live demo (screen share)' : slides[slide].t); }} style={[styles.segBtn, stage === k && { backgroundColor: c.surface }]} accessibilityRole="tab" accessibilityState={{ selected: stage === k }}>
+          <Pressable
+            key={k}
+            onPress={async () => {
+              setStage(k);
+              tx({ t: 'stage', mode: k });
+              chapter(k === 'board' ? 'Whiteboard explanation' : k === 'screen' ? 'Live demo (screen share)' : slides[slide].t);
+              if (k === 'screen') {
+                const scr = await realtime.current?.startScreen();
+                setScreenStream(scr ?? null);
+              } else {
+                realtime.current?.stopScreen();
+                setScreenStream(null);
+              }
+            }}
+            style={[styles.segBtn, stage === k && { backgroundColor: c.surface }]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: stage === k }}
+          >
             <Ionicons name={ic} size={16} color={stage === k ? c.primary : c.inkSoft} />
             <Txt variant="label" color={stage === k ? c.primary : c.inkSoft}>{l}</Txt>
           </Pressable>
@@ -391,7 +408,7 @@ export default function HostRoom() {
       {tab === 'people' && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 8 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Txt variant="label">{joined} of {audience.length} joined</Txt>
+            <Txt variant="label">{attendees.length} joined</Txt>
             <Button title={mutedAll ? 'All muted' : 'Mute all'} size="md" variant="outline" iconLeft="mic-off-outline" onPress={() => { setMutedAll(true); setSpeaking(null); flash('Everyone is muted'); }} />
           </View>
           {hands.map((h) => (
@@ -409,13 +426,21 @@ export default function HostRoom() {
               <Button title="Mute" size="md" variant="outline" onPress={() => setSpeaking(null)} />
             </View>
           )}
-          {names.slice(0, joined).map((n) => (
-            <View key={n} style={styles.person}>
-              <Avatar name={n} size={32} />
-              <Txt style={{ flex: 1 }} numberOfLines={1}>{n}</Txt>
-              <Ionicons name={speaking === n ? 'mic' : 'mic-off-outline'} size={16} color={c.muted} />
+          {attendees.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 24, gap: 8 }}>
+              <Ionicons name="people-outline" size={32} color={c.muted} />
+              <Txt color={c.muted} center>Waiting for students to join…</Txt>
+              <Txt variant="caption" color={c.inkSoft} center>Students enrolled will see the live class and can join now.</Txt>
             </View>
-          ))}
+          ) : (
+            attendees.map((p) => (
+              <View key={p.id} style={styles.person}>
+                <Avatar name={p.name} size={32} />
+                <Txt style={{ flex: 1 }} numberOfLines={1}>{p.name}</Txt>
+                <Pill text="Live" tone="success" />
+              </View>
+            ))
+          )}
         </ScrollView>
       )}
     </View>
@@ -423,8 +448,8 @@ export default function HostRoom() {
 
   const controls = (
     <View style={[styles.controls, { backgroundColor: '#0B1426' }]}>
-      <Ctrl icon={mic ? 'mic' : 'mic-off'} label={mic ? 'Mute' : 'Unmute'} off={!mic} onPress={() => { setMic(!mic); room.current?.setMic(!mic).catch(() => {}); }} />
-      <Ctrl icon={cam ? 'videocam' : 'videocam-off'} label={cam ? 'Camera' : 'Camera off'} off={!cam} onPress={() => { setCam(!cam); room.current?.setCam(!cam).catch(() => {}); }} />
+      <Ctrl icon={mic ? 'mic' : 'mic-off'} label={mic ? 'Mute' : 'Unmute'} off={!mic} onPress={() => { setMic(!mic); realtime.current?.setMic(!mic); }} />
+      <Ctrl icon={cam ? 'videocam' : 'videocam-off'} label={cam ? 'Camera' : 'Camera off'} off={!cam} onPress={() => { setCam(!cam); realtime.current?.setCam(!cam); }} />
       <Ctrl icon="bookmark-outline" label="Bookmark" onPress={() => { chapter(stage === 'slides' ? slides[slide].t : `Bookmark at ${fmt(elapsed)}`); flash('Chapter added to recording'); }} />
       <Ctrl icon="attach" label="Share file" onPress={shareFile} />
       <Ctrl icon={rec ? 'pause-circle' : 'radio-button-on'} label={rec ? 'Pause rec' : 'Record'} off={!rec} onPress={() => { setRec(!rec); flash(rec ? 'Recording paused' : 'Recording resumed'); }} />

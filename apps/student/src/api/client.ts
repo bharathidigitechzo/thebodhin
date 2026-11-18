@@ -857,8 +857,13 @@ export const liveTab = {
     const rows = [...courseRows, ...batchRows].filter((r) => !tenantId || r.course.tenantId === tenantId);
     // A class the host has ended counts as past even if its scheduled end time hasn't arrived.
     const ended = (id: string) => db.sessionStatus[id] === 'conducted' || db.classSessions.find((x) => x.id === id)?.status === 'conducted';
-    const liveNow = rows.filter((r) => !ended(r.session.id) && new Date(r.session.startsAt).getTime() <= now && new Date(r.session.endsAt).getTime() > now);
-    const upcoming = rows.filter((r) => !ended(r.session.id) && new Date(r.session.startsAt).getTime() > now).sort((a, b) => a.session.startsAt.localeCompare(b.session.startsAt));
+    const isLive = (id: string, s: any) =>
+      !ended(id) &&
+      (db.sessionStatus[id] === 'live' ||
+        db.classSessions.find((x) => x.id === id)?.status === 'live' ||
+        (new Date(s.startsAt).getTime() <= now && new Date(s.endsAt).getTime() > now));
+    const liveNow = rows.filter((r) => isLive(r.session.id, r.session));
+    const upcoming = rows.filter((r) => !ended(r.session.id) && !isLive(r.session.id, r.session) && new Date(r.session.startsAt).getTime() > now).sort((a, b) => a.session.startsAt.localeCompare(b.session.startsAt));
     const keepDays = db.platformConfig.recordingRetentionDays ?? 180;
     const past = rows.filter((r) => ended(r.session.id) || new Date(r.session.endsAt).getTime() <= now).sort((a, b) => b.session.startsAt.localeCompare(a.session.startsAt))
       .map((r) => ({ ...r, recording: recordingWindow(r.session.endsAt, keepDays, now) }));
@@ -1820,9 +1825,16 @@ const marksFor = (personId: string, batchId: string) => {
 };
 
 /** Notify a linked Bodhin account (shows in the student's Notifications). */
-function notifyPerson(p: Person, title: string, body: string, kind: 'live' | 'course' | 'system' = 'course') {
+function notifyPerson(p: Person, title: string, body: string, kind: 'live' | 'grade' | 'course' | 'payment' | 'qa' | 'system' = 'course', link?: { pathname: string; params?: Record<string, string> }) {
   if (!p.userId) return;
-  db.notifications.push({ id: uid('n'), userId: p.userId, kind, title, body, at: new Date().toISOString(), read: false });
+  db.notifications.unshift({ id: uid('n'), userId: p.userId, kind, title, body, at: new Date().toISOString(), read: false, link });
+  if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    try {
+      const bc = new BroadcastChannel('bodhin_notifications');
+      bc.postMessage({ userId: p.userId, kind, title, body, link });
+      bc.close();
+    } catch {}
+  }
 }
 
 /** Adds an active student against the plan limit (100% policy: block new, never remove). */
@@ -2218,9 +2230,10 @@ export interface UnifiedSession {
 }
 const LIVE_DEFAULTS = { record: true, saveToCourse: true, qa: true, chat: true, trackAttendance: true };
 
-function stateOf(startsAt: string, endsAt: string, stored?: 'scheduled' | 'conducted' | 'cancelled'): LiveState {
+function stateOf(startsAt: string, endsAt: string, stored?: 'scheduled' | 'live' | 'conducted' | 'cancelled'): LiveState {
   if (stored === 'cancelled') return 'cancelled';
   if (stored === 'conducted') return 'conducted';
+  if (stored === 'live') return 'live';
   const now = Date.now();
   if (now >= new Date(startsAt).getTime() && now < new Date(endsAt).getTime()) return 'live';
   if (now >= new Date(endsAt).getTime()) return 'conducted';
@@ -2376,8 +2389,32 @@ export const liveAdmin = {
     if (r.session.kind === 'batch') {
       const row = db.classSessions.find((x) => x.id === id)!;
       if (row.status === 'cancelled') throw new ApiError('cancelled', 'This class was cancelled. Restore it from the batch schedule first.');
+      row.status = 'live';
+    } else {
+      db.sessionStatus[id] = 'live';
     }
-    r.audience.forEach((p) => notifyPerson(p, 'Your class is live now', `${r.session.title} has started. Tap to join.`, 'live'));
+    const recipientUserIds = new Set<string>();
+    r.audience.forEach((p) => { if (p.userId) recipientUserIds.add(p.userId); });
+    db.enrollments.filter((e) => e.courseId === r.session.courseId).forEach((e) => recipientUserIds.add(e.userId));
+    recipientUserIds.forEach((uid) => {
+      db.notifications.unshift({
+        id: 'n_live_' + Date.now() + '_' + uid,
+        userId: uid,
+        kind: 'live',
+        title: '🔴 Live class has started!',
+        body: `${r.session.title} is now live. Tap to join.`,
+        at: new Date().toISOString(),
+        read: false,
+        link: { pathname: '/live-room/[id]', params: { id } },
+      });
+    });
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('bodhin_notifications');
+        bc.postMessage({ kind: 'live', title: '🔴 Live class has started!', body: `${r.session.title} is now live. Tap to join.`, link: { pathname: '/live-room/[id]', params: { id } } });
+        bc.close();
+      } catch {}
+    }
     persist();
     return r;
   },

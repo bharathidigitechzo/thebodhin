@@ -86,7 +86,7 @@ interface Db {
   announcements: Announcement[];
   sessionSummaries: Record<string, LiveSummary>;
   /** Status overrides for course-level live sessions (batch sessions store status on the row). */
-  sessionStatus: Record<string, 'conducted' | 'cancelled'>;
+  sessionStatus: Record<string, 'live' | 'conducted' | 'cancelled'>;
   activity: { id: string; tenantId: string; kind: 'enroll' | 'live' | 'submission' | 'certificate' | 'review' | 'payout'; text: string; at: string; link?: { pathname: string; params?: Record<string, string> } }[];
 }
 
@@ -335,7 +335,7 @@ function educatorCourses(): Course[] {
 
 function batchData() {
   const d = seedBatchData();
-  return { batches: d.batches, classSessions: d.sessions, people: d.people, batchAttendance: d.attendance, announcements: d.announcements, sessionSummaries: {} as Record<string, LiveSummary>, sessionStatus: {} as Record<string, 'conducted' | 'cancelled'> };
+  return { batches: d.batches, classSessions: d.sessions, people: d.people, batchAttendance: d.attendance, announcements: d.announcements, sessionSummaries: {} as Record<string, LiveSummary>, sessionStatus: {} as Record<string, 'live' | 'conducted' | 'cancelled'> };
 }
 
 function mergeExtras(d: Db): Db {
