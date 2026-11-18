@@ -1,6 +1,6 @@
 /** Generic building blocks shared by all tabs. */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Pressable, ScrollView, StyleSheet, View, ViewStyle, useWindowDimensions } from 'react-native';
+import { Animated, Modal, Platform, Pressable, ScrollView, StyleSheet, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Svg, { Circle } from 'react-native-svg';
@@ -120,11 +120,40 @@ export function ProgressRing({ pct, size = 72, stroke = 7, color, track, label =
   const { c } = useTheme();
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - Math.max(0, Math.min(100, pct)) / 100);
+
+  if (Platform.OS === 'web') {
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={`${pct}% complete`}>
+        <svg width={size} height={size} style={{ position: 'absolute', top: 0, left: 0 }}>
+          <circle cx={size / 2} cy={size / 2} r={r} stroke={track ?? c.border} strokeWidth={stroke} fill="none" />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={color ?? c.success}
+            strokeWidth={stroke}
+            fill="none"
+            strokeDasharray={circ}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        </svg>
+        {label && (
+          <Txt variant="heading" color={textColor ?? c.ink} style={{ fontSize: size * 0.24 }}>
+            {pct}%
+          </Txt>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={`${pct}% complete`}>
       <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
         <Circle cx={size / 2} cy={size / 2} r={r} stroke={track ?? c.border} strokeWidth={stroke} fill="none" />
-        <Circle cx={size / 2} cy={size / 2} r={r} stroke={color ?? c.success} strokeWidth={stroke} fill="none" strokeDasharray={`${circ} ${circ}`} strokeDashoffset={circ * (1 - pct / 100)} strokeLinecap="round" rotation={-90} origin={`${size / 2}, ${size / 2}`} />
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={color ?? c.success} strokeWidth={stroke} fill="none" strokeDasharray={`${circ} ${circ}`} strokeDashoffset={offset} strokeLinecap="round" rotation={-90} origin={`${size / 2}, ${size / 2}`} />
       </Svg>
       {label && (
         <Txt variant="heading" color={textColor ?? c.ink} style={{ fontSize: size * 0.24 }}>

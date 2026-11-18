@@ -100,7 +100,7 @@ export const STACKS: Stack[] = [
     files: [f('main.rs', 'rust', 'use std::io::{self, BufRead};\n\nfn main() {\n    let mut name = String::new();\n    io::stdin().lock().read_line(&mut name).unwrap();\n    let name = name.trim();\n    println!("Hello, {}!", if name.is_empty() { "Bodhin" } else { name });\n}\n')],
   },
   {
-    id: 'php', name: 'PHP', group: 'Systems & enterprise', icon: 'logo-php', color: '#777BB4', runner: 'remote', piston: 'php', stdin: true,
+    id: 'php', name: 'PHP', group: 'Systems & enterprise', icon: 'server-outline', color: '#777BB4', runner: 'remote', piston: 'php', stdin: true,
     blurb: 'PHP on Bodhin’s code server.',
     files: [f('main.php', 'php', '<?php\n$name = trim(fgets(STDIN) ?: "");\necho "Hello, " . ($name === "" ? "Bodhin" : $name) . "!\\n";\n')],
   },
