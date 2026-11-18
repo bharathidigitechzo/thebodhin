@@ -42,10 +42,8 @@ const DEFAULT_SAMPLE_VIDEO = 'https://commondatastorage.googleapis.com/gtv-video
 export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen, onTime, onEnded, onSpeed, onQuality, onFullscreen }: Props) {
   const [realDuration, setRealDuration] = useState<number | null>(null);
   const duration = realDuration ?? (lesson.durationSec ?? 600);
-  const [t, setT] = useState(Math.min(startAt, duration - 1));
+  const [t, setT] = useState(Math.min(startAt, Math.max(0, duration - 1)));
   const [playing, setPlaying] = useState(false);
-  const [realPlaying, setRealPlaying] = useState(false);
-  const [videoError, setVideoError] = useState(false);
   const [chrome, setChrome] = useState(true);
   const [seekHint, setSeekHint] = useState<null | 'back' | 'fwd'>(null);
   const [barW, setBarW] = useState(1);
@@ -55,27 +53,23 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   const width = useRef(1);
   const videoElRef = useRef<HTMLVideoElement | null>(null);
 
-  const ytEmbed = getYouTubeEmbedUrl(lesson.videoUrl);
-  const videoSource = lesson.videoUrl || DEFAULT_SAMPLE_VIDEO;
+  const rawUrl = lesson.videoUrl || (lesson as any).videoUri || course.intro?.uri;
+  const ytEmbed = getYouTubeEmbedUrl(rawUrl);
+  const videoSource = rawUrl || DEFAULT_SAMPLE_VIDEO;
   const isWeb = Platform.OS === 'web';
   const hasRealVideo = isWeb && !ytEmbed && !hasVideoError;
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  const videoSrc = lesson.videoUri || course.intro?.uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
   // reset when lesson changes
   useEffect(() => {
-    setT(Math.min(startAt, duration - 1));
+    setT(Math.min(startAt, Math.max(0, duration - 1)));
     setPlaying(false);
-    setRealPlaying(false);
-    setVideoError(false);
     setChrome(true);
     setHasVideoError(false);
     if (videoElRef.current) {
       videoElRef.current.currentTime = startAt;
       videoElRef.current.pause();
     }
-  }, [lesson.id, lesson.videoUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lesson.id, rawUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // sync playback rate
   useEffect(() => {
@@ -84,41 +78,9 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
     }
   }, [speed]);
 
-  // fallback simulated clock only when no real video is playing
+  // fallback simulated clock only when no real video is active
   useEffect(() => {
     if (hasRealVideo || ytEmbed || !playing) return;
-    const id = setInterval(() => {
-      setT((x) => {
-        const n = Math.min(duration, x + 0.5 * speed * 6);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = Math.min(startAt, duration - 1);
-    }
-  }, [lesson.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // play / pause real video on web
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !videoRef.current) return;
-    if (playing) {
-      videoRef.current.play().then(() => setRealPlaying(true)).catch(() => {
-        // If autoplay or codecs blocked, use robust playback simulation
-        setVideoError(true);
-      });
-    } else {
-      videoRef.current.pause();
-      setRealPlaying(false);
-    }
-  }, [playing]);
-
-  // playback speed
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !videoRef.current) return;
-    videoRef.current.playbackRate = speed;
-  }, [speed]);
-
-  // timer progression (active when video is simulated or fallback)
-  useEffect(() => {
-    if (!playing) return;
-    if (Platform.OS === 'web' && !videoError && realPlaying) return;
     const id = setInterval(() => {
       setT((x) => {
         const n = Math.min(duration, x + 0.5 * speed * 2);
@@ -131,14 +93,17 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
     }, 500);
     return () => clearInterval(id);
   }, [playing, speed, duration, onEnded, hasRealVideo, ytEmbed]);
-  }, [playing, speed, duration, onEnded, videoError, realPlaying]);
 
-  useEffect(() => onTime(t, duration), [t, duration]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    onTime(t, duration);
+  }, [t, duration]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // auto-hide controls while playing
   useEffect(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
-    if (playing && chrome) hideTimer.current = setTimeout(() => setChrome(false), 3500);
+    if (playing && chrome) {
+      hideTimer.current = setTimeout(() => setChrome(false), 3500);
+    }
   }, [playing, chrome]);
 
   const togglePlay = () => {
@@ -147,7 +112,10 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
         if (videoElRef.current.currentTime >= duration - 0.5) {
           videoElRef.current.currentTime = 0;
         }
-        videoElRef.current.play().then(() => setPlaying(true)).catch(() => {});
+        videoElRef.current.play().then(() => setPlaying(true)).catch(() => {
+          setHasVideoError(true);
+          setPlaying(true);
+        });
       } else {
         videoElRef.current.pause();
         setPlaying(false);
@@ -158,17 +126,10 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   };
 
   const seek = (d: number) => {
-    if (videoElRef.current) {
-      const nextT = Math.max(0, Math.min(duration - 0.5, videoElRef.current.currentTime + d));
-      videoElRef.current.currentTime = nextT;
-      setT(nextT);
-    } else {
-      setT((x) => Math.max(0, Math.min(duration - 1, x + d)));
-  const seek = (d: number) => {
-    const nextT = Math.max(0, Math.min(duration - 1, t + d));
+    const nextT = Math.max(0, Math.min(Math.max(1, duration - 0.5), t + d));
     setT(nextT);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = nextT;
+    if (videoElRef.current) {
+      videoElRef.current.currentTime = nextT;
     }
   };
 
@@ -193,21 +154,14 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   };
 
   const scrub = (e: GestureResponderEvent) => {
-    const newT = Math.max(0, Math.min(duration - 0.5, (e.nativeEvent.locationX / barW) * duration));
+    const nextT = Math.max(0, Math.min(Math.max(1, duration - 0.5), (e.nativeEvent.locationX / barW) * duration));
+    setT(nextT);
     if (videoElRef.current) {
-      videoElRef.current.currentTime = newT;
+      videoElRef.current.currentTime = nextT;
     }
-    setT(newT);
   };
 
   const pct = duration > 0 ? (t / duration) * 100 : 0;
-    const nextT = Math.max(0, Math.min(duration - 1, (e.nativeEvent.locationX / barW) * duration));
-    setT(nextT);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = nextT;
-    }
-  };
-  const pct = (t / duration) * 100;
 
   return (
     <View
@@ -218,58 +172,6 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
       {/* Background / Artwork layer */}
       <LinearGradient colors={[course.art.from, course.art.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
       <Ionicons name={course.art.icon as keyof typeof Ionicons.glyphMap} size={160} color="rgba(255,255,255,0.10)" style={{ position: 'absolute', right: 10, top: 10 }} />
-      {Platform.OS === 'web' && !videoError ? (
-        React.createElement('video', {
-          ref: (el: HTMLVideoElement | null) => {
-            videoRef.current = el;
-            if (el && startAt > 0 && Math.abs(el.currentTime - startAt) > 1) {
-              el.currentTime = startAt;
-            }
-          },
-          src: videoSrc,
-          playsInline: true,
-          preload: 'auto',
-          onPlay: () => { setPlaying(true); setRealPlaying(true); },
-          onPause: () => { setPlaying(false); setRealPlaying(false); },
-          onError: () => setVideoError(true),
-          onTimeUpdate: (e: React.SyntheticEvent<HTMLVideoElement>) => {
-            const el = e.currentTarget;
-            setT(el.currentTime);
-            onTime(el.currentTime, el.duration || duration);
-          },
-          onEnded: () => {
-            setPlaying(false);
-            setRealPlaying(false);
-            onEnded();
-          },
-          style: {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            backgroundColor: '#000',
-          },
-          'aria-label': `Video: ${lesson.title}`,
-        })
-      ) : (
-        <>
-          <LinearGradient colors={[course.art.from, course.art.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-          <Ionicons name={course.art.icon as keyof typeof Ionicons.glyphMap} size={160} color="rgba(255,255,255,0.12)" style={{ position: 'absolute', right: 10, top: 10 }} />
-          <View style={[styles.slide, chrome && { opacity: 0.15 }]}>
-            <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-              <Ionicons name={playing ? 'play' : 'film'} size={32} color="#fff" />
-            </View>
-            <Txt variant="title" color="#fff" numberOfLines={2} center style={{ maxWidth: '85%', fontSize: 20 }}>
-              {lesson.title}
-            </Txt>
-            <Txt variant="caption" color="rgba(255,255,255,0.85)" center style={{ marginTop: 6 }}>
-              {course.title} · {Math.round(duration / 60)} min
-            </Txt>
-          </View>
-        </>
-      )}
 
       {/* Real Video Player Layer */}
       {ytEmbed && isWeb ? (
@@ -350,18 +252,6 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
               <Ionicons name="play-back" size={24} color="#fff" />
             </Pressable>
             <Pressable onPress={togglePlay} style={styles.big} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play'}>
-            <Pressable
-              onPress={() => {
-                if (t >= duration - 1) {
-                  setT(0);
-                  if (videoRef.current) videoRef.current.currentTime = 0;
-                }
-                setPlaying((p) => !p);
-              }}
-              style={styles.big}
-              accessibilityRole="button"
-              accessibilityLabel={playing ? 'Pause' : 'Play'}
-            >
               <Ionicons name={playing ? 'pause' : 'play'} size={34} color="#fff" style={!playing ? { marginLeft: 4 } : undefined} />
             </Pressable>
             <Pressable onPress={() => seek(10)} style={styles.small} accessibilityRole="button" accessibilityLabel="Forward 10 seconds" hitSlop={8}>

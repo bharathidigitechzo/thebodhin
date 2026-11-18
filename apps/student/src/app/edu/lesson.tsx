@@ -25,6 +25,14 @@ import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
 type Kind = 'video' | 'pdf';
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
+interface LessonFile {
+  name: string;
+  sizeMb: number;
+  durationSec?: number;
+  uri?: string;
+  videoUrl?: string;
+}
+
 export default function LessonEditor() {
   const { courseId, moduleId: moduleParam, lessonId } = useLocalSearchParams<{ courseId: string; moduleId: string; lessonId?: string }>();
   const { c: t } = useTheme();
@@ -37,19 +45,14 @@ export default function LessonEditor() {
   const [title, setTitle] = useState(existing?.title ?? '');
   const [desc, setDesc] = useState(existing?.description ?? '');
   const [kind, setKind] = useState<Kind>(existing?.type === 'pdf' ? 'pdf' : 'video');
-  const [videoUrl, setVideoUrl] = useState(existing?.videoUrl ?? '');
-  const [file, setFile] = useState<{ name: string; sizeMb: number; durationSec?: number; videoUrl?: string } | null>(
-    existing && (existing.durationSec || existing.sizeMb || existing.videoUrl) ? {
+  const [videoUrl, setVideoUrl] = useState(existing?.videoUrl ?? (existing as any)?.videoUri ?? '');
+  const [file, setFile] = useState<LessonFile | null>(
+    existing && (existing.durationSec || existing.sizeMb || existing.videoUrl || (existing as any)?.videoUri) ? {
       name: existing.type === 'pdf' ? `${existing.title}.pdf` : `${existing.title}.mp4`,
       sizeMb: existing.sizeMb ?? Math.round((existing.durationSec ?? 600) / 2.2),
       durationSec: existing.durationSec ?? 600,
-      videoUrl: existing.videoUrl,
-  const [file, setFile] = useState<{ name: string; sizeMb: number; durationSec?: number; uri?: string } | null>(
-    existing && (existing.durationSec || existing.sizeMb || existing.videoUri) ? {
-      name: existing.type === 'pdf' ? `${existing.title}.pdf` : `${existing.title}.mp4`,
-      sizeMb: existing.sizeMb ?? Math.round((existing.durationSec ?? 600) / 2.2),
-      durationSec: existing.durationSec,
-      uri: existing.videoUri,
+      uri: (existing as any)?.videoUri || existing.videoUrl,
+      videoUrl: existing.videoUrl || (existing as any)?.videoUri,
     } : null,
   );
   const [progress, setProgress] = useState<number | null>(null);
@@ -78,34 +81,23 @@ export default function LessonEditor() {
     const want = purpose === 'main' ? kind : 'pdf';
     let name = '';
     let sizeMb = 0;
-    let pickedUrl: string | undefined = undefined;
-    try {
-      const r = await DocumentPicker.getDocumentAsync({ type: want === 'video' ? 'video/*' : 'application/pdf', copyToCacheDirectory: false });
-      if (r.canceled) return;
-      name = r.assets[0].name;
-      sizeMb = Math.max(0.2, Math.round(((r.assets[0].size ?? 0) / 1048576) * 10) / 10);
-      if (want === 'video') {
-        const asset = r.assets[0] as any;
-        if (typeof window !== 'undefined' && asset?.file) {
-          pickedUrl = URL.createObjectURL(asset.file);
-        } else if (asset?.uri) {
-          pickedUrl = asset.uri;
-        }
-      }
-    } catch {
-      // Picker unavailable in some preview frames → use a sample file so the flow can be tested.
-      name = want === 'video' ? `${(title || 'lesson').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mp4` : 'lesson-notes.pdf';
-      sizeMb = want === 'video' ? 180 + Math.round(Math.random() * 260) : 1.6;
     let pickedUri: string | undefined = undefined;
-    if (want === 'video') {
+
+    if (purpose === 'main' && want === 'video') {
       const f = await pickVideo();
-      if (!f) return;
-      name = f.name;
-      sizeMb = Math.max(0.2, Math.round(((f.sizeBytes ?? 0) / 1048576) * 10) / 10);
-      pickedUri = f.uri;
-    } else {
+      if (f) {
+        name = f.name;
+        sizeMb = Math.max(0.2, Math.round(((f.sizeBytes ?? 0) / 1048576) * 10) / 10);
+        pickedUri = f.uri;
+      }
+    }
+
+    if (!name) {
       try {
-        const r = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+        const r = await DocumentPicker.getDocumentAsync({
+          type: want === 'video' ? 'video/*' : 'application/pdf',
+          copyToCacheDirectory: true,
+        });
         if (r.canceled || !r.assets?.length) return;
         name = r.assets[0].name;
         sizeMb = Math.max(0.2, Math.round(((r.assets[0].size ?? 0) / 1048576) * 10) / 10);
@@ -114,10 +106,11 @@ export default function LessonEditor() {
           pickedUri = URL.createObjectURL((r.assets[0] as any).file);
         }
       } catch {
-        name = 'lesson-notes.pdf';
-        sizeMb = 1.6;
+        name = want === 'video' ? `${(title || 'lesson').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mp4` : 'lesson-notes.pdf';
+        sizeMb = want === 'video' ? 180 + Math.round(Math.random() * 260) : 1.6;
       }
     }
+
     if (!sizeMb || sizeMb < 0.3) sizeMb = want === 'video' ? 220 : 1.2;
     if (want === 'video' && sizeMb > 2048) return setErr({ field: 'file', msg: 'Videos can be up to 2 GB. Export at 1080p or lower and try again.' });
     if (purpose === 'resource') {
@@ -125,14 +118,19 @@ export default function LessonEditor() {
       setResources((r) => [...r, { name, sizeMb }]);
       return;
     }
+
     setProgress(0);
     try {
-      const res = await courseAdmin.upload(userId, want, name, sizeMb, setProgress);
-      const activeUrl = pickedUrl || videoUrl || undefined;
-      setFile({ name: res.fileName, sizeMb: res.sizeMb, durationSec: res.durationSec, videoUrl: activeUrl });
-      if (pickedUrl) setVideoUrl(pickedUrl);
       const res = await courseAdmin.upload(userId, want, name, sizeMb, setProgress, pickedUri);
-      setFile({ name: res.fileName, sizeMb: res.sizeMb, durationSec: res.durationSec, uri: res.videoUri || pickedUri });
+      const activeUri = res.videoUri || pickedUri;
+      setFile({
+        name: res.fileName,
+        sizeMb: res.sizeMb,
+        durationSec: res.durationSec,
+        uri: activeUri,
+        videoUrl: activeUri,
+      });
+      if (activeUri && !videoUrl) setVideoUrl(activeUri);
     } catch (e) {
       setErr({ field: 'file', msg: (e as ApiError).message });
     } finally {
@@ -144,7 +142,7 @@ export default function LessonEditor() {
     setBusy(true);
     setErr(null);
     try {
-      const finalVideoUrl = videoUrl.trim() || file?.videoUrl || undefined;
+      const finalVideoUrl = videoUrl.trim() || file?.videoUrl || file?.uri || undefined;
       courseAdmin.saveLesson(userId, course.id, moduleId, {
         id: existing?.id,
         title,
@@ -152,7 +150,7 @@ export default function LessonEditor() {
         type: kind,
         durationSec: kind === 'video' ? (file?.durationSec || 600) : undefined,
         sizeMb: kind === 'pdf' ? file?.sizeMb : undefined,
-        videoUri: file?.uri || existing?.videoUri,
+        videoUri: file?.uri || (existing as any)?.videoUri,
         preview,
         resources,
         completion: kind === 'video' ? completion : 'manual',
@@ -260,7 +258,7 @@ export default function LessonEditor() {
                     onChangeText={(v) => {
                       setVideoUrl(v);
                       if (v.trim() && !file) {
-                        setFile({ name: 'Web Video', sizeMb: 25, durationSec: 300, videoUrl: v.trim() });
+                        setFile({ name: 'Web Video', sizeMb: 25, durationSec: 300, videoUrl: v.trim(), uri: v.trim() });
                       }
                     }}
                     hint="You can upload a video file above, or paste an MP4 URL or YouTube link here."
