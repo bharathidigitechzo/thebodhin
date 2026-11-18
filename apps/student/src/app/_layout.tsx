@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from '@/theme/ThemeProvider';
 import { AuthProvider } from '@/store/auth';
 import { SystemBanner } from '@/ui/SystemBanner';
+import { LiveClassBanner } from '@/ui/LiveClassBanner';
 import { Pressable, Text, View } from 'react-native';
 import { DesktopFrame } from '@/ui/responsive';
 import { WorkspaceGate } from '@/ui/workspaceGate';
@@ -24,6 +25,7 @@ export default function RootLayout() {
           <Head><title>Bodhin</title></Head>
           <View style={{ flex: 1 }}>
             <SystemBanner />
+            <LiveClassBanner />
             <View style={{ flex: 1 }}>
               <DesktopFrame>
                 <WorkspaceGate>

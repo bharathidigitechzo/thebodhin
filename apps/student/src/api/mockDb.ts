@@ -88,7 +88,9 @@ interface Db {
   announcements: Announcement[];
   sessionSummaries: Record<string, LiveSummary>;
   /** Status overrides for course-level live sessions (batch sessions store status on the row). */
-  sessionStatus: Record<string, 'conducted' | 'cancelled'>;
+  sessionStatus: Record<string, 'live' | 'conducted' | 'cancelled'>;
+  /** Who started a class and when. Present while a class is running (batch and course-wide sessions alike). */
+  liveMeta: Record<string, { hostId: string; hostName: string; startedAt: string }>;
   activity: { id: string; tenantId: string; kind: 'enroll' | 'live' | 'submission' | 'certificate' | 'review' | 'payout'; text: string; at: string; link?: { pathname: string; params?: Record<string, string> } }[];
 }
 
@@ -209,7 +211,6 @@ const seed = (): Db => mergeExtras({
     { id: 'BOD-4521', userId: 'u_arjun', category: 'Certificates', subject: 'Certificate download not working', body: 'Download button does nothing on my phone.', status: 'in_progress', createdAt: daysAgo(9), replies: [{ by: 'Bodhin Support', text: 'Thanks, we have reproduced it on Android 12 and are working on a fix.', at: daysAgo(8.5) }] },
   ],
   notifications: [
-    { id: 'n1', userId: 'u_arjun', kind: 'live', title: 'Live class has started', body: 'SEO Strategy with AI Tools – Live Class 03 is live now. Join in one tap.', at: daysAgo(0.02), read: false, link: { pathname: '/live-room/[id]', params: { id: 'ls_now' } } },
     { id: 'n2', userId: 'u_arjun', kind: 'grade', title: 'Assignment graded: 92%', body: 'Rajesh Kumar graded “Final Project – Digital Marketing Campaign”.', at: daysAgo(0.3), read: false, link: { pathname: '/assignment/[id]', params: { id: 'asg_final' } } },
     { id: 'n3', userId: 'u_arjun', kind: 'qa', title: 'New answer to a question', body: 'Your tutor answered a question in “What is Digital Marketing?”.', at: daysAgo(1.2), read: false, link: { pathname: '/learn/[courseId]', params: { courseId: 'c_dm_ai', lesson: 'dm_m1_l1' } } },
     { id: 'n4', userId: 'u_arjun', kind: 'course', title: 'New lessons added', body: 'Module 5: AI Tools for Marketing now has 2 new lessons.', at: daysAgo(2), read: true, link: { pathname: '/course/[id]', params: { id: 'c_dm_ai' } } },
@@ -340,7 +341,7 @@ function educatorCourses(): Course[] {
 
 function batchData() {
   const d = seedBatchData();
-  return { batches: d.batches, classSessions: d.sessions, people: d.people, batchAttendance: d.attendance, announcements: d.announcements, sessionSummaries: {} as Record<string, LiveSummary>, sessionStatus: {} as Record<string, 'conducted' | 'cancelled'> };
+  return { batches: d.batches, classSessions: d.sessions, people: d.people, batchAttendance: d.attendance, announcements: d.announcements, sessionSummaries: {} as Record<string, LiveSummary>, sessionStatus: {} as Record<string, 'live' | 'conducted' | 'cancelled'>, liveMeta: {} as Record<string, { hostId: string; hostName: string; startedAt: string }> };
 }
 
 function mergeExtras(d: Db): Db {
@@ -521,6 +522,30 @@ export function persist() {
   } catch {
     /* ignore */
   }
+}
+
+/** Called after `db` is replaced from outside this tab (another tab on this browser, or the shared cloud store). */
+export const dbListeners = new Set<() => void>();
+export function emitDbChanged() {
+  for (const h of loadHooks) h();
+  for (const l of dbListeners) l();
+}
+
+/**
+ * Cross-tab sync: a second tab (e.g. the learner window next to the educator window) writes to the same
+ * localStorage. When that happens, adopt the new state so notifications and "class is live" show up without a reload.
+ */
+if (canPersist && typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', (e) => {
+    if (e.key !== KEY || !e.newValue) return;
+    try {
+      const next = JSON.parse(e.newValue) as Record<string, unknown>;
+      Object.assign(db as unknown as Record<string, unknown>, next);
+      emitDbChanged();
+    } catch {
+      /* ignore a half-written value */
+    }
+  });
 }
 
 export const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 10)}`;

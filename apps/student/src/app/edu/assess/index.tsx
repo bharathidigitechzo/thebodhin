@@ -64,19 +64,14 @@ export default function AssessHub() {
                 {data.courses.length > 1 && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                     <Chip label="All courses" active={!courseId} onPress={() => setCourseId(null)} />
-                    {data.courses.map((co) => <Chip key={co.id} label={co.title.length > 26 ? `${co.title.slice(0, 25)}…` : co.title} active={courseId === co.id} onPress={() => setCourseId(co.id)} />)}
+                    {data.courses
+                      .filter((co) => co && co.title && co.title.trim().length > 0)
+                      .map((co) => <Chip key={co.id} label={co.title.trim().length > 26 ? `${co.title.trim().slice(0, 25)}…` : co.title.trim()} active={courseId === co.id} onPress={() => setCourseId(co.id)} />)}
                   </ScrollView>
                 )}
                 <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                   <Chip label="All" active={kind === 'all'} onPress={() => setKind('all')} />
-                  {(['quiz', 'exam', 'assignment'] as const).map((k) => (
-                    <Chip
-                      key={k}
-                      label={`${k === 'quiz' ? 'Quizzes' : `${KIND_META[k].label}s`} (${count(k)})`}
-                      active={kind === k}
-                      onPress={() => setKind(k)}
-                    />
-                  ))}
+                  {(['quiz', 'exam', 'assignment'] as const).map((k) => <Chip key={k} label={`${k === 'quiz' ? 'Quizzes' : `${KIND_META[k].label}s`} (${count(k)})`} active={kind === k} onPress={() => setKind(k)} />)}
                 </View>
                 {rows.length === 0 && (
                   <View style={[styles.empty, { backgroundColor: c.surface, borderColor: c.border }]}>

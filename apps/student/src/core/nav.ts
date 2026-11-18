@@ -84,10 +84,13 @@ const pathOnly = (href: string) => href.split('?')[0];
 
 /** Which item a path belongs to: exact match first, then the longest matching extra prefix. */
 export function activeKey(items: NavItem[], path: string, query = ''): string {
+  if (!items || items.length === 0) return '';
   const full = query ? `${path}?${query}` : path;
   const exactQ = items.find((x) => x.href.includes('?') && full.startsWith(x.href));
   if (exactQ) return exactQ.key;
-  const root = pathOnly(items[0].href);
+  const first = items[0];
+  if (!first) return '';
+  const root = pathOnly(first.href);
   const exact = items.find((x) => !x.href.includes('?') && (path === pathOnly(x.href) || (pathOnly(x.href) !== root && path.startsWith(pathOnly(x.href) + '/'))));
   if (exact) return exact.key;
   let best: [string, number] | null = null;
@@ -95,7 +98,7 @@ export function activeKey(items: NavItem[], path: string, query = ''): string {
     const pre = [...(x.match ?? []), ...(x.href.includes('?') ? [pathOnly(x.href)] : [])];
     for (const p of pre) if (path.startsWith(p) && (!best || p.length > best[1])) best = [x.key, p.length];
   }
-  return best?.[0] ?? items[0].key;
+  return best?.[0] ?? first.key ?? '';
 }
 
 /** Tab-screen roots (they already show the tab bar); every other signed-in page gets the persistent bar on phones. */

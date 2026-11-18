@@ -12,7 +12,7 @@
  * EXPO_PUBLIC_CLOUD=off to run on local demo data only.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { db, loadHooks, persistHooks } from './mockDb';
+import { db, dbListeners, loadHooks, persistHooks } from './mockDb';
 
 const URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xxfukitplxbjbspzcfom.supabase.co';
 const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_51qHExHC2em522VcSEfjHA_ajJQmzgV';
@@ -28,7 +28,7 @@ export function sb(): SupabaseClient | null {
 }
 
 /** Map-like fields: one row per entry. Every other non-array field is stored as a single row. */
-const MAP_FIELDS = new Set(['recentSearches', 'positions', 'calendarSync', 'playgroundUsage', 'settings', 'usage', 'tenantStats', 'adminVerified', 'payoutHolds', 'userLocks', 'sessionSummaries', 'sessionStatus']);
+const MAP_FIELDS = new Set(['recentSearches', 'positions', 'calendarSync', 'playgroundUsage', 'settings', 'usage', 'tenantStats', 'adminVerified', 'payoutHolds', 'userLocks', 'sessionSummaries', 'sessionStatus', 'liveMeta']);
 const SINGLE = '_';
 
 type Row = { field: string; key: string; ord: number; data: unknown };
@@ -171,6 +171,7 @@ export async function pull(): Promise<void> {
   }
   for (const h of loadHooks) h();
   for (const h of pulledListeners) h();
+  for (const l of dbListeners) l();
   schedule(); // pushes any single-object fields the cloud doesn't have yet
 }
 

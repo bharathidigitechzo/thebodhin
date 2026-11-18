@@ -39,13 +39,14 @@ const ok = (c, n, x?) => { if (c) pass++; else { fail++; fails.push(n + (x !== u
   db.platformConfig.liveInteractiveSeats = 1000;
   const j1 = await api.liveTab.join('u_arjun', sess.id);
   ok(j1.mode === 'interactive' && !j1.hlsUrl, 'normal class → interactive seat');
-  db.platformConfig.liveInteractiveSeats = 100; // demo room already has 247 people
+  db.platformConfig.liveInteractiveSeats = 50; // fill the room with 60 other learners who joined
+  for (let i = 0; i < 60; i++) db.attendance.push({ userId: `u_other_${i}`, sessionId: sess.id, minutes: 5, joinedAt: new Date().toISOString() });
   const j2 = await api.liveTab.join('u_arjun', sess.id);
   ok(j2.mode === 'broadcast' && /\.m3u8$/.test(j2.hlsUrl), 'full class → broadcast view with an HLS address', j2);
 
   // admin setting validation
   const base = api.settingsAdmin.platform('u_admin').cfg;
-  ok(base.liveInteractiveSeats === 100, 'admin sees the seat setting');
+  ok(base.liveInteractiveSeats === 50, 'admin sees the seat setting');
   const bad = await api.settingsAdmin.savePlatform('u_admin', { ...base, liveInteractiveSeats: 9000 }, 'try too many').catch((e) => e);
   ok(/50–2500/.test(bad?.message ?? ''), 'admin cannot set more seats than one node can carry', bad?.message);
   const good = await api.settingsAdmin.savePlatform('u_admin', { ...base, liveInteractiveSeats: 1200 }, 'bigger classes for pilot').catch((e) => e);

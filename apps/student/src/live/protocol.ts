@@ -22,7 +22,8 @@ export type RoomMsg =
   | { t: 'board_put'; item: BoardItem; replaces?: string[] }
   | { t: 'board_del'; ids: string[] }
   | { t: 'stage'; mode: 'slides' | 'screen' | 'board' }
-  | { t: 'allow_speak'; who: string; on: boolean };
+  | { t: 'allow_speak'; who: string; on: boolean }
+  | { t: 'end' };
 
 export const REACTIONS = ['👍', '👏', '🔥', '❤️'] as const;
 const MAX_TEXT = 500;
@@ -78,13 +79,15 @@ export function decodeMsg(raw: Uint8Array | string): RoomMsg | null {
       return ['slides', 'screen', 'board'].includes(o.mode) ? { t: 'stage', mode: o.mode } : null;
     case 'allow_speak':
       return str(o.who, 80) && typeof o.on === 'boolean' ? { t: 'allow_speak', who: o.who, on: o.on } : null;
+    case 'end':
+      return { t: 'end' };
     default:
       return null;
   }
 }
 
 /** Messages only the host may send; the receiver drops them from anyone else (students can't hijack the board). */
-const HOST_ONLY = new Set<RoomMsg['t']>(['qa_answer', 'poll', 'poll_close', 'slide', 'stroke', 'board_clear', 'board_put', 'board_del', 'stage', 'allow_speak']);
+const HOST_ONLY = new Set<RoomMsg['t']>(['qa_answer', 'poll', 'poll_close', 'slide', 'stroke', 'board_clear', 'board_put', 'board_del', 'stage', 'allow_speak', 'end']);
 export const isAllowedFrom = (m: RoomMsg, senderRole: RoomRole) => senderRole === 'host' || !HOST_ONLY.has(m.t);
 
 /** Chat rate limit: max `limit` messages per `windowMs` per sender. Returns true if allowed. */

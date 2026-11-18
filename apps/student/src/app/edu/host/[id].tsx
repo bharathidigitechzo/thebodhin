@@ -1,15 +1,15 @@
 /**
- * Host live room. Stage: slides · screen share · whiteboard (draw with finger/mouse).
- * Panel: Chat · Q&A · Polls · People (raised hands). Phone: stage on top, panel below, controls in thumb zone.
- * ≥900px: stage left, panel right. Media/realtime are simulated in the POC (real: WebRTC SFU + websocket).
+ * Host live room (teacher or owner). Everything here is real: your camera, microphone and screen go to the
+ * students who join; the people list, raised hands, chat, Q&A and polls come from the students in the room.
+ * Stage: your camera · your shared screen · whiteboard. Panel: Chat · Q&A · Polls · People.
+ * Phone: stage on top, panel below, controls in the thumb zone. ≥900px: stage left, panel right.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
-import { liveAdmin } from '@/api/client';
+import { ApiError, liveAdmin, liveTab } from '@/api/client';
 import type { LiveSummary } from '@/core/batch';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -17,26 +17,27 @@ import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { Avatar, BottomSheet, Pill } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
-import { RoomClient, prepareNative } from '@/live/livekit';
 import { RoomVideo } from '@/ui/RoomVideo';
 import { SmartBoard } from '@/ui/SmartBoard';
+import { screenShareSupported } from '@/live/media';
+import type { RoomMsg } from '@/live/protocol';
+import { announceLive } from '@/live/registry';
+import type { Person } from '@/live/room';
+import { useLiveRoom, type LiveRoomOptions } from '@/live/useLiveRoom';
 
-type Stage = 'slides' | 'screen' | 'board';
+type Stage = 'camera' | 'screen' | 'board';
 type PanelTab = 'chat' | 'qa' | 'polls' | 'people';
 type Msg = { id: string; by: string; text: string; me?: boolean; sys?: boolean };
-type Q = { id: string; q: string; by: string; votes: number; answered: boolean; a?: string };
-type Poll = { q: string; options: string[]; votes: number[]; open: boolean };
-type Stroke = { color: string; w: number; pts: [number, number][] };
+type Q = { id: string; q: string; by: string; answered: boolean; a?: string };
+type Poll = { id: string; q: string; options: string[]; votes: number[]; open: boolean };
 
-const CHAT_LINES = ['Sir, audio is clear 👍', 'Can you zoom in a little?', 'Got it, thank you!', 'Will this be in the recording?', 'Very useful example', 'Can we get the slides after class?', 'Yes, visible now', 'Doing this for a client right now 🙌'];
-const QUESTIONS = ['How is this different from what we did last week?', 'What budget should a small business start with?', 'Can we use this for a local shop?', 'Which tool do you recommend for beginners?', 'How long before we see results?'];
-const COLORS = ['#0E1B33', '#E5383B', '#1D5FD0', '#15803D', '#E8A21B'];
 const fmt = (s: number) => `${Math.floor(s / 3600) ? `${Math.floor(s / 3600)}:` : ''}${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 let seq = 0;
-const nid = () => `x${++seq}`;
+const nid = () => `x${Date.now().toString(36)}${++seq}`;
+const stageMode = (s: Stage): 'slides' | 'screen' | 'board' => (s === 'camera' ? 'slides' : s); // protocol keeps the old name for "camera"
 
 export default function HostRoom() {
-  const { id, cam: camP, mic: micP } = useLocalSearchParams<{ id: string; cam?: string; mic?: string }>();
+  const { id, cam: camP, mic: micP, camDev, micDev } = useLocalSearchParams<{ id: string; cam?: string; mic?: string; camDev?: string; micDev?: string }>();
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -44,14 +45,12 @@ export default function HostRoom() {
   const { width } = useWindowDimensions();
   const wide = width >= 900;
 
-  const [elapsed, setElapsed] = useState(0);
-  const [stage, setStage] = useState<Stage>('slides');
-  const [slide, setSlide] = useState(0);
-  const [mic, setMic] = useState(micP !== '0');
-  const [cam, setCam] = useState(camP !== '0');
-  const [rec, setRec] = useState(!!info?.session.settings.record);
+  const [boot, setBoot] = useState<{ opts: LiveRoomOptions; startedAt: number } | null>(null);
+  const [bootErr, setBootErr] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [stage, setStage] = useState<Stage>('camera');
   const [tab, setTab] = useState<PanelTab>('chat');
-  const [msgs, setMsgs] = useState<Msg[]>([{ id: 'w', by: 'Bodhin', text: 'Class is live. Students have been notified.', sys: true }]);
+  const [msgs, setMsgs] = useState<Msg[]>([{ id: 'w', by: 'Bodhin', text: 'Class is live. Your students have been notified.', sys: true }]);
   const [draft, setDraft] = useState('');
   const [qs, setQs] = useState<Q[]>([]);
   const [answering, setAnswering] = useState<Q | null>(null);
@@ -61,259 +60,257 @@ export default function HostRoom() {
   const [pollForm, setPollForm] = useState(false);
   const [pq, setPq] = useState('');
   const [popts, setPopts] = useState(['', '']);
-  const [joined, setJoined] = useState(0);
   const [peak, setPeak] = useState(0);
-  const [hands, setHands] = useState<string[]>([]);
-  const [speaking, setSpeaking] = useState<string | null>(null);
-  const [mutedAll, setMutedAll] = useState(false);
-  const [chapters, setChapters] = useState<LiveSummary['chapters']>([{ atSec: 0, label: 'Class introduction' }]);
-  const [materials, setMaterials] = useState<LiveSummary['materials']>([]);
+  const [hands, setHands] = useState<Record<string, { name: string; at: number }>>({});
+  const [allowed, setAllowed] = useState<Record<string, boolean>>({});
+  const [lockedAll, setLockedAll] = useState(false);
+  const [chapters, setChapters] = useState<LiveSummary['chapters']>([{ atSec: 0, label: 'Class started' }]);
   const [unread, setUnread] = useState(0);
   const [ending, setEnding] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [redo, setRedo] = useState<Stroke[]>([]);
-  const [pen, setPen] = useState(COLORS[0]);
-  const live = useRef<Stroke | null>(null);
-  const [, force] = useState(0);
   const tabRef = useRef(tab);
   tabRef.current = tab;
-
-  const audience = info?.audience ?? [];
-  const names = audience.map((p) => p.name);
-  const slides = useMemo(() => {
-    if (!info) return [];
-    const lessons = info.course.modules.flatMap((m) => m.lessons.filter((l) => l.type === 'video').map((l) => l.title)).slice(0, 5);
-    return [{ t: info.session.title, s: info.course.title }, { t: 'Today’s agenda', s: lessons.slice(0, 3).join(' · ') }, ...lessons.map((l) => ({ t: l, s: info.session.topic })), { t: 'Questions?', s: 'Use Q&A — upvote what you want answered' }];
-  }, [info]);
+  const voters = useRef(new Set<string>());
+  const chatCount = useRef(0);
+  const seen = useRef(new Set<string>());
+  const stageRef = useRef<Stage>('camera');
+  stageRef.current = stage;
 
   const flash = (t: string) => {
     setToast(t);
-    setTimeout(() => setToast(null), 2000);
+    setTimeout(() => setToast(null), 2200);
   };
+  const elapsed = boot ? Math.max(0, Math.floor((now - boot.startedAt) / 1000)) : 0;
   const chapter = (label: string) => setChapters((x) => (x[x.length - 1]?.label === label ? x : [...x, { atSec: elapsed, label }]));
 
   useEffect(() => {
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Real room (provider = livekit): publish media, receive chat / Q&A / hands / votes. Mock: the scripted classroom below.
-  const room = useRef<RoomClient | null>(null);
-  const [real, setReal] = useState(false);
-  const [people, setPeople] = useState(0);
-  const [screenOn, setScreenOn] = useState(false);
+  // 1) Go live (idempotent: students are only notified the first time) and get access to the room.
   useEffect(() => {
-    if (!info) return;
+    if (!info || !session) return;
     let dead = false;
-    liveAdmin
-      .joinHost(userId, id)
-      .then(async (r) => {
-        if (r.provider !== 'livekit' || dead) return;
-        await prepareNative();
-        const rc = new RoomClient({
-          onState: () => {},
-          onVideo: () => {},
-          onPeople: (p) => setPeople(p.length - 1),
-          onMsg: (m, from) => {
-            if (m.t === 'chat') setMsgs((x) => [...x.slice(-60), { id: m.id, by: from.name, text: m.text }]);
-            else if (m.t === 'qa') setQs((q) => [...q, { id: m.id, q: m.text, by: from.name, votes: 0, answered: false }]);
-            else if (m.t === 'hand') setHands((h) => (m.up ? (h.includes(m.by) ? h : [...h, m.by]) : h.filter((y) => y !== m.by)));
-            else if (m.t === 'vote') setPoll((p) => (p && p.open && m.option < p.votes.length ? { ...p, votes: p.votes.map((v, i) => (i === m.option ? v + 1 : v)) } : p));
-          },
+    let stopAnnounce: ((ended?: boolean) => void) | null = null;
+    (async () => {
+      try {
+        liveAdmin.start(userId, id);
+        const m = await liveAdmin.joinHost(userId, id);
+        if (dead) return;
+        const st = liveTab.roomState(id);
+        const startedAt = st.state === 'live' && st.startedAt ? new Date(st.startedAt).getTime() : Date.now();
+        setBoot({
+          startedAt,
+          opts: { provider: m.provider, url: m.url, token: m.token, room: m.room, userId, name: session.user.name, role: 'host', hostUserIds: m.hostIds, startMic: micP !== '0', startCam: camP !== '0', micDevice: micDev, camDevice: camDev },
         });
-        await rc.connect(r.url, r.token);
-        room.current = rc;
-        setReal(true);
-        rc.setMic(micP !== '0').catch(() => {});
-        rc.setCam(camP !== '0').catch(() => {});
-      })
-      .catch(() => {});
+        stopAnnounce = announceLive({ sessionId: id, title: info.session.title, hostId: userId, hostName: session.user.name });
+      } catch (e) {
+        if (!dead) setBootErr(e instanceof ApiError ? e.message : 'Could not open the live room.');
+      }
+    })();
     return () => {
       dead = true;
-      room.current?.disconnect();
+      stopAnnounce?.(endedRef.current);
     };
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const tx = (m: Parameters<RoomClient['send']>[0]) => {
-    if (real) room.current?.send(m).catch(() => {});
-  };
+  const endedRef = useRef(false);
 
-  // Simulated classroom: students join, chat, ask, raise hands and vote.
-  useEffect(() => {
-    if (!info || real) return;
-    const total = Math.max(1, Math.round(audience.length * 0.92));
-    const t = setInterval(() => {
-      setJoined((j) => {
-        const n = Math.min(total, j + Math.ceil(total / 6));
-        setPeak((p) => Math.max(p, n));
-        return n;
+  // 2) The room: real media + data.
+  const rt = useLiveRoom(boot?.opts ?? null, (m: RoomMsg, from: Person) => {
+    if (m.t === 'chat') {
+      chatCount.current += 1;
+      setMsgs((x) => [...x.slice(-200), { id: m.id, by: from.name, text: m.text }]);
+      if (tabRef.current !== 'chat') setUnread((u) => u + 1);
+    } else if (m.t === 'qa') setQs((q) => (q.some((y) => y.id === m.id) ? q : [...q, { id: m.id, q: m.text, by: from.name, answered: false }]));
+    else if (m.t === 'hand') setHands((h) => { const n = { ...h }; if (m.up) n[from.userId] = { name: from.name, at: Date.now() }; else delete n[from.userId]; return n; });
+    else if (m.t === 'vote') {
+      setPoll((p) => {
+        const key = `${m.pollId}:${from.userId}`;
+        if (!p || !p.open || p.id !== m.pollId || m.option >= p.votes.length || voters.current.has(key)) return p;
+        voters.current.add(key);
+        return { ...p, votes: p.votes.map((v, i) => (i === m.option ? v + 1 : v)) };
       });
-      const who = names[Math.floor(Math.random() * names.length)] ?? 'Student';
-      const r = Math.random();
-      if (r < 0.4 && info.session.settings.chat) {
-        setMsgs((m) => [...m.slice(-60), { id: nid(), by: who, text: CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)] }]);
-        if (tabRef.current !== 'chat') setUnread((u) => u + 1);
-      } else if (r < 0.6 && info.session.settings.qa) {
-        setQs((q) => (q.length >= QUESTIONS.length ? q.map((x) => (Math.random() < 0.3 && !x.answered ? { ...x, votes: x.votes + 1 } : x)) : [...q, { id: nid(), q: QUESTIONS[q.length], by: who, votes: 1 + Math.floor(Math.random() * 4), answered: false }]));
-      } else if (r < 0.7) {
-        setHands((h) => (h.includes(who) || h.length >= 3 ? h : [...h, who]));
+    }
+  });
+  const students = rt.people.filter((p, i) => i > 0 && p.role === 'student');
+  const tx = (m: RoomMsg) => rt.send(m);
+
+  // Who joined / left, and the peak.
+  useEffect(() => {
+    setPeak((p) => Math.max(p, students.length));
+    const cur = new Set(students.map((p) => p.id));
+    students.forEach((p) => {
+      if (!seen.current.has(p.id)) {
+        seen.current.add(p.id);
+        setMsgs((x) => [...x, { id: nid(), by: 'Bodhin', text: `${p.name} joined`, sys: true }]);
+        // a late joiner needs to know what the stage is showing
+        tx({ t: 'stage', mode: stageMode(stageRef.current) });
+        if (lockedAll) tx({ t: 'allow_speak', who: p.userId, on: false });
       }
-      setPoll((p) => (p && p.open ? { ...p, votes: p.votes.map((v, i) => v + (Math.random() < 0.55 - i * 0.1 ? 1 + Math.floor(Math.random() * 3) : 0)) } : p));
-    }, 2600);
-    return () => clearInterval(t);
-  }, [info]); // eslint-disable-line react-hooks/exhaustive-deps
+    });
+    [...seen.current].forEach((sid) => {
+      if (!cur.has(sid)) {
+        seen.current.delete(sid);
+        const left = rt.people.find((p) => p.id === sid);
+        void left;
+        setMsgs((x) => [...x, { id: nid(), by: 'Bodhin', text: 'A student left', sys: true }]);
+      }
+    });
+  }, [students.map((p) => p.id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pan = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (e) => {
-          live.current = { color: penRef.current, w: penRef.current === 'eraser' ? 18 : 3, pts: [[e.nativeEvent.locationX, e.nativeEvent.locationY]] };
-          force((n) => n + 1);
-        },
-        onPanResponderMove: (e) => {
-          live.current?.pts.push([e.nativeEvent.locationX, e.nativeEvent.locationY]);
-          force((n) => n + 1);
-        },
-        onPanResponderRelease: () => {
-          const s = live.current;
-          live.current = null;
-          if (s) {
-            txRef.current?.({ t: 'stroke', color: s.color, w: s.w, pts: s.pts.slice(0, 400) as [number, number][] });
-            setStrokes((x) => [...x, s]);
-            setRedo([]);
-          }
-        },
-      }),
-    [],
-  );
-  const pollId = useRef('');
-  const txRef = useRef<typeof tx | null>(null);
-  txRef.current = tx;
-  const penRef = useRef(pen);
-  penRef.current = pen;
+  // Stage follows the screen share.
+  useEffect(() => {
+    if (rt.screen) setStage('screen');
+    else if (stageRef.current === 'screen' && rt.status === 'connected') setStage('camera');
+  }, [rt.screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!info || !session) {
+  if (bootErr || !info || !session) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: c.ivory, padding: 20, justifyContent: 'center', gap: 16 }}>
-        <Banner text="You can’t host this class." />
+        <Banner text={bootErr ?? 'You can’t host this class.'} />
         <Button title="Back to Live" onPress={() => router.replace('/educator/live')} />
       </SafeAreaView>
     );
   }
   const s = info.session;
-  const toPath = (st: Stroke) => st.pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const speakers = students.filter((p) => p.speaking);
+  const onCam = students.filter((p) => p.cam && rt.streams[p.id]?.camera);
 
+  const setStageTo = (st: Stage) => {
+    setStage(st);
+    tx({ t: 'stage', mode: stageMode(st) });
+    chapter(st === 'board' ? 'Whiteboard explanation' : st === 'screen' ? 'Screen share' : 'Back to camera');
+  };
+  const toggleScreen = async () => {
+    if (rt.screen) return rt.setScreen(false);
+    await rt.setScreen(true);
+  };
   const sendChat = () => {
-    if (!draft.trim()) return;
-    const mid = nid();
-    tx({ t: 'chat', id: `${userId}-${Date.now()}`, by: session.user.name, text: draft.trim().slice(0, 500), at: Date.now() });
-    setMsgs((m) => [...m, { id: mid, by: session.user.name, text: draft.trim(), me: true }]);
+    const t = draft.trim();
+    if (!t) return;
+    tx({ t: 'chat', id: `${userId}-${Date.now()}`, by: session.user.name, text: t.slice(0, 500), at: Date.now() });
+    chatCount.current += 1;
+    setMsgs((m) => [...m, { id: nid(), by: session.user.name, text: t, me: true }]);
     setDraft('');
   };
   const launchPoll = () => {
     const options = popts.map((o) => o.trim()).filter(Boolean);
     if (pq.trim().length < 4 || options.length < 2) return flash('Add a question and at least 2 options');
-    pollId.current = `poll${Date.now()}`;
-    tx({ t: 'poll', id: pollId.current, q: pq.trim().slice(0, 200), options: options.slice(0, 6) });
-    setPoll({ q: pq.trim(), options, votes: options.map(() => 0), open: true });
+    const pid = `poll${Date.now()}`;
+    tx({ t: 'poll', id: pid, q: pq.trim().slice(0, 200), options: options.slice(0, 6).map((o) => o.slice(0, 100)) });
+    setPoll({ id: pid, q: pq.trim(), options, votes: options.map(() => 0), open: true });
     setPollForm(false);
+    chapter(`Poll: ${pq.trim()}`);
     setPq('');
     setPopts(['', '']);
-    chapter(`Poll: ${pq.trim()}`);
   };
   const stopPoll = () => {
     if (!poll) return;
-    tx({ t: 'poll_close', id: pollId.current });
+    tx({ t: 'poll_close', id: poll.id });
     setPastPolls((x) => [...x, { ...poll, open: false }]);
     setPoll(null);
-    flash('Poll closed · results shared with class');
+    flash('Poll closed');
   };
-  const shareFile = () => {
-    const m = { name: `${s.topic} – Slides.pdf`, size: '3.2 MB', kind: 'pdf' as const };
-    if (materials.some((x) => x.name === m.name)) return flash('Already shared');
-    setMaterials((x) => [...x, m]);
-    setMsgs((x) => [...x, { id: nid(), by: 'Bodhin', text: `📎 ${m.name} shared with the class`, sys: true }]);
-    flash('File shared in chat');
+  const allow = (p: Person, on: boolean) => {
+    tx({ t: 'allow_speak', who: p.userId, on });
+    setAllowed((a) => ({ ...a, [p.userId]: on }));
+    if (on) setHands((h) => { const n = { ...h }; delete n[p.userId]; return n; });
+  };
+  const muteAll = () => {
+    tx({ t: 'allow_speak', who: '*', on: false });
+    setLockedAll(true);
+    setAllowed({});
+    flash('Everyone is muted. They can raise a hand to speak.');
+  };
+  const unlockAll = () => {
+    tx({ t: 'allow_speak', who: '*', on: true });
+    setLockedAll(false);
+    flash('Students can unmute themselves again.');
   };
   const end = () => {
     const allPolls = [...pastPolls, ...(poll ? [poll] : [])].map((p) => ({ q: p.q, options: p.options, votes: p.votes }));
+    endedRef.current = true;
+    tx({ t: 'end' });
     liveAdmin.end(userId, id, {
-      elapsedSec: Math.max(elapsed, 60) * (elapsed < 120 ? 25 : 1), // POC: short demo sessions are scaled to a realistic length
-      peak: Math.max(peak, joined),
+      elapsedSec: Math.max(elapsed, 60),
+      peak,
       chapters,
-      materials,
-      qa: qs.map((q) => ({ q: q.q, by: q.by, a: q.a, votes: q.votes })),
+      materials: [],
+      qa: qs.map((q) => ({ q: q.q, by: q.by, a: q.a, votes: 0 })),
       polls: allPolls,
-      chatCount: msgs.filter((m) => !m.sys).length,
+      chatCount: chatCount.current,
     });
-    router.replace({ pathname: '/edu/summary/[id]', params: { id, fresh: '1' } });
+    // give the "class ended" message a moment to reach everyone before the room closes
+    setTimeout(() => router.replace({ pathname: '/edu/summary/[id]', params: { id, fresh: '1' } }), 700);
   };
 
   const stageView = (
-    <View style={[styles.stage, stage === 'board' && { aspectRatio: undefined, height: 560 }, { backgroundColor: stage === 'board' ? c.ivory : '#0B1426' }]}>
-      {stage === 'slides' && (
-        <View style={styles.slide}>
-          <Txt variant="caption" color="rgba(255,255,255,0.6)">{info.course.title.toUpperCase()}</Txt>
-          <Txt variant="title" color="#fff" center numberOfLines={3}>{slides[slide]?.t}</Txt>
-          <Txt variant="body" color="rgba(255,255,255,0.75)" center numberOfLines={2}>{slides[slide]?.s}</Txt>
-          <Txt variant="caption" color="rgba(255,255,255,0.5)" style={{ position: 'absolute', bottom: 8, right: 12 }}>{slide + 1} / {slides.length}</Txt>
-        </View>
+    <View style={[styles.stage, stage === 'board' && { aspectRatio: undefined, flex: 1, minHeight: 340, maxHeight: undefined }, { backgroundColor: stage === 'board' ? c.ivory : '#0B1426' }]}>
+      {stage === 'camera' && (
+        rt.localCamera && rt.cam ? <RoomVideo stream={rt.localCamera} mirror label="Your camera" /> : (
+          <View style={styles.slide}>
+            <Avatar name={session.user.name} size={96} />
+            <Txt variant="label" color="rgba(255,255,255,0.8)">{rt.status === 'connecting' ? 'Connecting…' : 'Your camera is off. Students see your initials.'}</Txt>
+          </View>
+        )
       )}
       {stage === 'screen' && (
-        <View style={styles.slide}>
-          <View style={[styles.fakeWin, { backgroundColor: '#fff' }]}>
-            <View style={{ flexDirection: 'row', gap: 4, padding: 6, backgroundColor: '#E4E8EF' }}>
-              {['#E5383B', '#E8A21B', '#15803D'].map((x) => <View key={x} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: x }} />)}
-            </View>
-            <View style={{ padding: 10, gap: 6 }}>
-              <View style={{ height: 10, width: '60%', backgroundColor: '#CBD3DF', borderRadius: 4 }} />
-              <View style={{ flexDirection: 'row', gap: 6 }}>{[70, 45, 90, 60].map((h, i) => <View key={i} style={{ flex: 1, height: h * 0.6, alignSelf: 'flex-end', backgroundColor: '#1D5FD0', opacity: 0.4 + i * 0.15, borderRadius: 4 }} />)}</View>
-            </View>
+        rt.localScreen && rt.screen ? <RoomVideo stream={rt.localScreen} fit="contain" label="Your shared screen" /> : (
+          <View style={styles.slide}>
+            <Ionicons name="desktop-outline" size={44} color="rgba(255,255,255,0.7)" />
+            <Txt variant="label" color="#fff" center>Share a window, tab or your whole screen with the class.</Txt>
+            {screenShareSupported() ? <Button title="Share screen" size="md" iconLeft="share-outline" onPress={toggleScreen} /> : <Txt variant="caption" color="rgba(255,255,255,0.6)" center>Screen sharing needs a desktop browser.</Txt>}
           </View>
-          <Pill text="You are sharing your screen" tone="info" icon="desktop-outline" />
-        </View>
+        )
       )}
       {stage === 'board' && (
         <View style={[StyleSheet.absoluteFill, { padding: 8, backgroundColor: c.ivory }]}>
           <SmartBoard compact onOp={(op) => tx(op)} />
         </View>
       )}
-      {stage !== 'board' && <View style={styles.selfTile} pointerEvents="none">
-        {cam ? <Ionicons name="person" size={30} color="rgba(255,255,255,0.7)" /> : <Avatar name={session.user.name} size={36} />}
-        {!mic && <Ionicons name="mic-off" size={12} color="#fff" style={styles.selfMic} />}
-      </View>}
-      {speaking && <View style={styles.speaking} pointerEvents="none"><Pill text={`${speaking.split(' ')[0]} is speaking`} tone="success" icon="mic" /></View>}
+      {stage === 'screen' && rt.screen && (
+        <View style={styles.selfTile}>
+          {rt.cam && rt.localCamera ? <RoomVideo stream={rt.localCamera} mirror label="Your camera" /> : <Avatar name={session.user.name} size={36} />}
+        </View>
+      )}
+      {stage !== 'board' && !rt.mic && <View style={styles.micOff}><Pill text="Your mic is off" tone="warning" icon="mic-off" /></View>}
+      {speakers.length > 0 && <View style={styles.speaking} pointerEvents="none"><Pill text={`${speakers[0].name.split(' ')[0]} is speaking`} tone="success" icon="mic" /></View>}
     </View>
+  );
+
+  const studentStrip = onCam.length > 0 && (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ flexGrow: 0 }}>
+      {onCam.map((p) => (
+        <View key={p.id} style={[styles.tile, p.speaking && { borderColor: '#3FD17C' }]}>
+          <RoomVideo stream={rt.streams[p.id]?.camera ?? null} label={`${p.name} camera`} />
+          <View style={styles.tileName}><Txt variant="caption" color="#fff" style={{ fontSize: 10 }} numberOfLines={1}>{p.name}</Txt></View>
+        </View>
+      ))}
+    </ScrollView>
   );
 
   const stageTools = (
     <View style={styles.tools}>
       <View style={[styles.seg, { backgroundColor: c.surfaceMuted }]}>
-        {([['slides', 'easel-outline', 'Slides'], ['screen', 'desktop-outline', 'Screen'], ['board', 'brush-outline', 'Board']] as const).map(([k, ic, l]) => (
-          <Pressable key={k} onPress={() => { setStage(k); tx({ t: 'stage', mode: k }); chapter(k === 'board' ? 'Whiteboard explanation' : k === 'screen' ? 'Live demo (screen share)' : slides[slide].t); }} style={[styles.segBtn, stage === k && { backgroundColor: c.surface }]} accessibilityRole="tab" accessibilityState={{ selected: stage === k }}>
+        {([['camera', 'videocam-outline', 'Camera'], ['screen', 'desktop-outline', 'Screen'], ['board', 'brush-outline', 'Board']] as const).map(([k, ic, l]) => (
+          <Pressable key={k} onPress={() => setStageTo(k)} style={[styles.segBtn, stage === k && { backgroundColor: c.surface }]} accessibilityRole="tab" accessibilityState={{ selected: stage === k }}>
             <Ionicons name={ic} size={16} color={stage === k ? c.primary : c.inkSoft} />
             <Txt variant="label" color={stage === k ? c.primary : c.inkSoft}>{l}</Txt>
           </Pressable>
         ))}
       </View>
-      {stage === 'slides' && (
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          <Small icon="chevron-back" label="Previous slide" disabled={slide === 0} onPress={() => { const n = Math.max(0, slide - 1); setSlide(n); tx({ t: 'slide', index: n }); }} />
-          <Small icon="chevron-forward" label="Next slide" disabled={slide >= slides.length - 1} onPress={() => { const n = Math.min(slides.length - 1, slide + 1); setSlide(n); tx({ t: 'slide', index: n }); chapter(slides[n].t); }} />
-        </View>
-      )}
     </View>
   );
 
-  const openQs = qs.filter((q) => !q.answered).sort((a, b) => b.votes - a.votes);
+  const openQs = qs.filter((q) => !q.answered);
+  const handList = Object.entries(hands).sort((a, b) => a[1].at - b[1].at);
   const panel = (
     <View style={[styles.panel, { backgroundColor: c.surface, borderColor: c.border }, wide ? { width: 360 } : { flex: 1 }]}>
       <View style={[styles.ptabs, { borderBottomColor: c.border }]}>
-        {([['chat', 'Chat', unread], ['qa', 'Q&A', openQs.length], ['polls', 'Polls', poll ? 1 : 0], ['people', 'People', hands.length]] as const).map(([k, l, n]) => (
+        {([['chat', 'Chat', unread], ['qa', 'Q&A', openQs.length], ['polls', 'Polls', poll ? 1 : 0], ['people', `People ${students.length}`, handList.length]] as const).map(([k, l, n]) => (
           <Pressable key={k} onPress={() => { setTab(k); if (k === 'chat') setUnread(0); }} style={[styles.ptab, tab === k && { borderBottomColor: c.primary }]} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
-            <Txt variant="label" color={tab === k ? c.primary : c.inkSoft}>{l}</Txt>
+            <Txt variant="label" color={tab === k ? c.primary : c.inkSoft} numberOfLines={1}>{l}</Txt>
             {n > 0 && <View style={[styles.badge, { backgroundColor: k === 'people' ? c.warning : c.live }]}><Txt variant="caption" color="#fff" style={{ fontSize: 10, lineHeight: 12 }}>{n}</Txt></View>}
           </Pressable>
         ))}
@@ -341,23 +338,15 @@ export default function HostRoom() {
 
       {tab === 'qa' && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 8 }}>
-          {!qs.length && <Txt variant="caption" color={c.muted} center>Questions from students appear here, most upvoted first.</Txt>}
+          {!qs.length && <Txt variant="caption" color={c.muted} center>{s.settings.qa ? 'Questions from students appear here.' : 'Q&A is turned off for this class.'}</Txt>}
           {[...openQs, ...qs.filter((q) => q.answered)].map((q) => (
             <View key={q.id} style={[styles.qcard, { borderColor: c.border, opacity: q.answered ? 0.65 : 1 }]}>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={[styles.votes, { backgroundColor: c.surfaceMuted }]}>
-                  <Ionicons name="arrow-up" size={14} color={c.primary} />
-                  <Txt variant="label">{q.votes}</Txt>
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Txt variant="bodyStrong">{q.q}</Txt>
-                  <Txt variant="caption" color={c.muted}>{q.by}{q.answered ? ' · Answered' : ''}</Txt>
-                  {q.a && <Txt variant="caption" color={c.inkSoft}>↳ {q.a}</Txt>}
-                </View>
-              </View>
+              <Txt variant="bodyStrong">{q.q}</Txt>
+              <Txt variant="caption" color={c.muted}>{q.by}{q.answered ? ' · Answered' : ''}</Txt>
+              {q.a && <Txt variant="caption" color={c.inkSoft}>↳ {q.a}</Txt>}
               {!q.answered && (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Button title="Answered live" size="md" variant="outline" style={{ flex: 1 }} onPress={() => { setQs((x) => x.map((y) => (y.id === q.id ? { ...y, answered: true } : y))); chapter(`Q&A: ${q.q}`); }} />
+                  <Button title="Answered live" size="md" variant="outline" style={{ flex: 1 }} onPress={() => { setQs((x) => x.map((y) => (y.id === q.id ? { ...y, answered: true } : y))); chapter(`Q&A: ${q.q.slice(0, 60)}`); }} />
                   <Button title="Type answer" size="md" variant="outline" style={{ flex: 1 }} onPress={() => { setAnswering(q); setAnswer(''); }} />
                 </View>
               )}
@@ -390,30 +379,33 @@ export default function HostRoom() {
 
       {tab === 'people' && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 8 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Txt variant="label">{joined} of {audience.length} joined</Txt>
-            <Button title={mutedAll ? 'All muted' : 'Mute all'} size="md" variant="outline" iconLeft="mic-off-outline" onPress={() => { setMutedAll(true); setSpeaking(null); flash('Everyone is muted'); }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <Txt variant="label">{students.length} of {info.audience.length} joined</Txt>
+            {lockedAll ? <Button title="Let students unmute" size="md" variant="outline" iconLeft="mic-outline" onPress={unlockAll} /> : <Button title="Mute all" size="md" variant="outline" iconLeft="mic-off-outline" onPress={muteAll} />}
           </View>
-          {hands.map((h) => (
-            <View key={h} style={[styles.person, { backgroundColor: c.warningBg }]}>
-              <Txt style={{ fontSize: 18 }}>✋</Txt>
-              <Txt variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>{h}</Txt>
-              <Button title="Allow to speak" size="md" onPress={() => { setSpeaking(h); setMutedAll(false); tx({ t: 'allow_speak', who: h, on: true }); setHands((x) => x.filter((y) => y !== h)); }} />
-              <Pressable onPress={() => setHands((x) => x.filter((y) => y !== h))} accessibilityRole="button" accessibilityLabel={`Lower ${h}'s hand`} style={styles.iconHit}><Ionicons name="close" size={18} color={c.inkSoft} /></Pressable>
-            </View>
-          ))}
-          {speaking && (
-            <View style={[styles.person, { backgroundColor: c.successBg }]}>
-              <Ionicons name="mic" size={18} color={c.success} />
-              <Txt variant="bodyStrong" style={{ flex: 1 }}>{speaking}</Txt>
-              <Button title="Mute" size="md" variant="outline" onPress={() => setSpeaking(null)} />
-            </View>
-          )}
-          {names.slice(0, joined).map((n) => (
-            <View key={n} style={styles.person}>
-              <Avatar name={n} size={32} />
-              <Txt style={{ flex: 1 }} numberOfLines={1}>{n}</Txt>
-              <Ionicons name={speaking === n ? 'mic' : 'mic-off-outline'} size={16} color={c.muted} />
+          {students.length === 0 && <Txt variant="caption" color={c.muted} center style={{ paddingVertical: 14 }}>No one has joined yet. Students were notified — they appear here the moment they join.</Txt>}
+          {handList.map(([uid, h]) => {
+            const p = students.find((x) => x.userId === uid);
+            if (!p) return null;
+            return (
+              <View key={uid} style={[styles.person, { backgroundColor: c.warningBg }]}>
+                <Txt style={{ fontSize: 18 }}>✋</Txt>
+                <Txt variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>{h.name}</Txt>
+                <Button title="Allow to speak" size="md" onPress={() => allow(p, true)} />
+                <Pressable onPress={() => setHands((x) => { const n = { ...x }; delete n[uid]; return n; })} accessibilityRole="button" accessibilityLabel={`Lower ${h.name}'s hand`} style={styles.iconHit}><Ionicons name="close" size={18} color={c.inkSoft} /></Pressable>
+              </View>
+            );
+          })}
+          {students.map((p) => (
+            <View key={p.id} style={styles.person}>
+              <Avatar name={p.name} size={32} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Txt numberOfLines={1}>{p.name}</Txt>
+                {(allowed[p.userId] || p.speaking) && <Txt variant="caption" color={c.success}>{p.speaking ? 'Speaking' : 'Allowed to speak'}</Txt>}
+              </View>
+              <Ionicons name={p.cam ? 'videocam' : 'videocam-off-outline'} size={16} color={p.cam ? c.success : c.muted} />
+              <Ionicons name={p.mic ? 'mic' : 'mic-off-outline'} size={16} color={p.mic ? c.success : c.muted} />
+              {lockedAll && (allowed[p.userId] ? <Button title="Mute" size="md" variant="outline" onPress={() => allow(p, false)} /> : <Button title="Allow" size="md" variant="outline" onPress={() => allow(p, true)} />)}
             </View>
           ))}
         </ScrollView>
@@ -423,11 +415,10 @@ export default function HostRoom() {
 
   const controls = (
     <View style={[styles.controls, { backgroundColor: '#0B1426' }]}>
-      <Ctrl icon={mic ? 'mic' : 'mic-off'} label={mic ? 'Mute' : 'Unmute'} off={!mic} onPress={() => { setMic(!mic); room.current?.setMic(!mic).catch(() => {}); }} />
-      <Ctrl icon={cam ? 'videocam' : 'videocam-off'} label={cam ? 'Camera' : 'Camera off'} off={!cam} onPress={() => { setCam(!cam); room.current?.setCam(!cam).catch(() => {}); }} />
-      <Ctrl icon="bookmark-outline" label="Bookmark" onPress={() => { chapter(stage === 'slides' ? slides[slide].t : `Bookmark at ${fmt(elapsed)}`); flash('Chapter added to recording'); }} />
-      <Ctrl icon="attach" label="Share file" onPress={shareFile} />
-      <Ctrl icon={rec ? 'pause-circle' : 'radio-button-on'} label={rec ? 'Pause rec' : 'Record'} off={!rec} onPress={() => { setRec(!rec); flash(rec ? 'Recording paused' : 'Recording resumed'); }} />
+      <Ctrl icon={rt.mic ? 'mic' : 'mic-off'} label={rt.mic ? 'Mute' : 'Unmute'} off={!rt.mic} busy={rt.busy.mic} onPress={() => rt.setMic(!rt.mic)} />
+      <Ctrl icon={rt.cam ? 'videocam' : 'videocam-off'} label={rt.cam ? 'Camera' : 'Camera off'} off={!rt.cam} busy={rt.busy.cam} onPress={() => rt.setCam(!rt.cam)} />
+      {screenShareSupported() && <Ctrl icon="desktop-outline" label={rt.screen ? 'Stop share' : 'Share'} active={rt.screen} busy={rt.busy.screen} onPress={() => (rt.screen ? rt.setScreen(false) : (setStage('screen'), toggleScreen()))} />}
+      <Ctrl icon="bookmark-outline" label="Bookmark" onPress={() => { chapter(`Bookmark at ${fmt(elapsed)}`); flash('Chapter added'); }} />
       <Pressable onPress={() => setEnding(true)} style={[styles.endBtn, { backgroundColor: c.live }]} accessibilityRole="button" accessibilityLabel="End class">
         <Ionicons name="call" size={18} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
         <Txt variant="label" color="#fff">End</Txt>
@@ -435,22 +426,29 @@ export default function HostRoom() {
     </View>
   );
 
+  const statusNote = rt.status === 'error' ? rt.error : rt.status === 'connecting' ? 'Opening the room…' : rt.status === 'reconnecting' ? 'Connection lost. Reconnecting…' : null;
+
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         <View style={styles.top}>
           <Pill text={`LIVE · ${fmt(elapsed)}`} tone="live" icon="radio" />
-          {rec && <Pill text="REC" tone="live" icon="ellipse" />}
           <Txt variant="label" numberOfLines={1} style={{ flex: 1 }}>{s.title}</Txt>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} accessibilityLabel={`${students.length} students in the class`}>
             <Ionicons name="people" size={16} color={c.inkSoft} />
-            <Txt variant="label">{joined}</Txt>
+            <Txt variant="label">{students.length}</Txt>
           </View>
         </View>
+        {(statusNote || rt.notice) && (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+            <Banner tone={rt.status === 'error' || rt.notice ? 'danger' : 'info'} text={rt.notice ?? statusNote ?? ''} />
+          </View>
+        )}
         {wide ? (
           <View style={{ flex: 1, flexDirection: 'row', gap: 12, padding: 12, paddingTop: 0 }}>
             <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>{stageView}</View>
+              <View style={{ flex: 1, minHeight: 0, justifyContent: 'center', alignItems: stage === 'board' ? 'stretch' : 'center' }}>{stageView}</View>
+              {studentStrip}
               {stageTools}
               {controls}
             </View>
@@ -459,6 +457,7 @@ export default function HostRoom() {
         ) : (
           <View style={{ flex: 1, gap: 8, paddingHorizontal: 10 }}>
             {stageView}
+            {studentStrip}
             {stageTools}
             {panel}
             {controls}
@@ -472,9 +471,9 @@ export default function HostRoom() {
         <Button title="End class" size="md" style={{ flex: 1, backgroundColor: c.danger }} onPress={end} />
       </>}>
         <View style={{ gap: 8 }}>
-          <Txt color={c.inkSoft}>{fmt(elapsed)} live · {Math.max(peak, joined)} students at peak · {qs.length} questions · {pastPolls.length + (poll ? 1 : 0)} polls</Txt>
-          {s.settings.trackAttendance && <Txt variant="caption" color={c.muted}>Attendance will be marked automatically from who joined. You can edit it later.</Txt>}
-          {rec && <Txt variant="caption" color={c.muted}>The recording will be processed with {chapters.length} chapters{s.settings.saveToCourse ? ' and added to the course' : ''}.</Txt>}
+          <Txt color={c.inkSoft}>{fmt(elapsed)} live · {peak} {peak === 1 ? 'student' : 'students'} at peak · {qs.length} questions · {pastPolls.length + (poll ? 1 : 0)} polls</Txt>
+          {s.settings.trackAttendance && <Txt variant="caption" color={c.muted}>Attendance is marked automatically from who joined. You can edit it later.</Txt>}
+          {s.settings.record && boot?.opts.provider === 'mesh' && <Txt variant="caption" color={c.warning}>Recording needs the Bodhin live server, which is not connected. This class is not being recorded.</Txt>}
         </View>
       </BottomSheet>
 
@@ -515,19 +514,10 @@ function PollBars({ poll }: { poll: Poll }) {
   );
 }
 
-function Small({ icon, label, onPress, disabled, active }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; disabled?: boolean; active?: boolean }) {
-  const { c } = useTheme();
+function Ctrl({ icon, label, onPress, off, active, busy }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; off?: boolean; active?: boolean; busy?: boolean }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={[styles.small, { backgroundColor: active ? c.primarySoft : c.surface, borderColor: active ? c.primary : c.border, opacity: disabled ? 0.4 : 1 }]} accessibilityRole="button" accessibilityLabel={label}>
-      <Ionicons name={icon} size={18} color={c.ink} />
-    </Pressable>
-  );
-}
-
-function Ctrl({ icon, label, onPress, off }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; off?: boolean }) {
-  return (
-    <Pressable onPress={onPress} style={styles.ctrl} accessibilityRole="button" accessibilityLabel={label}>
-      <View style={[styles.ctrlIcon, { backgroundColor: off ? '#E5383B' : 'rgba(255,255,255,0.12)' }]}>
+    <Pressable onPress={onPress} disabled={busy} style={[styles.ctrl, busy && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy: !!busy }}>
+      <View style={[styles.ctrlIcon, { backgroundColor: off ? '#E5383B' : active ? '#1D5FD0' : 'rgba(255,255,255,0.12)' }]}>
         <Ionicons name={icon} size={20} color="#fff" />
       </View>
       <Txt variant="caption" color="rgba(255,255,255,0.8)" numberOfLines={1} style={{ fontSize: 10 }}>{label}</Txt>
@@ -538,16 +528,15 @@ function Ctrl({ icon, label, onPress, off }: { icon: keyof typeof Ionicons.glyph
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8 },
   stage: { width: '100%', aspectRatio: 16 / 9, borderRadius: 16, overflow: 'hidden', maxHeight: 620 },
-  slide: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 8 },
-  fakeWin: { width: '80%', borderRadius: 8, overflow: 'hidden' },
-  selfTile: { position: 'absolute', right: 8, top: 8, width: 64, height: 48, borderRadius: 10, backgroundColor: '#1E3A5F', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
-  selfMic: { position: 'absolute', bottom: 2, left: 3, backgroundColor: '#E5383B', borderRadius: 6, padding: 1 },
+  slide: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 10 },
+  selfTile: { position: 'absolute', right: 8, top: 8, width: 96, height: 72, borderRadius: 10, backgroundColor: '#1E3A5F', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', overflow: 'hidden' },
+  micOff: { position: 'absolute', left: 8, bottom: 8 },
   speaking: { position: 'absolute', left: 8, top: 8 },
+  tile: { width: 120, height: 68, borderRadius: 10, overflow: 'hidden', backgroundColor: '#0B1426', borderWidth: 2, borderColor: 'transparent' },
+  tileName: { position: 'absolute', left: 4, bottom: 3, right: 4, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 6, paddingHorizontal: 4 },
   tools: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
   seg: { flexDirection: 'row', borderRadius: 12, padding: 3 },
   segBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, minHeight: 38, borderRadius: 10 },
-  small: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  swatch: { width: 26, height: 26, borderRadius: 13, borderWidth: 3 },
   panel: { borderWidth: 1, borderRadius: 16, overflow: 'hidden', minHeight: 180 },
   ptabs: { flexDirection: 'row', borderBottomWidth: 1 },
   ptab: { flex: 1, flexDirection: 'row', gap: 4, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderBottomWidth: 2, borderBottomColor: 'transparent' },
@@ -557,7 +546,6 @@ const styles = StyleSheet.create({
   input: { flex: 1, borderRadius: 12, paddingHorizontal: 12, minHeight: 44, fontSize: 15 },
   send: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   qcard: { borderWidth: 1, borderRadius: 14, padding: 10, gap: 8 },
-  votes: { width: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
   person: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, borderRadius: 12, paddingHorizontal: 8 },
   iconHit: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, paddingHorizontal: 10, minHeight: 40, overflow: 'hidden' },
@@ -567,5 +555,5 @@ const styles = StyleSheet.create({
   ctrlIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   endBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 44, borderRadius: 22, marginLeft: 4 },
   field: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, minHeight: 48, fontSize: 15 },
-  toast: { position: 'absolute', alignSelf: 'center', bottom: 110, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999 },
+  toast: { position: 'absolute', alignSelf: 'center', bottom: 110, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999 },
 });
