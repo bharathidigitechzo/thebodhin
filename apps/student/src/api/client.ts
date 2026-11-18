@@ -5,6 +5,7 @@
  * so no screen code changes.
  */
 import { db, persist, uid } from './mockDb';
+import { cloud } from './cloud';
 import { categories as seedCategories, courses as seedCourses, liveSessions as seedLive, seedReviews, tutors as seedTutors } from './catalogSeed';
 import { ASSESSMENTS, QUESTIONS } from './assessSeed';
 import type { Coupon, EducatorApplication, Role, Session, Tenant, User } from '@/core/types';
@@ -85,10 +86,60 @@ function findByIdentifier(identifier: string) {
   return db.users.find((u) => u.phone.endsWith(digits.slice(-10)));
 }
 
+/** Email for a sign-in identifier (email, or a mobile number registered in the shared store). */
+async function resolveEmail(identifier: string) {
+  const id = identifier.trim().toLowerCase();
+  if (id.includes('@')) return id;
+  if (id.replace(/\D/g, '').length < 10) return null;
+  return (await cloud.emailForPhone(id)) ?? findByIdentifier(id)?.email ?? null;
+}
+
+/** The app account for a Supabase Auth user — created on first sign-in (e.g. after confirming the email). */
+async function ensureAppUser(au: { email?: string; user_metadata?: Record<string, unknown> } | null | undefined) {
+  if (!au) throw new ApiError('auth', 'Sign-in failed. Try again.');
+  const meta = (au.user_metadata ?? {}) as Record<string, string | undefined>;
+  const email = (au.email ?? '').toLowerCase();
+  let u = (meta.app_user_id && db.users.find((x) => x.id === meta.app_user_id)) || db.users.find((x) => x.email.toLowerCase() === email);
+  if (!u) {
+    u = { id: meta.app_user_id || uid('u'), name: meta.name || email.split('@')[0], email, phone: meta.phone ? normPhone(meta.phone) : '', phoneVerified: false, password: '', createdAt: new Date().toISOString() };
+    db.users.push(u);
+    db.memberships.push({ userId: u.id, tenantId: 't_bodhin', role: 'student' });
+    if (meta.role === 'tutor') db.applications.push({ id: uid('app'), userId: u.id, status: 'draft' });
+    persist();
+  }
+  if (meta.app_user_id !== u.id) cloud.linkAppUser(u.id).catch(() => {});
+  return u;
+}
+
+/** Sign-in against the shared database (Supabase Auth + Postgres): the same account and data on every device. */
+async function cloudSignIn(identifier: string, password: string): Promise<Session> {
+  const email = await resolveEmail(identifier);
+  if (!email) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'identifier');
+  let r: { error?: string; user?: Parameters<typeof ensureAppUser>[0] } = await cloud.signIn(email, password);
+  if (r.error === 'invalid_credentials') {
+    // An account that so far exists only in this device's demo data (e.g. the seeded demo users) moves to the cloud on first sign-in.
+    const local = findByIdentifier(email);
+    if (local?.password && local.password === password) {
+      const up = await cloud.signUp(email, password, { name: local.name, phone: local.phone, app_user_id: local.id });
+      if ('needsConfirm' in up) throw new ApiError('confirm', `Confirm your email first: open the link we sent to ${email}, then sign in.`, 'identifier');
+      if (!up.error) r = { user: up.user };
+    }
+  }
+  if (r.error === 'email_not_confirmed') throw new ApiError('confirm', `Confirm your email first: open the link we sent to ${email}, then sign in.`, 'identifier');
+  if (r.error) throw new ApiError('bad_password', 'Incorrect password. Try again or reset it.', 'password');
+  const u = await ensureAppUser(r.user);
+  if (db.userLocks[u.id]) {
+    await cloud.signOut();
+    throw new ApiError('locked', 'This account is locked. Contact support@thebodhin.com.', 'identifier');
+  }
+  return sessionFor(u.id);
+}
+
 export const auth = {
   /** Current roles for a signed-in user (real: refresh the JWT so new claims, e.g. "approved educator", apply at once). */
   refreshMemberships: (userId: string) => (db.users.some((u) => u.id === userId) ? sessionFor(userId).memberships : null),
   async signIn(identifier: string, password: string): Promise<Session> {
+    if (cloud.enabled) return cloudSignIn(identifier, password);
     await wait();
     const u = findByIdentifier(identifier);
     if (!u) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'identifier');
@@ -102,6 +153,21 @@ export const auth = {
     const email = input.email.trim().toLowerCase();
     const phone = normPhone(input.phone);
     if (input.role === 'tutor' && !db.flags.tutorSignups) throw new ApiError('paused', 'New educator sign-ups are paused for a short while. Please try again soon.');
+    if (cloud.enabled) {
+      if (await cloud.emailForPhone(phone)) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+      const up = await cloud.signUp(email, input.password, { name: input.name.trim(), phone, role: input.role });
+      if ('needsConfirm' in up) {
+        if (up.user && !up.user.identities?.length) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+        throw new ApiError('confirm_email', `We sent a confirmation link to ${email}. Open it, then sign in.`, 'email');
+      }
+      if (up.error) {
+        const msg = 'message' in up ? up.message : '';
+        if (/already|exists|registered/i.test(`${up.error} ${msg}`)) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+        throw new ApiError('signup', msg || 'Could not create your account. Try again.');
+      }
+      const user = await ensureAppUser(up.user);
+      return { userId: user.id, otpSentTo: phone };
+    }
     if (db.users.some((u) => u.email === email)) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
     if (db.users.some((u) => u.phone === phone)) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
     const user = { id: uid('u'), name: input.name.trim(), email, phone, phoneVerified: false, password: input.password, createdAt: new Date().toISOString() };
@@ -115,6 +181,11 @@ export const auth = {
   /** Sends an OTP to a phone or email. Real backend: SMS/email provider + rate limit. */
   async sendOtp(target: string): Promise<{ sentTo: string }> {
     await wait(350);
+    if (cloud.enabled && !findByIdentifier(target)) {
+      const email = await resolveEmail(target);
+      if (!email) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'target');
+      return { sentTo: target.includes('@') ? email : target };
+    }
     const u = findByIdentifier(target);
     if (!u) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'target');
     return { sentTo: target.includes('@') ? u.email : u.phone };
@@ -169,6 +240,11 @@ export const auth = {
   async verifyResetOtp(target: string, code: string): Promise<{ resetToken: string }> {
     await wait();
     if (code !== DEMO_OTP) throw new ApiError('bad_otp', 'That code is not correct. Check the message and try again.', 'code');
+    if (cloud.enabled) {
+      const email = await resolveEmail(target);
+      if (!email) throw new ApiError('not_found', 'Account not found.');
+      return { resetToken: email };
+    }
     const u = findByIdentifier(target);
     if (!u) throw new ApiError('not_found', 'Account not found.');
     return { resetToken: u.id };
@@ -176,6 +252,8 @@ export const auth = {
 
   async resetPassword(resetToken: string, newPassword: string): Promise<void> {
     await wait();
+    // Shared database: passwords live in Supabase Auth and are reset from an emailed link (needs Site URL + a reset page — not set up yet).
+    if (cloud.enabled) throw new ApiError('reset_unavailable', 'Password reset isn’t switched on yet for online accounts. Contact support@thebodhin.com and we’ll reset it for you.');
     const u = db.users.find((x) => x.id === resetToken);
     if (!u) throw new ApiError('expired', 'This reset link has expired. Start again.');
     u.password = newPassword;
@@ -185,6 +263,7 @@ export const auth = {
   /** Social sign-in. Real: Google/Apple OAuth → backend token exchange. POC signs into the demo student. */
   async socialSignIn(_provider: 'google' | 'apple'): Promise<Session> {
     await wait(600);
+    if (cloud.enabled) throw new ApiError('social_unavailable', 'Google and Apple sign-in aren’t connected yet. Sign in with your email and password.');
     return sessionFor('u_arjun');
   },
 
@@ -935,6 +1014,12 @@ export const account = {
   async changePassword(userId: string, current: string, next: string) {
     await wait(500);
     const u = db.users.find((x) => x.id === userId)!;
+    if (cloud.live) {
+      if (!(await cloud.verifyPassword(u.email, current))) throw new ApiError('bad_password', 'Your current password is incorrect.', 'current');
+      if (next.length < 8 || !/[A-Za-z]/.test(next) || !/\d/.test(next)) throw new ApiError('weak', 'Use at least 8 characters with letters and numbers.', 'next');
+      await cloud.setPassword(next);
+      return;
+    }
     if (u.password !== current) throw new ApiError('bad_password', 'Your current password is incorrect.', 'current');
     if (next.length < 8 || !/[A-Za-z]/.test(next) || !/\d/.test(next)) throw new ApiError('weak', 'Use at least 8 characters with letters and numbers.', 'next');
     u.password = next;

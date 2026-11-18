@@ -486,7 +486,11 @@ function load(): Db {
 
 export const db: Db = load();
 
+/** Run after every save (api/cloud.ts pushes the change to the shared Postgres store). */
+export const persistHooks: (() => void)[] = [];
+
 export function persist() {
+  for (const h of persistHooks) h();
   if (!canPersist) return;
   try {
     window.localStorage.setItem(KEY, JSON.stringify(db));

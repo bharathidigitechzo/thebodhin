@@ -1,3 +1,4 @@
+import 'react-native-url-polyfill/auto'; // native: full URL support for the Supabase client (api/cloud.ts)
 import React from 'react';
 import '@/api/growth2'; // registers round-2 paid-order hooks (affiliates, analytics)
 import '@/api/academy'; // certificate approvals, mentorship, course-wide live classes (registers progress hooks)
