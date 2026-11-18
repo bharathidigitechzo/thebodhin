@@ -12,6 +12,7 @@ import { SystemBanner } from '@/ui/SystemBanner';
 import { Pressable, Text, View } from 'react-native';
 import { DesktopFrame } from '@/ui/responsive';
 import { WorkspaceGate } from '@/ui/workspaceGate';
+import { ChangePasswordModal } from '@/ui/ChangePasswordModal';
 
 export default function RootLayout() {
   return (
@@ -31,6 +32,7 @@ export default function RootLayout() {
               </DesktopFrame>
             </View>
           </View>
+          <ChangePasswordModal />
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

@@ -38,6 +38,8 @@ interface Db {
   r2?: import('@/core/growth2').R2Db;
   playgroundProjects: { id: string; userId: string; stack: string; title: string; files: { name: string; lang: string; code: string }[]; updatedAt: string }[];
   playgroundSolved: { userId: string; challengeId: string; at: string }[];
+  /** Playground challenges added by the Bodhin team (Super Admin → Playground challenges). */
+  playgroundChallenges: import('@/playground/custom').CustomChallenge[];
   playgroundUsage: Record<string, number>; // `${userId}:${yyyy-mm-dd}` → server runs used
   attempts: Attempt[];
   submissions: Submission[];
@@ -169,6 +171,7 @@ const seed = (): Db => mergeExtras({
   calendarSync: {},
   playgroundProjects: [],
   playgroundSolved: [],
+  playgroundChallenges: [],
   playgroundUsage: {},
   attempts: seedAttempts(),
   submissions: [

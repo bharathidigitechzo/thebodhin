@@ -3,7 +3,7 @@ import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Cols, Grid, useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, subscriptionApi } from '@/api/client';
 import type { Plan } from '@/core/plans';
@@ -24,6 +24,7 @@ export default function Subscription() {
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
+  const { reason } = useLocalSearchParams<{ reason?: string }>(); // why the owner was sent here (a locked feature)
   const [d, setD] = useState<Data | null>(null);
   const [billing, setBilling] = useState<'monthly' | 'annual'>('annual');
   const [pick, setPick] = useState<Plan | null>(null);
@@ -88,6 +89,7 @@ export default function Subscription() {
         <ScreenTop title="Subscription & usage" sub={`${ctx.tenant.branding.displayName}`} />
         <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingTop: 8, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
           <View style={[shared.inner, isDesktop && { maxWidth: 1180 }]}>
+            {!!reason && !msg && <Banner tone="info" text={String(reason)} />}
             {msg && <Banner tone="success" text={msg} />}
             {d.priceLock && <Banner tone="info" text={`Your current price (${inr(d.priceLock.monthly ?? 0)}/mo · ${inr(d.priceLock.annual ?? 0)}/yr) is kept until ${fmtDay(d.priceLock.until)}. The new ${plan.name} price applies after that.`} />}
             {err && <Banner text={err} />}

@@ -66,6 +66,7 @@ const ROUTE_PERMS: [prefix: string, perms: AdminPerm[]][] = [
   // Bodhin content tools (Nov 16 change request): live classes, and the shared /edu screens scoped to Bodhin's academy
   // (quizzes, assignments, 1:1 mentorship, certificates, students).
   ['/admin/classes', ['content.bodhin']],
+  ['/admin/playground', ['content.bodhin']],
   ['/edu', ['content.bodhin']],
   ['/admin/users', ['users.view']],
   ['/admin/user', ['users.view']],
@@ -93,7 +94,7 @@ export interface AuditEntry {
   actorId: string;
   actorName: string;
   action: string; // e.g. 'application.approve', 'config.update'
-  target: { kind: 'tenant' | 'user' | 'course' | 'application' | 'config' | 'plan' | 'payout' | 'order' | 'admin' | 'report'; id: string; label: string };
+  target: { kind: 'tenant' | 'user' | 'course' | 'application' | 'config' | 'plan' | 'payout' | 'order' | 'admin' | 'report' | 'playground'; id: string; label: string };
   summary: string;
   before?: unknown;
   after?: unknown;

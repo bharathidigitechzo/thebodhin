@@ -51,6 +51,11 @@ export default function Player() {
   const [dl, setDl] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const lastSaved = useRef(0);
+  const nowRef = useRef(0);
+  nowRef.current = now;
+  const currentLessonId = useRef(lessonId);
+  currentLessonId.current = lessonId;
+  const resumedRef = useRef<string | null>(null);
 
   const data = useMemo(() => {
     try {
@@ -60,18 +65,38 @@ export default function Player() {
     }
   }, [userId, courseId, lessonId, rev]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Persist position when leaving or unmounting
+  useEffect(() => {
+    return () => {
+      if (nowRef.current > 0 && currentLessonId.current) {
+        player.savePosition(userId, currentLessonId.current, nowRef.current);
+      }
+    };
+  }, [userId]);
+
   const flash = (t: string) => {
     setToast(t);
     setTimeout(() => setToast(null), 2000);
   };
 
+  // Resume notification when loaded from saved position > 5s
+  useEffect(() => {
+    if (data.ok && data.position > 5 && resumedRef.current !== data.lesson.id) {
+      resumedRef.current = data.lesson.id;
+      flash(`Resumed from ${fmt(data.position)}`);
+    }
+  }, [data]);
+
   const go = useCallback((l: Lesson | null) => {
     if (!l) return;
+    if (nowRef.current > 0 && currentLessonId.current) {
+      player.savePosition(userId, currentLessonId.current, nowRef.current);
+    }
     setUpNext(null);
     setLessonId(l.id);
     setNow(0);
     router.setParams({ lesson: l.id });
-  }, []);
+  }, [userId]);
 
   // "Up next" countdown after a video ends
   useEffect(() => {
@@ -107,26 +132,29 @@ export default function Player() {
   const downloaded = downloads.has(userId, lesson.id);
   const bookmarked = player.isBookmarked(userId, lesson.id);
 
+  const markLessonDone = useCallback(() => {
+    player.setComplete(userId, course.id, lesson.id, true);
+    setRev((r) => r + 1);
+    flash('Lesson completed ✓');
+    haptic('success');
+  }, [userId, course.id, lesson.id]);
+
   const onTime = (t: number, duration: number) => {
     setNow(t);
-    if (Math.abs(t - lastSaved.current) >= 5) {
+    if (Math.abs(t - lastSaved.current) >= 3) {
       player.savePosition(userId, lesson.id, t);
       lastSaved.current = t;
     }
-    if (enrolled && !isDone && t / duration >= 0.9) {
-      player.setComplete(userId, course.id, lesson.id);
-      setRev((r) => r + 1);
-      flash('Lesson completed ✓');
-      haptic('success');
+    if (!isDone && duration > 0 && (t / duration >= 0.85 || duration - t <= 6)) {
+      markLessonDone();
     }
   };
 
   const toggleDone = () => {
-    if (!enrolled) return;
     player.setComplete(userId, course.id, lesson.id, !isDone);
     haptic(isDone ? 'toggleOff' : 'success');
     setRev((r) => r + 1);
-    if (!isDone && next) flash('Marked complete');
+    if (!isDone && next) flash('Marked complete ✓');
   };
 
   const startDownload = (q: 'sd' | 'hd') => {
@@ -149,12 +177,10 @@ export default function Player() {
     <Pressable disabled={!prev} onPress={() => go(prev)} style={[styles.prev, { borderColor: c.border, opacity: prev ? 1 : 0.4 }]} accessibilityRole="button" accessibilityLabel="Previous lesson">
       <Ionicons name="chevron-back" size={22} color={c.ink} />
     </Pressable>
-    {enrolled && (
-      <Pressable onPress={toggleDone} style={[styles.done, { borderColor: isDone ? c.success : c.border, backgroundColor: isDone ? c.successBg : c.surface }]} accessibilityRole="checkbox" accessibilityState={{ checked: isDone }} accessibilityLabel="Mark lesson complete">
-        <Ionicons name={isDone ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={isDone ? c.success : c.inkSoft} />
-        <Txt variant="label" color={isDone ? c.success : c.ink}>{isDone ? 'Done' : 'Mark done'}</Txt>
-      </Pressable>
-    )}
+    <Pressable onPress={toggleDone} style={[styles.done, { borderColor: isDone ? c.success : c.border, backgroundColor: isDone ? c.successBg : c.surface }]} accessibilityRole="checkbox" accessibilityState={{ checked: isDone }} accessibilityLabel="Mark lesson complete">
+      <Ionicons name={isDone ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={isDone ? c.success : c.inkSoft} />
+      <Txt variant="label" color={isDone ? c.success : c.ink}>{isDone ? 'Done' : 'Mark done'}</Txt>
+    </Pressable>
     <Button title={next ? 'Next' : 'Finish'} iconRight={next ? 'arrow-forward' : 'trophy'} style={{ flex: 1 }} disabled={!!next && !enrolled && !next.preview} onPress={() => (next ? go(next) : back())} />
     </>
   );
@@ -194,7 +220,10 @@ export default function Player() {
                   speed={speed}
                   fullscreen={fullscreen}
                   onTime={onTime}
-                  onEnded={() => next && setUpNext(5)}
+                  onEnded={() => {
+                    markLessonDone();
+                    if (next) setUpNext(5);
+                  }}
                   onSpeed={() => setSheet('speed')}
                   onQuality={() => setSheet('quality')}
                   onFullscreen={() => setFullscreen((f) => !f)}

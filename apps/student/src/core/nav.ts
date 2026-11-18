@@ -45,6 +45,7 @@ const E: (NavItem & { owner?: boolean; module?: string })[] = [
   { key: 'community', href: '/edu/community', title: 'Community', icon: 'chatbubbles', module: 'community' },
   { key: 'mentorship', href: '/edu/mentorship', title: '1:1 mentorship', icon: 'person-circle' },
   { key: 'doubts', href: '/edu/doubts', title: 'Doubts', icon: 'chatbubble-ellipses' },
+  { key: 'team', href: '/edu/team', title: 'Team & tutors', icon: 'people-circle', owner: true },
   { key: 'certificates', href: '/edu/certificates', title: 'Certificates', icon: 'ribbon', match: ['/edu/certificate'], owner: true },
   { key: 'earnings', href: '/edu/earnings', title: 'Earnings', icon: 'wallet', owner: true },
   { key: 'grow', href: '/edu/grow', title: 'Grow', icon: 'rocket', owner: true },
