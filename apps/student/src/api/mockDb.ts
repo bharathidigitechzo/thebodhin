@@ -481,9 +481,20 @@ function load(): Db {
       const raw = window.localStorage.getItem(KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Db;
-        if (!parsed.users || parsed.users.length === 0) parsed.users = s.users;
-        if (!parsed.memberships || parsed.memberships.length === 0) parsed.memberships = s.memberships;
-        return fixSavedCertificates({ ...s, ...parsed });
+        const initial = seed();
+        const mergedUsers = [...(parsed.users || [])];
+        for (const u of initial.users) {
+          if (!mergedUsers.some((x) => x.id === u.id || x.email.toLowerCase() === u.email.toLowerCase())) {
+            mergedUsers.push(u);
+          }
+        }
+        const mergedMemberships = [...(parsed.memberships || [])];
+        for (const m of initial.memberships) {
+          if (!mergedMemberships.some((x) => x.userId === m.userId && x.tenantId === m.tenantId && x.role === m.role)) {
+            mergedMemberships.push(m);
+          }
+        }
+        return fixSavedCertificates({ ...initial, ...parsed, users: mergedUsers, memberships: mergedMemberships });
       }
     } catch {
       /* storage blocked → fall back to seed */
