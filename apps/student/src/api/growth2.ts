@@ -294,15 +294,26 @@ export const certDesignApi = {
   },
   /** Everything the certificate page needs: learner, course, academy template (Bodhin default if the academy has no designer). */
   render(userId: string, certId: string) {
-    const cert = certificates.get(userId, certId);
+    const found = certificates.get(userId, certId);
+    const cert = found ? { ...found, tutor: certInstructor(found) } : found;
     if (!cert) throw new ApiError('not_found', 'Certificate not found.');
     const co = cert.courseId ? courseOf(cert.courseId) : undefined;
     const tenant = co ? tenantById(co.tenantId) : undefined;
     const custom = tenant && tenantHas(tenant.id, 'certificate_designer') ? r().certTemplates.find((x) => x.tenantId === tenant.id) : undefined;
-    const t: CertTemplate = custom ? withBg(custom) : defaultCert(tenant?.id ?? 'bodhin', cert.tutor, cert.issuedAt);
+    const t: CertTemplate = custom ? withBg({ ...custom, signName: custom.signName?.trim() || cert.tutor }) : defaultCert(tenant?.id ?? 'bodhin', cert.tutor, cert.issuedAt);
     return { cert, t, learner: userName(userId), academy: tenant?.branding.displayName ?? 'Bodhin', branding: tenant?.branding ?? null, verify: verifyUrl(cert.id) };
   },
 };
+
+/** The educator named on a certificate: the course's instructor, else the academy owner (older certificates may say just "Instructor"). */
+export function certInstructor(cert: { courseId?: string; tutor?: string }) {
+  if (cert.tutor && cert.tutor.trim() && cert.tutor !== 'Instructor') return cert.tutor;
+  const co = cert.courseId ? courseOf(cert.courseId) : undefined;
+  const tu = co ? seedTutors.find((t) => t.id === co.tutorId) : undefined;
+  if (tu) return tu.name;
+  const owner = co ? tenantById(co.tenantId)?.ownerUserId : undefined;
+  return (owner && db.users.find((u) => u.id === owner)?.name) || 'Bodhin Academy';
+}
 
 /** Public verification (no login): anyone with the ID or QR can confirm a certificate is real. Shows only what is printed on it. */
 export function verifyCertificate(certId: string) {
@@ -312,7 +323,7 @@ export function verifyCertificate(certId: string) {
   if (!cert) return { valid: false as const, reason: 'No certificate with this ID was issued on Bodhin.' };
   const co = cert.courseId ? courseOf(cert.courseId) : undefined;
   const tenant = co ? tenantById(co.tenantId) : undefined;
-  return { valid: true as const, id: cert.id, learner: userName(cert.userId), course: cert.title, academy: tenant?.branding.displayName ?? 'Bodhin', tutor: cert.tutor, issuedAt: cert.issuedAt, weeks: cert.weeks };
+  return { valid: true as const, id: cert.id, learner: userName(cert.userId), course: cert.title, academy: tenant?.branding.displayName ?? 'Bodhin', tutor: certInstructor(cert), issuedAt: cert.issuedAt, weeks: cert.weeks };
 }
 
 /* ───────────── Analytics ───────────── */

@@ -15,6 +15,7 @@ import { TwoTone, Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { BottomSheet, IconButton, Pill } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
+import { CodeQuestion } from '@/ui/CodeQuestion';
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.max(0, s % 60)).padStart(2, '0')}`;
@@ -179,7 +180,9 @@ export default function QuizAttempt() {
 
             <Txt variant="heading" style={{ fontSize: 20, lineHeight: 28 }} accessibilityRole="header">{q.text}</Txt>
 
-            {q.kind === 'fill_blank' ? (
+            {q.kind === 'code' && q.code ? (
+              <CodeQuestion key={q.id} spec={q.code} value={answers[i]} userId={userId} onChange={(val) => setAnswers((arr) => arr.map((v, j) => (j === i ? val : v)))} />
+            ) : q.kind === 'fill_blank' ? (
               <View style={{ gap: 8, marginTop: 4 }}>
                 <Txt variant="label" color={c.muted}>Type your answer in the blank below:</Txt>
                 <TextInput

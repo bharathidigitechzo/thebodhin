@@ -1,7 +1,9 @@
 /** Session store. Swap persistence to expo-secure-store when the real backend lands. */
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { Session } from '@/core/types';
+import { AppState } from 'react-native';
 import { auth } from '@/api/client';
+import { cloud, pulledListeners, refreshIfStale } from '@/api/cloud';
 
 const KEY = 'bodhin.session.v1';
 const web = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -28,7 +30,7 @@ export function homePath(session: Session | null, mode: Mode | null) {
   if (!session) return '/sign-in';
   if (adminMembership(session) && mode !== 'learner') return '/admin';
   const edu = educatorMembership(session);
-  return edu && mode !== 'learner' ? '/educator/home' : '/home';
+  return edu ? '/educator/home' : '/home'; // educators always open the Educator portal
 }
 
 interface AuthState {
@@ -69,17 +71,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const raw = read(KEY);
-    if (raw) {
-      try {
-        setSessionState(JSON.parse(raw));
-      } catch {
-        /* corrupted → signed out */
+    let alive = true;
+    (async () => {
+      let saved: Session | null = null;
+      const raw = read(KEY);
+      if (raw) {
+        try {
+          saved = JSON.parse(raw);
+        } catch {
+          /* corrupted → signed out */
+        }
       }
-    }
-    setOnboarded(read('bodhin.onboarded') === '1');
-    setModeState((read('bodhin.mode') as Mode | null) ?? null);
-    setReady(true);
+      // Shared database: load the latest data before showing any screen. A saved session without a cloud
+      // sign-in (e.g. from an older offline build) is dropped so the user signs in once and gets their data.
+      if (cloud.enabled) {
+        const online = await cloud.restore().catch(() => false);
+        if (!online) saved = null;
+        else if (saved) saved = auth.refreshSession(saved.user.id) ?? saved;
+        if (!saved) write(KEY, null);
+        else write(KEY, JSON.stringify(saved));
+      }
+      if (!alive) return;
+      setSessionState(saved);
+      setOnboarded(read('bodhin.onboarded') === '1');
+      setModeState((read('bodhin.mode') as Mode | null) ?? null);
+      setReady(true);
+    })();
+    // Coming back to the app: pick up changes made on other devices.
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') refreshIfStale(); });
+    const onFocus = () => refreshIfStale();
+    if (web) window.addEventListener('focus', onFocus);
+    return () => {
+      alive = false;
+      sub.remove();
+      if (web) window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  // Shared data reloaded (sign-in, back to the app): pick up role changes made elsewhere, e.g. Bodhin approving this educator.
+  useEffect(() => {
+    const onPulled = () =>
+      setSessionState((s) => {
+        if (!s) return s;
+        const m = auth.refreshMemberships(s.user.id);
+        if (!m || JSON.stringify(m) === JSON.stringify(s.memberships)) return s;
+        const next = { ...s, memberships: m };
+        write(KEY, JSON.stringify(next));
+        return next;
+      });
+    pulledListeners.add(onPulled);
+    return () => { pulledListeners.delete(onPulled); };
   }, []);
 
   const setSession = useCallback((s: Session | null) => {
@@ -98,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    cloud.signOut().catch(() => {});
     setSession(null);
     setModeState(null);
     write('bodhin.mode', null);

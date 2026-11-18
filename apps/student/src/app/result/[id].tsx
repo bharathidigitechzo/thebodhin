@@ -5,13 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { assessments } from '@/api/client';
-import { verdict } from '@/core/assess';
+import { decodeCodeAnswer, verdict } from '@/core/assess';
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout, radius } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { Chip, IconButton, Pill, ProgressBar, ProgressRing } from '@/ui/kit';
 import { NotFound } from '@/ui/misc';
+import { CodeEditor } from '@/ui/CodeEditor';
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -40,10 +41,13 @@ export default function Result() {
   const rows = questions.map((q, i) => {
     const isBlank = q.kind === 'fill_blank';
     const mine = t.answers[i];
-    const ok = isBlank
+    const code = q.kind === 'code' ? decodeCodeAnswer(mine) : null;
+    const ok = q.kind === 'code'
+      ? !!code && code.ran && code.total === (q.code?.tests.length ?? 0) && code.passed === code.total && code.total > 0
+      : isBlank
       ? typeof mine === 'string' && typeof (q.blankAnswer || q.options[0]) === 'string' && mine.trim().toLowerCase() === (q.blankAnswer || q.options[0]).trim().toLowerCase()
       : mine === q.correct;
-    return { q, i, mine, ok, isBlank };
+    return { q, i, mine, ok, isBlank, code };
   }).filter((r) => (filter === 'all' ? true : filter === 'correct' ? r.ok : !r.ok));
 
   return (
@@ -100,7 +104,7 @@ export default function Result() {
               <Chip label={`Correct (${t.correct})`} active={filter === 'correct'} onPress={() => setFilter('correct')} />
               <Chip label={`Incorrect (${t.total - t.correct})`} active={filter === 'wrong'} onPress={() => setFilter('wrong')} />
             </View>
-            {rows.map(({ q, i, mine, ok, isBlank }) => {
+            {rows.map(({ q, i, mine, ok, isBlank, code }) => {
               const expanded = open === i;
               return (
                 <View key={q.id} style={[styles.qRow, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -114,10 +118,15 @@ export default function Result() {
                   {expanded && (
                     <View style={{ gap: 8, paddingHorizontal: 12, paddingBottom: 12 }}>
                       <View style={{ flexDirection: 'row', gap: 6 }}>
-                        <Pill text={isBlank ? 'Fill in blank' : 'MCQ'} tone="info" />
+                        <Pill text={q.kind === 'code' ? 'Coding' : isBlank ? 'Fill in blank' : 'MCQ'} tone="info" />
                         <Pill text={`${q.marks ?? 2} ${q.marks === 1 ? 'mark' : 'marks'}`} tone="gold" />
                       </View>
-                      {isBlank ? (
+                      {q.kind === 'code' ? (
+                        <View style={{ gap: 6 }}>
+                          <Txt variant="label" color={ok ? c.success : c.danger}>{code?.ran ? `${code.passed} of ${code.total} tests passed` : code ? 'Tests were not run before submitting' : '— (skipped)'}</Txt>
+                          {code && <CodeEditor value={code.code} onChange={() => {}} readOnly lang="plain" label="Your code" minHeight={120} />}
+                        </View>
+                      ) : isBlank ? (
                         <View style={{ gap: 6 }}>
                           <View style={[styles.ans, { borderColor: ok ? c.success : c.danger, backgroundColor: ok ? c.successBg : c.dangerBg }]}>
                             <Txt variant="label" color={c.inkSoft}>Your answer:</Txt>

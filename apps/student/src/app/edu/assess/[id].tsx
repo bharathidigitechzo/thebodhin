@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, assessAdmin, grading } from '@/api/client';
-import type { Assessment, Question } from '@/core/assess';
+import type { Assessment, CodeSpec, Question } from '@/core/assess';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout } from '@/theme/tokens';
@@ -19,6 +19,8 @@ import { Avatar, BottomSheet, Chip, IconButton, Pill, ProgressBar } from '@/ui/k
 import { Banner, Checkbox } from '@/ui/misc';
 import { DateField, PillTabs, Stepper, TimeField } from '@/ui/pickers';
 import { KIND_META } from '@/ui/assessMeta';
+import { CodeQuestionEditor, newCodeSpec } from '@/ui/CodeQuestionEditor';
+import { stackOf } from '@/playground/stacks';
 
 type Tab = 'setup' | 'content' | 'results';
 type Info = NonNullable<ReturnType<typeof assessAdmin.get>>;
@@ -30,9 +32,10 @@ type Draft = {
   topic: string;
   explanation: string;
   hint: string;
-  kind?: 'mcq' | 'fill_blank';
+  kind?: 'mcq' | 'fill_blank' | 'code';
   blankAnswer?: string;
   marks?: number;
+  code?: CodeSpec;
 };
 const EMPTY: Draft = {
   text: '',
@@ -45,7 +48,7 @@ const EMPTY: Draft = {
   blankAnswer: '',
   marks: 2,
 };
-const ACCEPTS = ['PDF', 'DOCX', 'PPTX', 'ZIP', 'JPG', 'Link'];
+const ACCEPTS = ['PDF', 'DOCX', 'PPTX', 'ZIP', 'JPG', 'Link', 'Code'];
 const hhmm = (iso?: string) => (iso ? new Date(iso).toTimeString().slice(0, 5) : '18:00');
 const withTime = (dateIso: string, t: string) => {
   const d = new Date(dateIso);
@@ -143,7 +146,20 @@ export default function Builder() {
   const saveQ = () => {
     if (!q) return;
     try {
-      if (q.kind === 'fill_blank') {
+      if (q.kind === 'code') {
+        assessAdmin.upsertQuestion(userId, id, {
+          id: q.id,
+          text: q.text,
+          options: [],
+          correct: 0,
+          kind: 'code',
+          code: q.code ?? newCodeSpec(),
+          marks: q.marks ?? (a.kind === 'exam' ? 2 : 1),
+          topic: q.topic,
+          explanation: q.explanation,
+          hint: q.hint,
+        });
+      } else if (q.kind === 'fill_blank') {
         const ans = (q.blankAnswer ?? '').trim();
         if (!ans) {
           setQErr('Enter the correct answer for the blank.');
@@ -291,7 +307,7 @@ export default function Builder() {
                 {questions.length === 0 && (
                   <View style={[styles.empty, { backgroundColor: c.surface, borderColor: c.border }]}>
                     <Ionicons name="help-circle-outline" size={34} color={c.muted} />
-                    <Txt color={c.muted} center>Add multiple-choice or fill-in-the-blank questions or pick from questions you’ve used in this course.</Txt>
+                    <Txt color={c.muted} center>Add multiple-choice, fill-in-the-blank or coding questions, or pick from questions you’ve used in this course.</Txt>
                   </View>
                 )}
                 {questions.map((qq, i) => (
@@ -299,10 +315,15 @@ export default function Builder() {
                     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                       <Txt variant="label" color={c.primary}>Q{i + 1}</Txt>
                       <Txt variant="bodyStrong" style={{ flex: 1 }}>{qq.text}</Txt>
-                      <Pill text={qq.kind === 'fill_blank' ? 'Fill in blank' : 'MCQ'} tone="info" />
+                      <Pill text={qq.kind === 'code' ? 'Coding' : qq.kind === 'fill_blank' ? 'Fill in blank' : 'MCQ'} tone="info" />
                       <Pill text={`${qq.marks ?? (a.kind === 'exam' ? 2 : 1)} ${qq.marks === 1 ? 'mark' : 'marks'}`} tone="gold" />
                     </View>
-                    {qq.kind === 'fill_blank' ? (
+                    {qq.kind === 'code' ? (
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingVertical: 4 }}>
+                        <Ionicons name="code-slash" size={18} color={c.primary} />
+                        <Txt variant="label" color={c.inkSoft}>{stackOf(qq.code?.stack ?? '')?.name ?? 'Code'} · {qq.code?.tests.length ?? 0} test{qq.code?.tests.length === 1 ? '' : 's'}{qq.code?.tests.some((t) => t.hidden) ? ' (some hidden)' : ''}</Txt>
+                      </View>
+                    ) : qq.kind === 'fill_blank' ? (
                       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingVertical: 4 }}>
                         <Ionicons name="create-outline" size={18} color={c.success} />
                         <Txt variant="label" color={c.inkSoft}>Answer: </Txt>
@@ -333,6 +354,7 @@ export default function Builder() {
                           kind: qq.kind ?? 'mcq',
                           blankAnswer: qq.blankAnswer ?? (qq.options[0] || ''),
                           marks: qq.marks ?? (a.kind === 'exam' ? 2 : 1),
+                          code: qq.code ? { ...qq.code, tests: qq.code.tests.map((t) => ({ ...t })) } : undefined,
                         });
                         setQErr(null);
                       }} />
@@ -416,16 +438,22 @@ export default function Builder() {
         {q && (
           <View style={{ gap: 12 }}>
             <Txt variant="label">Question Type</Txt>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <Chip
                 label="Multiple Choice (MCQ)"
-                active={q.kind !== 'fill_blank'}
+                active={q.kind !== 'fill_blank' && q.kind !== 'code'}
                 onPress={() => setQ({ ...q, kind: 'mcq' })}
               />
               <Chip
                 label="Fill in the Blank"
                 active={q.kind === 'fill_blank'}
                 onPress={() => setQ({ ...q, kind: 'fill_blank' })}
+              />
+              <Chip
+                label="Coding"
+                icon="code-slash"
+                active={q.kind === 'code'}
+                onPress={() => setQ({ ...q, kind: 'code', code: q.code ?? newCodeSpec() })}
               />
             </View>
 
@@ -445,13 +473,15 @@ export default function Builder() {
               value={q.text}
               onChangeText={(v) => setQ({ ...q, text: v })}
               multiline
-              placeholder={q.kind === 'fill_blank' ? 'Question / sentence (e.g. The process of optimizing web pages is called _____)' : 'Question text'}
+              placeholder={q.kind === 'fill_blank' ? 'Question / sentence (e.g. The process of optimizing web pages is called _____)' : q.kind === 'code' ? 'Problem statement, e.g. Read two numbers and print their sum.' : 'Question text'}
               placeholderTextColor={c.muted}
               style={[styles.area, { minHeight: 70, borderColor: c.border, color: c.ink }]}
               accessibilityLabel="Question text"
             />
 
-            {q.kind === 'fill_blank' ? (
+            {q.kind === 'code' ? (
+              <CodeQuestionEditor spec={q.code ?? newCodeSpec()} onChange={(code) => setQ({ ...q, code })} />
+            ) : q.kind === 'fill_blank' ? (
               <View style={{ gap: 6 }}>
                 <Txt variant="label">Correct Answer</Txt>
                 <TextInput

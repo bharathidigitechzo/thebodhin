@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd apps/student && npx expo export --platform web",
+  "outputDirectory": "apps/student/dist",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

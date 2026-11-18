@@ -1,5 +1,5 @@
 /** One certificate layout used by the designer preview and the learner's certificate page (print = PDF on web). */
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, ImageBackground, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CertTemplate } from '@/core/growth2';
@@ -11,6 +11,10 @@ export function CertificateView({ t, learner, course, academy, date, certId, pri
   // Background: uploaded custom image (designer) or a picked design from certificate management (t.bg, resolved by the API).
   const bgUri = t.customBackgroundUri || t.bg;
   const certify = t.certifyText?.trim() || 'This is to certify that';
+  // Laid out at a real certificate size and scaled to fit, so narrow phones show all of it (name, course, educator, date)
+  // instead of clipping the bottom half.
+  const [boxW, setBoxW] = useState(0);
+  const scale = boxW ? Math.min(1, boxW / DESIGN_W) : 1;
 
   const content = (
     <View style={[styles.inner, !minimal && !custom && { borderColor: `${ac}55`, borderWidth: 1 }, custom && styles.customInner]}>
@@ -79,7 +83,8 @@ export function CertificateView({ t, learner, course, academy, date, certId, pri
   );
 
   return (
-    <View style={[styles.page, { borderColor: minimal ? '#E5E7EB' : ac, backgroundColor: '#FFFDF8' }]} accessibilityLabel={`Certificate for ${learner}, ${course}`}>
+    <View style={{ width: '100%', maxWidth: DESIGN_W, alignSelf: 'center', height: boxW ? DESIGN_W * scale / 1.414 : undefined }} onLayout={(e) => setBoxW(e.nativeEvent.layout.width)}>
+    <View style={[styles.page, boxW ? { width: DESIGN_W, alignSelf: 'flex-start', transform: [{ translateX: (-DESIGN_W * (1 - scale)) / 2 }, { translateY: (-(DESIGN_W / 1.414) * (1 - scale)) / 2 }, { scale }] } : null, { borderColor: minimal ? '#E5E7EB' : ac, backgroundColor: '#FFFDF8' }]} accessibilityLabel={`Certificate for ${learner}, ${course}`}>
       {bgUri ? (
         <ImageBackground source={{ uri: bgUri }} style={StyleSheet.absoluteFill} resizeMode="cover">
           <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,253,248,0.85)' }]} />
@@ -88,8 +93,11 @@ export function CertificateView({ t, learner, course, academy, date, certId, pri
       {modern && !bgUri && <View style={[styles.band, { backgroundColor: primary }]} />}
       {content}
     </View>
+    </View>
   );
 }
+
+const DESIGN_W = 720;
 
 const styles = StyleSheet.create({
   page: { width: '100%', maxWidth: 900, aspectRatio: 1.414, borderWidth: 6, borderRadius: 8, padding: 10, alignSelf: 'center', overflow: 'hidden', position: 'relative' },

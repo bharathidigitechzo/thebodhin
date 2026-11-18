@@ -1,7 +1,6 @@
 /** Educator Live tab: live now, upcoming by day, conducted (summary + recording), live-hours usage. */
 import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useLayout } from '@/ui/responsive';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
@@ -29,7 +28,8 @@ const dayKey = (iso: string) => {
 };
 
 export default function LiveTab() {
-  const { isDesktop } = useLayout();
+  const { width } = useWindowDimensions();
+  const headerHasAction = width >= 1024; // AppHeader shows "Schedule" itself on wide screens
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -52,7 +52,11 @@ export default function LiveTab() {
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.inner}>
             <AppHeader profileHref="/educator/more" action={{ title: 'Schedule', onPress: () => router.push('/edu/schedule') }} />
-            <Txt variant="title">Live classes</Txt>
+            {/* Schedule sits beside the title (no floating button covering the class list). */}
+            <View style={styles.titleRow}>
+              <Txt variant="title" style={{ flex: 1 }}>Live classes</Txt>
+              {!headerHasAction && <Button title="Schedule" iconLeft="add" size="md" onPress={() => router.push('/edu/schedule')} />}
+            </View>
             {!data ? (
               <View style={{ gap: 12 }}><Skeleton h={150} r={20} /><Skeleton h={70} /><Skeleton h={70} /></View>
             ) : (
@@ -135,9 +139,6 @@ export default function LiveTab() {
             )}
           </View>
         </ScrollView>
-        {!isDesktop && <View style={styles.fabWrap} pointerEvents="box-none">
-          <Button title="Schedule" iconLeft="add" style={styles.fab} onPress={() => router.push('/edu/schedule')} />
-        </View>}
       </SafeAreaView>
     </View>
   );
@@ -148,22 +149,21 @@ function Stat({ v, l }: { v: string; l: string }) {
   return (
     <View style={[styles.stat, { backgroundColor: c.surface, borderColor: c.border }]}>
       <Txt variant="heading" style={{ fontVariant: ['tabular-nums'] }}>{v}</Txt>
-      <Txt variant="caption" color={c.muted} numberOfLines={1}>{l}</Txt>
+      <Txt variant="caption" color={c.muted} numberOfLines={2}>{l}</Txt>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 120 },
+  scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 40 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 14 },
   liveCard: { borderRadius: 20, padding: 16, gap: 6 },
   stats: { flexDirection: 'row', gap: 10 },
-  stat: { flex: 1, borderWidth: 1, borderRadius: 16, padding: 12, gap: 2 },
+  stat: { flex: 1, minWidth: 0, borderWidth: 1, borderRadius: 16, padding: 12, gap: 2 },
   hours: { borderWidth: 1, borderRadius: 16, padding: 14, gap: 8 },
   list: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, minHeight: 64 },
   time: { width: 58, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   empty: { borderWidth: 1, borderRadius: 18, padding: 28, alignItems: 'center', gap: 8 },
-  fabWrap: { position: 'absolute', right: 20, bottom: 18, left: 20, alignItems: 'flex-end' },
-  fab: { paddingHorizontal: 22, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
 });

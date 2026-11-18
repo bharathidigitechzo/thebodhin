@@ -3,6 +3,7 @@
 # Usage (from apps/student):  bash tests/business/run.sh
 # After the backend is connected, keep these rules as server tests (see docs/BACKEND_INTEGRATION.md).
 set -e
+export EXPO_PUBLIC_CLOUD=off # business rules run on the local demo data, never the shared database
 APP=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$(mktemp -d)
 for t in "$APP"/tests/business/*.test.ts; do
