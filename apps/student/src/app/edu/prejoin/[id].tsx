@@ -15,7 +15,6 @@ import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { Avatar, BottomSheet, Chip, IconButton, Pill } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
-import { RoomVideo } from '@/ui/RoomVideo';
 
 const CAMS = ['Built-in camera', 'USB webcam'];
 const MICS = ['Built-in microphone', 'Headset mic'];
@@ -28,13 +27,10 @@ export default function PreJoin() {
   const info = liveAdmin.get(userId, id);
   const [cam, setCam] = useState(true);
   const [mic, setMic] = useState(true);
-  const [cams, setCams] = useState(CAMS);
-  const [mics, setMics] = useState(MICS);
   const [camDev, setCamDev] = useState(CAMS[0]);
   const [micDev, setMicDev] = useState(MICS[0]);
   const [net, setNet] = useState<'checking' | 'good'>('checking');
-  const [level, setLevel] = useState(0);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [level, setLevel] = useState(0.2);
   const [err, setErr] = useState<string | null>(null);
   // Cancel a course-wide class (Nov 16 change request T3): reason required, every buyer is notified.
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -43,80 +39,10 @@ export default function PreJoin() {
   const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setNet('good'), 1000);
-    let currentStream: MediaStream | null = null;
-    let audioCtx: AudioContext | null = null;
-    let animId: number;
-
-    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-      navigator.mediaDevices
-        .getUserMedia({ video: true, audio: true })
-        .then((s) => {
-          currentStream = s;
-          setStream(s);
-          // Audio level meter
-          try {
-            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-            if (AudioCtx && s.getAudioTracks().length) {
-              audioCtx = new AudioCtx();
-              const source = audioCtx.createMediaStreamSource(s);
-              const analyser = audioCtx.createAnalyser();
-              analyser.fftSize = 64;
-              source.connect(analyser);
-              const data = new Uint8Array(analyser.frequencyBinCount);
-              const check = () => {
-                analyser.getByteFrequencyData(data);
-                let sum = 0;
-                for (let i = 0; i < data.length; i++) sum += data[i];
-                setLevel(Math.min(1, Math.max(0, (sum / data.length) / 100)));
-                animId = requestAnimationFrame(check);
-              };
-              check();
-            }
-          } catch {}
-        })
-        .catch(() => {
-          // Fallback if camera is denied/unavailable
-          navigator.mediaDevices?.getUserMedia?.({ audio: true }).then((s) => {
-            currentStream = s;
-            setStream(s);
-          }).catch(() => {});
-        });
-
-      navigator.mediaDevices.enumerateDevices?.().then((devices) => {
-        const videoDevices = devices.filter((d) => d.kind === 'videoinput').map((d, i) => d.label || `Camera ${i + 1}`);
-        const audioDevices = devices.filter((d) => d.kind === 'audioinput').map((d, i) => d.label || `Microphone ${i + 1}`);
-        if (videoDevices.length) {
-          setCams(videoDevices);
-          setCamDev(videoDevices[0]);
-        }
-        if (audioDevices.length) {
-          setMics(audioDevices);
-          setMicDev(audioDevices[0]);
-        }
-      }).catch(() => {});
-    }
-
-    return () => {
-      clearTimeout(t);
-      if (animId) cancelAnimationFrame(animId);
-      audioCtx?.close().catch(() => {});
-      currentStream?.getTracks().forEach((trk) => trk.stop());
-    };
+    const t = setTimeout(() => setNet('good'), 1400);
+    const m = setInterval(() => setLevel(0.15 + Math.random() * 0.8), 180);
+    return () => { clearTimeout(t); clearInterval(m); };
   }, []);
-
-  // Update track enabled state on toggle
-  useEffect(() => {
-    if (stream) {
-      stream.getVideoTracks().forEach((t) => { t.enabled = cam; });
-    }
-  }, [cam, stream]);
-
-  useEffect(() => {
-    if (stream) {
-      stream.getAudioTracks().forEach((t) => { t.enabled = mic; });
-    }
-  }, [mic, stream]);
 
   if (!info || !session) {
     return (
@@ -148,7 +74,6 @@ export default function PreJoin() {
   };
   const go = () => {
     try {
-      stream?.getTracks().forEach((t) => t.stop());
       liveAdmin.start(userId, id);
       router.replace({ pathname: '/edu/host/[id]', params: { id, cam: cam ? '1' : '0', mic: mic ? '1' : '0' } });
     } catch (e) {
@@ -175,14 +100,12 @@ export default function PreJoin() {
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.inner}>
             <LinearGradient colors={cam ? ['#1E3A5F', '#0E1B33'] : ['#2A2F3A', '#16191F']} style={styles.preview}>
-              {cam && stream ? (
-                <RoomVideo stream={stream} muted={true} style={StyleSheet.absoluteFill} />
-              ) : cam ? (
+              {cam ? (
                 <View style={{ alignItems: 'center', gap: 8 }}>
                   <View style={[styles.face, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
-                    <Ionicons name="videocam-outline" size={54} color="rgba(255,255,255,0.7)" />
+                    <Ionicons name="person" size={70} color="rgba(255,255,255,0.55)" />
                   </View>
-                  <Txt variant="caption" color="rgba(255,255,255,0.85)">Connecting camera…</Txt>
+                  <Txt variant="caption" color="rgba(255,255,255,0.7)">Camera preview (simulated in this POC)</Txt>
                 </View>
               ) : (
                 <Avatar name={session.user.name} size={88} />
@@ -190,7 +113,7 @@ export default function PreJoin() {
               <View style={styles.previewBar}>
                 <Pill text={session.user.name.split(' ')[0]} tone="neutral" />
                 <View style={styles.meter} accessibilityLabel="Microphone level">
-                  {[0, 1, 2, 3, 4].map((i) => <View key={i} style={{ width: 4, borderRadius: 2, height: 6 + i * 3, backgroundColor: mic && level > i * 0.15 ? '#4ADE80' : 'rgba(255,255,255,0.3)' }} />)}
+                  {[0, 1, 2, 3, 4].map((i) => <View key={i} style={{ width: 4, borderRadius: 2, height: 6 + i * 3, backgroundColor: mic && level > i * 0.2 ? '#4ADE80' : 'rgba(255,255,255,0.3)' }} />)}
                 </View>
               </View>
             </LinearGradient>
@@ -203,9 +126,9 @@ export default function PreJoin() {
             <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
               <Txt variant="label" color={c.muted}>DEVICES</Txt>
               <Txt variant="label">Camera</Txt>
-              <View style={styles.chips}>{cams.map((d) => <Chip key={d} label={d} active={camDev === d} onPress={() => setCamDev(d)} />)}</View>
+              <View style={styles.chips}>{CAMS.map((d) => <Chip key={d} label={d} active={camDev === d} onPress={() => setCamDev(d)} />)}</View>
               <Txt variant="label">Microphone</Txt>
-              <View style={styles.chips}>{mics.map((d) => <Chip key={d} label={d} active={micDev === d} onPress={() => setMicDev(d)} />)}</View>
+              <View style={styles.chips}>{MICS.map((d) => <Chip key={d} label={d} active={micDev === d} onPress={() => setMicDev(d)} />)}</View>
             </View>
 
             <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
