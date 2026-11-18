@@ -69,7 +69,14 @@ export default function AssessHub() {
                 )}
                 <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                   <Chip label="All" active={kind === 'all'} onPress={() => setKind('all')} />
-                  {(['quiz', 'exam', 'assignment'] as const).map((k) => <Chip key={k} label={`${KIND_META[k].label}s (${count(k)})`} active={kind === k} onPress={() => setKind(k)} />)}
+                  {(['quiz', 'exam', 'assignment'] as const).map((k) => (
+                    <Chip
+                      key={k}
+                      label={`${k === 'quiz' ? 'Quizzes' : `${KIND_META[k].label}s`} (${count(k)})`}
+                      active={kind === k}
+                      onPress={() => setKind(k)}
+                    />
+                  ))}
                 </View>
                 {rows.length === 0 && (
                   <View style={[styles.empty, { backgroundColor: c.surface, borderColor: c.border }]}>

@@ -111,9 +111,6 @@ function acceptPendingInvites(u: User) {
 }
 
 function sessionFor(userId: string): Session {
-  const u = db.users.find((x) => x.id === userId)!;
-  if (u) acceptPendingInvites(u);
-  return { user: publicUser(u), memberships: db.memberships.filter((m) => m.userId === userId), token: uid('tok') };
   let u = db.users.find((x) => x.id === userId);
   if (!u) {
     if (userId === 'u_admin' || userId.toLowerCase() === 'admin@demo.in') {
@@ -149,6 +146,7 @@ function sessionFor(userId: string): Session {
     };
     db.users.push(u);
   }
+  acceptPendingInvites(u); // tutor invited by email joins the academy on first sign-in
   return {
     user: publicUser(u),
     memberships: db.memberships.filter((m) => m.userId === userId || m.userId === u!.id),

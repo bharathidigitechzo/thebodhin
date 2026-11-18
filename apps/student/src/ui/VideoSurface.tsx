@@ -51,17 +51,24 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   const lastTap = useRef<{ at: number; x: number } | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const width = useRef(1);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoElRef = useRef<HTMLVideoElement | null>(null);
+  const barRef = useRef<any>(null); // the bar's DOM node on web (for mouse-accurate seeking)
 
-  const videoSrc = lesson.videoUri || course.intro?.uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+  const rawUrl = lesson.videoUrl || (lesson as any).videoUri || course.intro?.uri;
+  const ytEmbed = getYouTubeEmbedUrl(rawUrl);
+  const videoSource = rawUrl || DEFAULT_SAMPLE_VIDEO;
+  const isWeb = Platform.OS === 'web';
+  const hasRealVideo = isWeb && !ytEmbed && !hasVideoError;
 
   // reset when lesson changes
   useEffect(() => {
-    setT(Math.min(startAt, duration - 1));
+    setT(Math.min(startAt, Math.max(0, duration - 1)));
     setPlaying(false);
     setChrome(true);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = Math.min(startAt, duration - 1);
+    setHasVideoError(false);
+    if (videoElRef.current) {
+      videoElRef.current.currentTime = startAt;
+      videoElRef.current.pause();
     }
   }, [lesson.id, rawUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -120,10 +127,10 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   };
 
   const seek = (d: number) => {
-    const nextT = Math.max(0, Math.min(duration - 1, t + d));
+    const nextT = Math.max(0, Math.min(Math.max(1, duration - 0.5), t + d));
     setT(nextT);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = nextT;
+    if (videoElRef.current) {
+      videoElRef.current.currentTime = nextT;
     }
   };
 
@@ -148,10 +155,19 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   };
 
   const scrub = (e: GestureResponderEvent) => {
-    const nextT = Math.max(0, Math.min(duration - 1, (e.nativeEvent.locationX / barW) * duration));
+    // Web: measure against the bar itself (locationX is relative to whichever child was hit — track or knob).
+    let ratio = barW > 0 ? e.nativeEvent.locationX / barW : 0;
+    if (isWeb) {
+      const native = e.nativeEvent as unknown as { clientX?: number; touches?: { clientX: number }[] };
+      const clientX = native.clientX ?? native.touches?.[0]?.clientX;
+      const node = barRef.current as unknown as { getBoundingClientRect?: () => DOMRect } | null;
+      const rect = node?.getBoundingClientRect?.();
+      if (rect && clientX != null && rect.width > 0) ratio = (clientX - rect.left) / rect.width;
+    }
+    const nextT = Math.max(0, Math.min(Math.max(1, duration - 0.5), Math.max(0, Math.min(1, ratio)) * duration));
     setT(nextT);
-    if (Platform.OS === 'web' && videoRef.current) {
-      videoRef.current.currentTime = nextT;
+    if (videoElRef.current) {
+      videoElRef.current.currentTime = nextT;
     }
   };
 
@@ -163,31 +179,25 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
       onLayout={(e: LayoutChangeEvent) => (width.current = e.nativeEvent.layout.width)}
       accessibilityLabel={`Video: ${lesson.title}`}
     >
-      {Platform.OS === 'web' && !videoError ? (
-        React.createElement('video', {
-          ref: (el: HTMLVideoElement | null) => {
-            videoRef.current = el;
-            if (el && startAt > 0 && Math.abs(el.currentTime - startAt) > 1) {
-              el.currentTime = startAt;
-            }
-          },
-          src: videoSrc,
-          playsInline: true,
-          preload: 'auto',
-          onPlay: () => { setPlaying(true); setRealPlaying(true); },
-          onPause: () => { setPlaying(false); setRealPlaying(false); },
-          onError: () => setVideoError(true),
-          onTimeUpdate: (e: React.SyntheticEvent<HTMLVideoElement>) => {
-            const el = e.currentTarget;
-            setT(el.currentTime);
-            onTime(el.currentTime, el.duration || duration);
-          },
-          onEnded: () => {
-            setPlaying(false);
-            setRealPlaying(false);
-            onEnded();
-          },
-          style: {
+      {/* Background / Artwork layer */}
+      <LinearGradient colors={[course.art.from, course.art.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      <Ionicons name={course.art.icon as keyof typeof Ionicons.glyphMap} size={160} color="rgba(255,255,255,0.10)" style={{ position: 'absolute', right: 10, top: 10 }} />
+
+      {/* Real Video Player Layer */}
+      {ytEmbed && isWeb ? (
+        <View style={StyleSheet.absoluteFill}>
+          <iframe
+            src={ytEmbed}
+            style={{ width: '100%', height: '100%', border: 'none', backgroundColor: '#000' } as any}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        </View>
+      ) : hasRealVideo ? (
+        <video
+          ref={videoElRef}
+          src={videoSource}
+          style={{
             position: 'absolute',
             top: 0,
             left: 0,
@@ -199,8 +209,14 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
           playsInline
           onTimeUpdate={(e) => setT((e.currentTarget as HTMLVideoElement).currentTime)}
           onLoadedMetadata={(e) => {
-            const d = (e.currentTarget as HTMLVideoElement).duration;
+            const el = e.currentTarget as HTMLVideoElement;
+            const d = el.duration;
             if (d && !isNaN(d) && d > 0) setRealDuration(d);
+            // Resume where the learner left off — setting currentTime before the metadata loads is ignored by browsers.
+            if (startAt > 0 && isFinite(startAt)) {
+              const target = Math.max(0, Math.min(startAt, (d && isFinite(d) ? d : duration) - 1));
+              try { el.currentTime = target; setT(target); } catch { /* not seekable yet */ }
+            }
           }}
           onEnded={() => {
             setPlaying(false);
@@ -251,18 +267,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
             <Pressable onPress={() => seek(-10)} style={styles.small} accessibilityRole="button" accessibilityLabel="Back 10 seconds" hitSlop={8}>
               <Ionicons name="play-back" size={24} color="#fff" />
             </Pressable>
-            <Pressable
-              onPress={() => {
-                if (t >= duration - 1) {
-                  setT(0);
-                  if (videoRef.current) videoRef.current.currentTime = 0;
-                }
-                setPlaying((p) => !p);
-              }}
-              style={styles.big}
-              accessibilityRole="button"
-              accessibilityLabel={playing ? 'Pause' : 'Play'}
-            >
+            <Pressable onPress={togglePlay} style={styles.big} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play'}>
               <Ionicons name={playing ? 'pause' : 'play'} size={34} color="#fff" style={!playing ? { marginLeft: 4 } : undefined} />
             </Pressable>
             <Pressable onPress={() => seek(10)} style={styles.small} accessibilityRole="button" accessibilityLabel="Forward 10 seconds" hitSlop={8}>
@@ -281,10 +286,10 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
               accessibilityRole="adjustable"
               accessibilityLabel={`Position ${fmt(t)} of ${fmt(duration)}`}
             >
-              <View style={styles.track} pointerEvents="none">
-                <View style={[styles.fill, { width: `${pct}%` }]} pointerEvents="none" />
+              <View style={styles.track}>
+                <View style={[styles.fill, { width: `${pct}%` }]} />
               </View>
-              <View style={[styles.knob, { left: `${pct}%` }]} pointerEvents="none" />
+              <View style={[styles.knob, { left: `${pct}%` }]} />
             </Pressable>
             <View style={styles.timeRow}>
               <Txt variant="caption" color="#fff" style={{ fontVariant: ['tabular-nums'] }}>
@@ -318,7 +323,7 @@ const styles = StyleSheet.create({
   big: { width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(0,0,0,0.45)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center' },
   small: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   bottom: { paddingHorizontal: 14, paddingBottom: 8 },
-  barHit: { height: 28, justifyContent: 'center', cursor: 'pointer' as any },
+  barHit: { height: 28, justifyContent: 'center' },
   track: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.35)', overflow: 'hidden' },
   fill: { height: 4, backgroundColor: '#F5A524' },
   knob: { position: 'absolute', width: 16, height: 16, borderRadius: 8, marginLeft: -8, backgroundColor: '#F5A524', top: 6 },

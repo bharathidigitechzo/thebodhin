@@ -114,7 +114,9 @@ export default function GradeSubmission() {
                     <Txt variant="bodyStrong" numberOfLines={1}>{f.name}</Txt>
                     <Txt variant="caption" color={c.muted}>{f.sizeMb} MB · tap to view PDF</Txt>
                   </View>
-                  <IconButton icon="eye-outline" label="View PDF" onPress={() => setPreview(f)} />
+                  <View style={{ padding: 8 }}>
+                    <Ionicons name="eye-outline" size={20} color={c.inkSoft} />
+                  </View>
                 </Pressable>
               ))}
               {!!d.s.link && (
