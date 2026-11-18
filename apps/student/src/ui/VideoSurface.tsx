@@ -1,6 +1,8 @@
 /**
  * Video surface with thumb-friendly controls.
- * Supports real HTML5 video playback, YouTube embeds, and sample fallback video.
+ * POC: playback is SIMULATED (a clock over the course artwork) because the preview cannot stream video.
+ * DEVELOPER: swap the clock for `expo-video` (useVideoPlayer + VideoView) fed by the signed HLS URL from
+ * player.open(); keep this component's props so the screen does not change.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { GestureResponderEvent, LayoutChangeEvent, Platform, Pressable, StyleSheet, View } from 'react-native';
@@ -30,24 +32,15 @@ interface Props {
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-function getYouTubeEmbedUrl(url?: string): string | null {
-  if (!url) return null;
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-  const match = url.match(regExp);
-  return match && match[2].length === 11 ? `https://www.youtube.com/embed/${match[2]}?autoplay=1&enablejsapi=1` : null;
-}
-
-const DEFAULT_SAMPLE_VIDEO = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-
 export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen, onTime, onEnded, onSpeed, onQuality, onFullscreen }: Props) {
-  const [realDuration, setRealDuration] = useState<number | null>(null);
-  const duration = realDuration ?? (lesson.durationSec ?? 600);
-  const [t, setT] = useState(Math.min(startAt, Math.max(0, duration - 1)));
+  const duration = lesson.durationSec ?? 600;
+  const [t, setT] = useState(Math.min(startAt, duration - 1));
   const [playing, setPlaying] = useState(false);
+  const [realPlaying, setRealPlaying] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const [chrome, setChrome] = useState(true);
   const [seekHint, setSeekHint] = useState<null | 'back' | 'fwd'>(null);
   const [barW, setBarW] = useState(1);
-  const [hasVideoError, setHasVideoError] = useState(false);
   const lastTap = useRef<{ at: number; x: number } | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const width = useRef(1);
@@ -59,22 +52,38 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   useEffect(() => {
     setT(Math.min(startAt, duration - 1));
     setPlaying(false);
+    setRealPlaying(false);
+    setVideoError(false);
     setChrome(true);
     if (Platform.OS === 'web' && videoRef.current) {
       videoRef.current.currentTime = Math.min(startAt, duration - 1);
     }
-  }, [lesson.id, rawUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lesson.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // sync playback rate
+  // play / pause real video on web
   useEffect(() => {
-    if (videoElRef.current) {
-      videoElRef.current.playbackRate = speed;
+    if (Platform.OS !== 'web' || !videoRef.current) return;
+    if (playing) {
+      videoRef.current.play().then(() => setRealPlaying(true)).catch(() => {
+        // If autoplay or codecs blocked, use robust playback simulation
+        setVideoError(true);
+      });
+    } else {
+      videoRef.current.pause();
+      setRealPlaying(false);
     }
+  }, [playing]);
+
+  // playback speed
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !videoRef.current) return;
+    videoRef.current.playbackRate = speed;
   }, [speed]);
 
-  // fallback simulated clock only when no real video is active
+  // timer progression (active when video is simulated or fallback)
   useEffect(() => {
-    if (hasRealVideo || ytEmbed || !playing) return;
+    if (!playing) return;
+    if (Platform.OS === 'web' && !videoError && realPlaying) return;
     const id = setInterval(() => {
       setT((x) => {
         const n = Math.min(duration, x + 0.5 * speed * 2);
@@ -86,38 +95,15 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
       });
     }, 500);
     return () => clearInterval(id);
-  }, [playing, speed, duration, onEnded, hasRealVideo, ytEmbed]);
+  }, [playing, speed, duration, onEnded, videoError, realPlaying]);
 
-  useEffect(() => {
-    onTime(t, duration);
-  }, [t, duration]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => onTime(t, duration), [t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // auto-hide controls while playing
   useEffect(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
-    if (playing && chrome) {
-      hideTimer.current = setTimeout(() => setChrome(false), 3500);
-    }
+    if (playing && chrome) hideTimer.current = setTimeout(() => setChrome(false), 3000);
   }, [playing, chrome]);
-
-  const togglePlay = () => {
-    if (videoElRef.current) {
-      if (videoElRef.current.paused) {
-        if (videoElRef.current.currentTime >= duration - 0.5) {
-          videoElRef.current.currentTime = 0;
-        }
-        videoElRef.current.play().then(() => setPlaying(true)).catch(() => {
-          setHasVideoError(true);
-          setPlaying(true);
-        });
-      } else {
-        videoElRef.current.pause();
-        setPlaying(false);
-      }
-    } else {
-      setPlaying((p) => !p);
-    }
-  };
 
   const seek = (d: number) => {
     const nextT = Math.max(0, Math.min(duration - 1, t + d));
@@ -154,8 +140,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
       videoRef.current.currentTime = nextT;
     }
   };
-
-  const pct = duration > 0 ? (t / duration) * 100 : 0;
+  const pct = (t / duration) * 100;
 
   return (
     <View
@@ -195,33 +180,28 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
             height: '100%',
             objectFit: 'contain',
             backgroundColor: '#000',
-          } as any}
-          playsInline
-          onTimeUpdate={(e) => setT((e.currentTarget as HTMLVideoElement).currentTime)}
-          onLoadedMetadata={(e) => {
-            const d = (e.currentTarget as HTMLVideoElement).duration;
-            if (d && !isNaN(d) && d > 0) setRealDuration(d);
-          }}
-          onEnded={() => {
-            setPlaying(false);
-            onEnded();
-          }}
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          onError={() => setHasVideoError(true)}
-        />
+          },
+          'aria-label': `Video: ${lesson.title}`,
+        })
       ) : (
-        <View style={[styles.slide, chrome && { opacity: 0 }]}>
-          <Txt variant="title" color="#fff" numberOfLines={2} style={{ maxWidth: '75%', fontSize: 20 }}>
-            {lesson.title}
-          </Txt>
-        </View>
+        <>
+          <LinearGradient colors={[course.art.from, course.art.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+          <Ionicons name={course.art.icon as keyof typeof Ionicons.glyphMap} size={160} color="rgba(255,255,255,0.12)" style={{ position: 'absolute', right: 10, top: 10 }} />
+          <View style={[styles.slide, chrome && { opacity: 0.15 }]}>
+            <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Ionicons name={playing ? 'play' : 'film'} size={32} color="#fff" />
+            </View>
+            <Txt variant="title" color="#fff" numberOfLines={2} center style={{ maxWidth: '85%', fontSize: 20 }}>
+              {lesson.title}
+            </Txt>
+            <Txt variant="caption" color="rgba(255,255,255,0.85)" center style={{ marginTop: 6 }}>
+              {course.title} · {Math.round(duration / 60)} min
+            </Txt>
+          </View>
+        </>
       )}
 
-      {/* Tap surface (not over YouTube iframe so iframe controls work) */}
-      {!ytEmbed && (
-        <Pressable style={StyleSheet.absoluteFill} onPress={onSurfaceTap} accessibilityRole="button" accessibilityLabel={chrome ? 'Hide controls' : 'Show controls'} />
-      )}
+      <Pressable style={StyleSheet.absoluteFill} onPress={onSurfaceTap} accessibilityRole="button" accessibilityLabel={chrome ? 'Hide controls' : 'Show controls'} />
 
       {seekHint && (
         <View style={[styles.seekHint, seekHint === 'back' ? { left: 24 } : { right: 24 }]} pointerEvents="none">
@@ -230,7 +210,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
         </View>
       )}
 
-      {!ytEmbed && chrome && (
+      {chrome && (
         <View style={styles.chrome} pointerEvents="box-none">
           <LinearGradient colors={['rgba(0,0,0,0.45)', 'transparent', 'rgba(0,0,0,0.6)']} style={StyleSheet.absoluteFill} pointerEvents="none" />
           <View style={styles.topRow} pointerEvents="box-none">
@@ -272,7 +252,6 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
 
           <View style={styles.bottom} pointerEvents="box-none">
             <Pressable
-              ref={barRef}
               onLayout={(e) => setBarW(e.nativeEvent.layout.width)}
               onPress={scrub}
               onResponderMove={scrub}
@@ -281,10 +260,10 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
               accessibilityRole="adjustable"
               accessibilityLabel={`Position ${fmt(t)} of ${fmt(duration)}`}
             >
-              <View style={styles.track} pointerEvents="none">
-                <View style={[styles.fill, { width: `${pct}%` }]} pointerEvents="none" />
+              <View style={styles.track}>
+                <View style={[styles.fill, { width: `${pct}%` }]} />
               </View>
-              <View style={[styles.knob, { left: `${pct}%` }]} pointerEvents="none" />
+              <View style={[styles.knob, { left: `${pct}%` }]} />
             </Pressable>
             <View style={styles.timeRow}>
               <Txt variant="caption" color="#fff" style={{ fontVariant: ['tabular-nums'] }}>
@@ -297,8 +276,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
           </View>
         </View>
       )}
-
-      {!ytEmbed && !chrome && (
+      {!chrome && (
         <View style={styles.thin} pointerEvents="none">
           <View style={[styles.fill, { width: `${pct}%`, height: 3 }]} />
         </View>
@@ -318,7 +296,7 @@ const styles = StyleSheet.create({
   big: { width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(0,0,0,0.45)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center' },
   small: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   bottom: { paddingHorizontal: 14, paddingBottom: 8 },
-  barHit: { height: 28, justifyContent: 'center', cursor: 'pointer' as any },
+  barHit: { height: 28, justifyContent: 'center' },
   track: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.35)', overflow: 'hidden' },
   fill: { height: 4, backgroundColor: '#F5A524' },
   knob: { position: 'absolute', width: 16, height: 16, borderRadius: 8, marginLeft: -8, backgroundColor: '#F5A524', top: 6 },
