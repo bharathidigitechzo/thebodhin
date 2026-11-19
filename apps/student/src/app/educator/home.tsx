@@ -383,7 +383,7 @@ function Completion({ data }: { data: Data['completion'] }) {
         <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
           {parts.map((p) => {
             const len = (p.n / total) * circ;
-            const el = <Circle key={p.label} cx={size / 2} cy={size / 2} r={r} stroke={p.color} strokeWidth={stroke} fill="none" strokeDasharray={`${len} ${circ - len}`} strokeDashoffset={-offset} rotation={-90} origin={`${size / 2}, ${size / 2}`} />;
+            const el = <Circle key={p.label} cx={size / 2} cy={size / 2} r={r} stroke={p.color} strokeWidth={stroke} fill="none" strokeDasharray={`${len} ${circ - len}`} strokeDashoffset={-offset} transform={`rotate(-90 ${size / 2} ${size / 2})`} />;
             offset += len;
             return el;
           })}

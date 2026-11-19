@@ -153,7 +153,7 @@ export function ProgressRing({ pct, size = 72, stroke = 7, color, track, label =
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={`${pct}% complete`}>
       <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
         <Circle cx={size / 2} cy={size / 2} r={r} stroke={track ?? c.border} strokeWidth={stroke} fill="none" />
-        <Circle cx={size / 2} cy={size / 2} r={r} stroke={color ?? c.success} strokeWidth={stroke} fill="none" strokeDasharray={`${circ} ${circ}`} strokeDashoffset={offset} strokeLinecap="round" rotation={-90} origin={`${size / 2}, ${size / 2}`} />
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={color ?? c.success} strokeWidth={stroke} fill="none" strokeDasharray={`${circ} ${circ}`} strokeDashoffset={offset} strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`} />
       </Svg>
       {label && (
         <Txt variant="heading" color={textColor ?? c.ink} style={{ fontSize: size * 0.24 }}>
