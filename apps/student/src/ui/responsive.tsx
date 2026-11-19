@@ -211,9 +211,9 @@ export function AreaBar({ area, path }: { area: Area; path: string }) {
   const activeAll = activeKey(items, path, q.kind ? `kind=${q.kind}` : '');
   // A module that is not in the bar (Community, Timetable …) lights up More.
   const active = prim.some((x) => x.key === activeAll) ? activeAll : prim[prim.length - 1].key;
-  const bottomInset = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 16);
+  const bottomInset = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 16);
   return (
-    <View style={[s.bar, { backgroundColor: c.surface, borderTopColor: c.border, paddingBottom: bottomInset, minHeight: 56 + (Platform.OS === 'web' ? 8 : bottomInset) }]} accessibilityRole="tablist" testID="area-bar">
+    <View style={[s.bar, { backgroundColor: c.surface, borderTopColor: c.border, paddingBottom: bottomInset, minHeight: 58 + (Platform.OS === 'web' ? 8 : bottomInset) }]} accessibilityRole="tablist" testID="area-bar">
       {prim.map((it) => {
         const on = it.key === active;
         return (
@@ -300,8 +300,8 @@ export function useAppTabs(_items: readonly NavItem[], _area: Area) {
   const { c } = useTheme();
   const { isDesktop, isTablet } = useLayout();
   const insets = useSafeAreaInsets();
-  const bottomInset = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 16);
-  const barHeight = Platform.OS === 'web' ? 68 : 56 + bottomInset;
+  const bottomInset = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 16);
+  const barHeight = Platform.OS === 'web' ? 68 : 58 + bottomInset;
 
   return {
     tabBar: isDesktop ? () => null : undefined,
@@ -320,7 +320,7 @@ export function useAppTabs(_items: readonly NavItem[], _area: Area) {
             borderTopColor: c.border,
             borderTopWidth: StyleSheet.hairlineWidth,
             height: barHeight,
-            paddingTop: 6,
+            paddingTop: 8,
             paddingBottom: bottomInset,
           },
       tabBarItemStyle: isTablet ? { minHeight: 72 } : { paddingBottom: 0 },

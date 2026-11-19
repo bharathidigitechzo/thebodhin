@@ -12,7 +12,7 @@ import type { Coupon, EducatorApplication, Role, Session, Tenant, User } from '@
 import { ROLE_PERMS, isAdminRole, type AdminPerm, type AdminRole, type AuditEntry } from '@/core/admin';
 import type { Category } from '@/core/catalog';
 import { resolveHost } from '@/core/tenant';
-import { COUPONS, allLessons, isPublished, onMarketplace, onWorkspace, matchesQuery, nextLesson, progressOf, ratingSplit, sortCourses, type Course, type CourseQuery, type Enrollment, type Lesson, type Module, type Order, type PaymentMethod, type Review } from '@/core/catalog';
+import { COUPONS, allLessons, isPublished, onMarketplace, onWorkspace, matchesQuery, nextLesson, progressOf, ratingSplit, sortCourses, type Course, type CourseQuery, type Enrollment, type Lesson, type Module, type Order, type PaymentMethod, type Review, type Tutor } from '@/core/catalog';
 import { ADDON_CATALOG, ADDON_SIZES, MODULES, PLAN_FEATURES, daysLeft, entitlements, paymentRoute, payoutDateFor, planBlockers, splitOrder, subGate, usageReport, type Feature, type SubGate, type TenantSubscription } from '@/core/business';
 import { PLANS, type Plan, type PlanId } from '@/core/plans';
 import { attendancePct, batchStatus, generateSessions, weeksBetween, type Announcement, type AttendanceMark, type Batch, type Mark, type MemberStatus, type Person } from '@/core/batch';
@@ -425,7 +425,25 @@ export const tenants = {
 
 /* ───────────────────────── Catalog & learning (Step 2) ───────────────────────── */
 
-const tutorOf = (c: Course) => seedTutors.find((t) => t.id === c.tutorId)!;
+export function findCourse(courseId?: string | null): Course | undefined {
+  if (!courseId) return undefined;
+  return seedCourses.find((c) => c.id === courseId) ?? db.courses?.find((c) => c.id === courseId);
+}
+
+const fallbackTutor: Tutor = {
+  id: 'tu_default',
+  tenantId: 't_bodhin',
+  name: 'Bodhin Instructor',
+  headline: 'Certified Instructor',
+  yearsExperience: 5,
+  verified: true,
+  color: '#0B3B73',
+};
+
+const tutorOf = (c?: Course | null): Tutor => {
+  if (!c || !c.tutorId) return fallbackTutor;
+  return seedTutors.find((t) => t.id === c.tutorId) ?? db.tutorProfiles?.find((t) => t.id === c.tutorId) ?? fallbackTutor;
+};
 
 /**
  * Which courses a learner may SEE in browse/search:
@@ -509,9 +527,11 @@ export const learning = {
     const mine = db.enrollments
       .filter((e) => e.userId === userId)
       .map((e) => {
-        const course = seedCourses.find((c) => c.id === e.courseId)!;
+        const course = findCourse(e.courseId);
+        if (!course) return null;
         return { enrollment: e, course, tutor: tutorOf(course), progress: progressOf(course, e), next: nextLesson(course, e) };
       })
+      .filter((x): x is NonNullable<typeof x> => !!x)
       .filter((x) => !tenantId || x.course.tenantId === tenantId)
       .sort((a, b) => (b.enrollment.lastActiveAt ?? '').localeCompare(a.enrollment.lastActiveAt ?? ''));
 
@@ -521,11 +541,21 @@ export const learning = {
     const myCourseIds = new Set(mine.map((m) => m.course.id));
     const now = Date.now();
 
-    const batchLive = studentBatchSessions(userId).map(({ s }) => ({ id: s.id, courseId: db.batches.find((b) => b.id === s.batchId)!.courseId, title: s.title, startsAt: s.startsAt, endsAt: s.endsAt, registeredUserIds: [] as string[] }));
+    const batchLive = studentBatchSessions(userId)
+      .map(({ s }) => {
+        const b = db.batches.find((batch) => batch.id === s.batchId);
+        return { id: s.id, courseId: b?.courseId ?? '', title: s.title, startsAt: s.startsAt, endsAt: s.endsAt, registeredUserIds: [] as string[] };
+      })
+      .filter((s) => !!s.courseId);
+
     const upcomingLive = [...seedLive.filter((s) => db.sessionStatus[s.id] !== 'cancelled'), ...batchLive]
       .filter((s) => myCourseIds.has(s.courseId) && new Date(s.endsAt).getTime() > now && db.sessionStatus[s.id] !== 'conducted' && db.classSessions.find((x) => x.id === s.id)?.status !== 'conducted')
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-      .map((s) => ({ session: s, course: seedCourses.find((c) => c.id === s.courseId)!, registered: live.isRegistered(userId, s.id) }));
+      .map((s) => {
+        const course = findCourse(s.courseId);
+        return course ? { session: s, course, registered: live.isRegistered(userId, s.id) } : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x);
 
     const recommended = sortCourses(visible(tenantId).filter((c) => !myCourseIds.has(c.id)), 'relevance')
       .slice(0, 6)
@@ -982,17 +1012,21 @@ export const liveTab = {
     const courseRows = seedLive
       .filter((s) => mine.has(s.courseId) && db.sessionStatus[s.id] !== 'cancelled')
       .map((s) => {
-        const course = seedCourses.find((c) => c.id === s.courseId)!;
+        const course = findCourse(s.courseId);
+        if (!course) return null;
         return { session: { ...s, mode: 'online' as 'online' | 'offline' }, course, tutor: tutorOf(course), reminder: live.isRegistered(userId, s.id), attendance: db.attendance.find((a) => a.userId === userId && a.sessionId === s.id) ?? null };
-      });
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x);
     // Batch classes the learner belongs to (scheduled by their educator) — same data the educator sees.
     const batchRows = studentBatchSessions(userId).map(({ s, mark }) => {
-      const b = db.batches.find((x) => x.id === s.batchId)!;
-      const course = seedCourses.find((c) => c.id === b.courseId)!;
+      const b = db.batches.find((x) => x.id === s.batchId);
+      if (!b) return null;
+      const course = findCourse(b.courseId);
+      if (!course) return null;
       const session = { id: s.id, courseId: b.courseId, title: s.title, startsAt: s.startsAt, endsAt: s.endsAt, registeredUserIds: [], mode: s.mode };
       const attendance = mark && mark.status !== 'absent' ? { userId, sessionId: s.id, minutes: Math.round(hoursOf(s) * 60), joinedAt: s.startsAt } : db.attendance.find((a) => a.userId === userId && a.sessionId === s.id) ?? null;
       return { session, course, tutor: tutorOf(course), reminder: true, attendance };
-    });
+    }).filter((x): x is NonNullable<typeof x> => !!x);
     const rows = [...courseRows, ...batchRows].filter((r) => !tenantId || r.course.tenantId === tenantId);
     // A class the host has ended counts as past even if its scheduled end time hasn't arrived.
     const ended = (id: string) => db.sessionStatus[id] === 'conducted' || db.classSessions.find((x) => x.id === id)?.status === 'conducted';
@@ -1027,9 +1061,11 @@ export const liveTab = {
 
   session(id: string) {
     const cs = db.classSessions.find((x) => x.id === id);
-    const s = seedLive.find((x) => x.id === id) ?? (cs ? { id: cs.id, courseId: db.batches.find((b) => b.id === cs.batchId)!.courseId, title: cs.title, startsAt: cs.startsAt, endsAt: cs.endsAt, registeredUserIds: [] } : undefined);
+    const bId = cs ? db.batches.find((b) => b.id === cs.batchId)?.courseId : undefined;
+    const s = seedLive.find((x) => x.id === id) ?? (cs ? { id: cs.id, courseId: bId ?? '', title: cs.title, startsAt: cs.startsAt, endsAt: cs.endsAt, registeredUserIds: [] } : undefined);
     if (!s) return null;
-    const course = seedCourses.find((c) => c.id === s.courseId)!;
+    const course = findCourse(s.courseId);
+    if (!course) return null;
     return { session: s, course, tutor: tutorOf(course) };
   },
 
@@ -1111,7 +1147,8 @@ export const assessments = {
     // Curriculum quizzes appear once the learner reaches that module (not the whole course at once).
     const reached = (a: Assessment) => {
       if (!a.lessonId) return true;
-      const c = seedCourses.find((x) => x.id === a.courseId)!;
+      const c = findCourse(a.courseId);
+      if (!c) return false;
       const e = db.enrollments.find((x) => x.userId === userId && x.courseId === a.courseId);
       const nextMod = c.modules.indexOf(nextLesson(c, e).module);
       const quizMod = c.modules.findIndex((m) => m.lessons.some((l) => l.id === a.lessonId));
@@ -1121,11 +1158,13 @@ export const assessments = {
     const forMe = (a: Assessment) => a.status !== 'draft' && (!a.batchId || myBatches.has(a.batchId));
     const rows = ASSESSMENTS.filter((a) => mine.has(a.courseId) && forMe(a) && reached(a))
       .map((a) => {
-        const course = seedCourses.find((c) => c.id === a.courseId)!;
+        const course = findCourse(a.courseId);
+        if (!course) return null;
         const best = a.kind === 'assignment' ? null : bestAttempt(userId, a.id);
         const sub = a.kind === 'assignment' ? db.submissions.find((x) => x.userId === userId && x.assessmentId === a.id) ?? null : null;
         return { a, course, status: statusOf(userId, a), best, sub };
       })
+      .filter((x): x is NonNullable<typeof x> => !!x)
       .filter((r) => !tenantId || r.course.tenantId === tenantId);
     const order: Record<AssessStatus, number> = { overdue: 0, in_progress: 1, pending: 2, scheduled: 3, submitted: 4, graded: 5, completed: 6 };
     rows.sort((x, y) => order[x.status] - order[y.status] || (x.a.dueAt ?? 'z').localeCompare(y.a.dueAt ?? 'z'));
@@ -1145,7 +1184,8 @@ export const assessments = {
   get(id: string) {
     const a = ASSESSMENTS.find((x) => x.id === id || x.lessonId === id);
     if (!a) return null;
-    return { a, course: seedCourses.find((c) => c.id === a.courseId)!, tutor: tutorOf(seedCourses.find((c) => c.id === a.courseId)!) };
+    const course = findCourse(a.courseId) ?? seedCourses[0];
+    return { a, course, tutor: tutorOf(course) };
   },
 
   /** Starts an attempt. Real backend serves questions WITHOUT the correct answers and scores on submit. */
@@ -1222,14 +1262,15 @@ export const account = {
   async summary(userId: string) {
     await wait(200);
     const enr = db.enrollments.filter((e) => e.userId === userId);
-    const done = enr.filter((e) => {
-      const c = seedCourses.find((x) => x.id === e.courseId)!;
+    const validEnr = enr.filter((e) => !!findCourse(e.courseId));
+    const done = validEnr.filter((e) => {
+      const c = findCourse(e.courseId)!;
       return progressOf(c, e).pct === 100;
     }).length;
-    const lessonsDone = enr.reduce((s, e) => s + e.completedLessonIds.length, 0);
-    const lessonsTotal = enr.reduce((s, e) => s + allLessons(seedCourses.find((x) => x.id === e.courseId)!).length, 0);
+    const lessonsDone = validEnr.reduce((s, e) => s + e.completedLessonIds.length, 0);
+    const lessonsTotal = validEnr.reduce((s, e) => s + allLessons(findCourse(e.courseId)!).length, 0);
     return {
-      enrolled: enr.length,
+      enrolled: validEnr.length,
       completed: done,
       certificates: certificates.list(userId).length,
       achievements: badges.list(userId).filter((b) => b.earned).length,
@@ -1279,11 +1320,17 @@ export const payments = {
   async list(userId: string) {
     await wait(250);
     const orders = db.orders.filter((o) => o.userId === userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const rows = orders.map((o) => ({ order: o, course: seedCourses.find((c) => c.id === o.courseId)!, enrollment: db.enrollments.find((e) => e.userId === userId && e.courseId === o.courseId) ?? null }));
+    const rows = orders.map((o) => {
+      const course = findCourse(o.courseId) ?? seedCourses[0];
+      return { order: o, course, enrollment: db.enrollments.find((e) => e.userId === userId && e.courseId === o.courseId) ?? null };
+    });
     const enr = db.enrollments.filter((e) => e.userId === userId);
     return {
       rows,
-      enrollments: enr.map((e) => ({ e, course: seedCourses.find((c) => c.id === e.courseId)!, progress: progressOf(seedCourses.find((c) => c.id === e.courseId)!, e) })),
+      enrollments: enr.map((e) => {
+        const course = findCourse(e.courseId) ?? seedCourses[0];
+        return { e, course, progress: progressOf(course, e) };
+      }),
       stats: { enrollments: enr.length, active: enr.filter((e) => !e.validTill || new Date(e.validTill).getTime() > Date.now()).length, totalPaid: orders.filter((o) => o.status === 'paid').reduce((s, o) => s + o.amountInr, 0) },
     };
   },
