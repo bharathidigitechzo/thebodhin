@@ -95,3 +95,76 @@ export async function sendEducatorApprovalEmail(input: EducatorApprovalEmailInpu
     subject
   };
 }
+
+export interface PasswordResetEmailInput {
+  email: string;
+  name: string;
+  otp: string;
+  resetLink?: string;
+}
+
+export async function sendPasswordResetOtpEmail(input: PasswordResetEmailInput): Promise<MailerResult> {
+  const subject = `🔐 ${input.otp} is your Bodhin password reset code`;
+  const adminBcc = 'thebodhin@gmail.com';
+  const resetLink = input.resetLink || `http://localhost:8081/forgot-password?identifier=${encodeURIComponent(input.email)}&code=${input.otp}`;
+
+  // Record in growth outbox for full platform audit
+  try {
+    if (db.growth && Array.isArray(db.growth.outbox)) {
+      db.growth.outbox.unshift({
+        id: `ob_reset_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        tenantId: 't_bodhin',
+        to: { name: input.name },
+        channel: 'email',
+        subject,
+        body: `Password reset OTP code for ${input.email} is ${input.otp}. Reset link: ${resetLink}`,
+        source: { kind: 'automation', id: 'password_reset' },
+        status: 'queued',
+        at: new Date().toISOString()
+      });
+      if (db.growth.outbox.length > 2000) db.growth.outbox.pop();
+    }
+  } catch {}
+
+  try {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
+
+    const response = await fetch(`${MAILER_BASE_URL}/api/send-reset-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: input.email,
+        name: input.name,
+        otp: input.otp,
+        resetLink,
+      }),
+      ...(controller ? { signal: controller.signal } : {})
+    });
+
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        ok: true,
+        method: data?.result?.simulated ? 'smtp_simulated' : 'smtp_live',
+        message: `Password reset code sent via SMTP to ${input.email} from thebodhin@gmail.com`,
+        sentTo: input.email,
+        adminBcc,
+        subject
+      };
+    }
+  } catch (netErr: any) {
+    console.info('[Mailer Client] SMTP service offline or unreached for OTP:', netErr?.message);
+  }
+
+  return {
+    ok: true,
+    method: 'outbox_fallback',
+    message: `Password reset OTP generated for ${input.email}`,
+    sentTo: input.email,
+    adminBcc,
+    subject
+  };
+}

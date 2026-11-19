@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ApiError, DEMO_OTP, auth } from '@/api/client';
 import { v } from '@/core/validate';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -18,15 +18,26 @@ const STEPS: Step[] = ['identify', 'code', 'password'];
 
 export default function ForgotPassword() {
   const { c } = useTheme();
+  const { identifier: idParam, code: codeParam } = useLocalSearchParams<{ identifier?: string; code?: string }>();
   const [step, setStep] = useState<Step>('identify');
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(idParam || '');
   const [sentTo, setSentTo] = useState('');
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(codeParam || '');
   const [token, setToken] = useState('');
   const [pw, setPw] = useState('');
+  const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const timer = useResendTimer();
+
+  useEffect(() => {
+    if (idParam && !identifier) {
+      setIdentifier(idParam);
+    }
+    if (codeParam && !code) {
+      setCode(codeParam);
+    }
+  }, [idParam, codeParam]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -46,6 +57,7 @@ export default function ForgotPassword() {
     run(async () => {
       const r = await auth.sendOtp(identifier);
       setSentTo(r.sentTo);
+      setInfo(`We've dispatched an email with your OTP code from thebodhin@gmail.com to ${r.sentTo}`);
       timer.restart();
       setStep('code');
     });
@@ -55,6 +67,7 @@ export default function ForgotPassword() {
       try {
         const r = await auth.verifyResetOtp(identifier, value);
         setToken(r.resetToken);
+        setInfo(null);
         setStep('password');
       } catch (e) {
         setCode('');
@@ -73,11 +86,11 @@ export default function ForgotPassword() {
   useEffect(() => {
     if (step === 'code' && code.length === 6) checkCode(code);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
+  }, [code, step]);
 
   const copy = {
-    identify: { lead: 'Forgot', accent: 'password?', body: "Enter your email or mobile number. We'll send you a code to reset it." },
-    code: { lead: 'Check your', accent: 'messages', body: `Enter the 6-digit code sent to ${maskTarget(sentTo)}` },
+    identify: { lead: 'Forgot', accent: 'password?', body: "Enter your email or mobile number. We'll send you an OTP verification code from thebodhin@gmail.com to reset it." },
+    code: { lead: 'Check your', accent: 'inbox', body: `Enter the 6-digit verification code sent from thebodhin@gmail.com to ${maskTarget(sentTo || identifier)}` },
     password: { lead: 'Set a new', accent: 'password', body: 'Use at least 8 characters with letters and numbers.' },
     done: { lead: 'All', accent: 'set!', body: 'Your password has been updated. Sign in with your new password.' },
   }[step];
@@ -114,6 +127,7 @@ export default function ForgotPassword() {
         </Txt>
       </View>
 
+      {info && !error && step === 'code' && <Banner text={info} />}
       {error && step !== 'code' && <Banner text={error} />}
 
       {step === 'identify' && (

@@ -1,6 +1,6 @@
 /** Generic building blocks shared by all tabs. */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Platform, Pressable, ScrollView, StyleSheet, View, ViewStyle, useWindowDimensions } from 'react-native';
+import { Animated, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Svg, { Circle } from 'react-native-svg';
@@ -34,9 +34,20 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
   return { ...state, reload: run };
 }
 
-export function Avatar({ name, color, size = 44 }: { name: string; color?: string; size?: number }) {
+export function Avatar({ name, color, size = 44, uri }: { name: string; color?: string; size?: number; uri?: string }) {
   const { c } = useTheme();
   const initials = name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  if (uri) {
+    return (
+      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', borderWidth: 2, borderColor: c.accentSoft, backgroundColor: color ?? c.primary }}>
+        <Image
+          source={{ uri }}
+          style={{ width: size, height: size }}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  }
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color ?? c.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: c.accentSoft }}>
       <Txt variant="bodyStrong" color="#fff" style={{ fontSize: size * 0.38, lineHeight: size * 0.46 }}>
@@ -75,7 +86,7 @@ export function AppHeader({ profileHref = '/profile', action }: { profileHref?: 
       )}
       <IconButton icon="notifications-outline" label="Notifications" dot={!!session && notifications.unread(session.user.id) > 0} onPress={() => router.push('/notifications')} />
       <Pressable onPress={() => router.navigate(profileHref as any)} accessibilityRole="button" accessibilityLabel="Your profile" hitSlop={6}>
-        <Avatar name={session?.user.name ?? 'You'} size={42} color={c.primaryDeep} />
+        <Avatar name={session?.user.name ?? 'You'} uri={session?.user.avatarUrl} size={42} color={c.primaryDeep} />
       </Pressable>
     </View>
   );

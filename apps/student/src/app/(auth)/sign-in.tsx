@@ -14,7 +14,7 @@ import { Button } from '@/ui/Button';
 import { Banner, Checkbox, Divider } from '@/ui/misc';
 
 export default function SignIn() {
-  const { c, brand } = useTheme();
+  const { c, brand, tenant } = useTheme();
   const { setSession } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -83,8 +83,18 @@ export default function SignIn() {
             </Link>
           </View>
           <View style={styles.footRow}>
-            <Link href="/welcome" asChild><Pressable hitSlop={8} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}><Txt variant="caption" color={c.muted}>About Bodhin</Txt></Pressable></Link>
-            <Link href="/pricing" asChild><Pressable hitSlop={8} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}><Txt variant="caption" color={c.muted}>Pricing for educators</Txt></Pressable></Link>
+            {tenant ? (
+              <Link href={`/site/${tenant.slug}`} asChild>
+                <Pressable hitSlop={8} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}>
+                  <Txt variant="bodyStrong" color={c.primary}>← View {brand.displayName} Courses & Storefront</Txt>
+                </Pressable>
+              </Link>
+            ) : (
+              <>
+                <Link href="/welcome" asChild><Pressable hitSlop={8} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}><Txt variant="caption" color={c.muted}>About Bodhin</Txt></Pressable></Link>
+                <Link href="/pricing" asChild><Pressable hitSlop={8} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}><Txt variant="caption" color={c.muted}>Pricing for educators</Txt></Pressable></Link>
+              </>
+            )}
             <Link href="/legal/terms" asChild><Pressable hitSlop={8} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}><Txt variant="caption" color={c.muted}>Terms</Txt></Pressable></Link>
             <Link href="/legal/privacy" asChild><Pressable hitSlop={8} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}><Txt variant="caption" color={c.muted}>Privacy</Txt></Pressable></Link>
           </View>
@@ -160,32 +170,49 @@ export default function SignIn() {
         </View>
       </View>
 
-      <View style={[styles.demo, { backgroundColor: c.accentSoft, borderColor: c.border, borderWidth: 1 }]}>
-        <Txt variant="caption" color={c.ink} center style={{ fontWeight: '700' }}>
-          ⚡ 1-Tap Demo Quick Fill (password: demo123)
-        </Txt>
-        <Txt variant="caption" color={c.inkSoft} center style={{ marginBottom: 8 }}>
-          Student: arjun@demo.in · Educator: rajesh@demo.in · Tutor: meera@demo.in · Super Admin: admin@demo.in
-        </Txt>
-        <View style={styles.demoChips}>
-          <Pressable onPress={() => fillAndLogin('admin@demo.in')} style={[styles.demoChip, { backgroundColor: c.primary }]} accessibilityRole="button">
-            <Ionicons name="shield-checkmark" size={13} color="#fff" />
-            <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Super Admin</Txt>
-          </Pressable>
-          <Pressable onPress={() => fillAndLogin('rajesh@demo.in')} style={[styles.demoChip, { backgroundColor: '#0F6E5A' }]} accessibilityRole="button">
-            <Ionicons name="business" size={13} color="#fff" />
-            <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Educator</Txt>
-          </Pressable>
-          <Pressable onPress={() => fillAndLogin('meera@demo.in')} style={[styles.demoChip, { backgroundColor: '#7C3AED' }]} accessibilityRole="button">
-            <Ionicons name="person" size={13} color="#fff" />
-            <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Tutor</Txt>
-          </Pressable>
-          <Pressable onPress={() => fillAndLogin('arjun@demo.in')} style={[styles.demoChip, { backgroundColor: '#D97706' }]} accessibilityRole="button">
-            <Ionicons name="school" size={13} color="#fff" />
-            <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Student</Txt>
-          </Pressable>
+      {tenant ? (
+        <View style={[styles.demo, { backgroundColor: c.accentSoft, borderColor: c.border, borderWidth: 1 }]}>
+          <Txt variant="caption" color={c.ink} center style={{ fontWeight: '700' }}>
+            ⚡ 1-Tap Demo Student Login (password: demo123)
+          </Txt>
+          <Txt variant="caption" color={c.inkSoft} center style={{ marginBottom: 8 }}>
+            Student: arjun@demo.in
+          </Txt>
+          <View style={styles.demoChips}>
+            <Pressable onPress={() => fillAndLogin('arjun@demo.in')} style={[styles.demoChip, { backgroundColor: c.primary }]} accessibilityRole="button">
+              <Ionicons name="school" size={13} color="#fff" />
+              <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Student Login (Arjun)</Txt>
+            </Pressable>
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={[styles.demo, { backgroundColor: c.accentSoft, borderColor: c.border, borderWidth: 1 }]}>
+          <Txt variant="caption" color={c.ink} center style={{ fontWeight: '700' }}>
+            ⚡ 1-Tap Demo Quick Fill (password: demo123)
+          </Txt>
+          <Txt variant="caption" color={c.inkSoft} center style={{ marginBottom: 8 }}>
+            Student: arjun@demo.in · Educator: rajesh@demo.in · Tutor: meera@demo.in · Super Admin: admin@demo.in
+          </Txt>
+          <View style={styles.demoChips}>
+            <Pressable onPress={() => fillAndLogin('admin@demo.in')} style={[styles.demoChip, { backgroundColor: c.primary }]} accessibilityRole="button">
+              <Ionicons name="shield-checkmark" size={13} color="#fff" />
+              <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Super Admin</Txt>
+            </Pressable>
+            <Pressable onPress={() => fillAndLogin('rajesh@demo.in')} style={[styles.demoChip, { backgroundColor: '#0F6E5A' }]} accessibilityRole="button">
+              <Ionicons name="business" size={13} color="#fff" />
+              <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Educator</Txt>
+            </Pressable>
+            <Pressable onPress={() => fillAndLogin('meera@demo.in')} style={[styles.demoChip, { backgroundColor: '#7C3AED' }]} accessibilityRole="button">
+              <Ionicons name="person" size={13} color="#fff" />
+              <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Tutor</Txt>
+            </Pressable>
+            <Pressable onPress={() => fillAndLogin('arjun@demo.in')} style={[styles.demoChip, { backgroundColor: '#D97706' }]} accessibilityRole="button">
+              <Ionicons name="school" size={13} color="#fff" />
+              <Txt variant="caption" color="#fff" style={{ fontWeight: '700' }}>Student</Txt>
+            </Pressable>
+          </View>
+        </View>
+      )}
       <PoweredBy />
     </Screen>
   );

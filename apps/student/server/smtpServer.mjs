@@ -178,6 +178,81 @@ thebodhin@gmail.com
   `.trim();
 }
 
+export function buildResetPasswordEmailHtml({ userName, userEmail, otpCode, resetLink }) {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Reset Your Bodhin Password</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FBF7F0; margin: 0; padding: 24px; color: #1E293B; }
+    .card { max-width: 540px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(11, 59, 115, 0.06); }
+    .header { background: linear-gradient(135deg, #0B3B73 0%, #071F44 100%); padding: 32px 24px; text-align: center; color: #FFFFFF; }
+    .header h1 { margin: 8px 0 0; font-size: 22px; font-weight: 700; }
+    .header p { margin: 0; color: #D99A1E; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+    .content { padding: 32px 28px; line-height: 1.6; font-size: 15px; }
+    .otp-box { background: #F8FAFC; border: 2px dashed #0B3B73; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0; }
+    .otp-code { font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #0B3B73; font-family: 'Courier New', Courier, monospace; margin: 8px 0; }
+    .btn { display: inline-block; background-color: #0B3B73; color: #FFFFFF !important; text-decoration: none; font-weight: 600; font-size: 15px; padding: 14px 28px; border-radius: 10px; margin: 12px 0 20px; text-align: center; }
+    .footer { text-align: center; padding: 20px; font-size: 12px; color: #64748B; border-top: 1px solid #E2E8F0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <p>Bodhin Platform Security</p>
+      <h1>Password Reset Code</h1>
+    </div>
+    <div class="content">
+      <p>Hello <strong>${userName}</strong>,</p>
+      <p>We received a request to reset the password for your Bodhin account (<strong>${userEmail}</strong>). Please use the 6-digit verification code below:</p>
+      
+      <div class="otp-box">
+        <div style="font-size: 12px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">One-Time Verification Code</div>
+        <div class="otp-code">${otpCode}</div>
+        <div style="font-size: 12px; color: #D99A1E; font-weight: 600;">⏱️ Valid for 10 minutes</div>
+      </div>
+
+      <div style="text-align: center;">
+        <p style="margin-bottom: 8px; font-size: 14px; color: #475569;">You can also tap the button below to reset directly:</p>
+        <a href="${resetLink}" class="btn">Reset Password in App &rarr;</a>
+      </div>
+
+      <p style="margin-top: 24px; font-size: 13px; color: #64748B;">If you did not request a password reset, please ignore this email. Your current password will remain safe and unchanged.</p>
+      <p style="font-size: 13px; color: #64748B;">Need help? Contact us at <a href="mailto:thebodhin@gmail.com" style="color: #0B3B73;">thebodhin@gmail.com</a>.</p>
+      
+      <p style="margin-top: 20px;">Warm regards,<br><strong>Bodhin Security Team</strong></p>
+    </div>
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} Bodhin Platform &bull; Sent from thebodhin@gmail.com to ${userEmail}
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+export function buildResetPasswordEmailText({ userName, userEmail, otpCode, resetLink }) {
+  return `
+Hello ${userName},
+
+We received a request to reset your password for your Bodhin account (${userEmail}).
+
+Your 6-digit verification code is:
+${otpCode} (Valid for 10 minutes)
+
+Or reset your password directly by visiting:
+${resetLink}
+
+If you did not request this, you can safely ignore this email.
+
+Warm regards,
+Bodhin Security Team
+thebodhin@gmail.com
+  `.trim();
+}
+
 async function sendEmail({ to, subject, html, text, cc, bcc }) {
   const transporter = createTransporter();
   const mailRecord = {
@@ -311,6 +386,45 @@ const server = http.createServer(async (req, res) => {
           adminBcc: SMTP_CONFIG.adminCopy,
           subject
         }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/api/send-reset-otp' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const email = payload.email || payload.to;
+        const name = payload.name || 'Student';
+        const otp = payload.otp || '123456';
+        const resetLink = payload.resetLink || `http://localhost:8081/forgot-password?identifier=${encodeURIComponent(email)}&code=${otp}`;
+
+        if (!email) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'email is required' }));
+          return;
+        }
+
+        const subject = `🔐 ${otp} is your Bodhin password reset code`;
+        const html = buildResetPasswordEmailHtml({ userName: name, userEmail: email, otpCode: otp, resetLink });
+        const text = buildResetPasswordEmailText({ userName: name, userEmail: email, otpCode: otp, resetLink });
+
+        const result = await sendEmail({
+          to: email,
+          bcc: SMTP_CONFIG.adminCopy,
+          subject,
+          html,
+          text
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, result, sentTo: email, otp }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: err.message }));

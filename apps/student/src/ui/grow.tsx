@@ -15,7 +15,7 @@ import { DateField, TimeField } from './pickers';
 import { ScreenTop, shared } from './section';
 
 /** Load data on focus; plan/permission errors become a friendly locked state with an upgrade path. */
-export function useData<T>(fn: (userId: string) => T) {
+export function useData<T>(fn: (userId: string) => T, deps: unknown[] = []) {
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
   const [d, setD] = useState<T | null>(null);
@@ -28,7 +28,7 @@ export function useData<T>(fn: (userId: string) => T) {
       setErr(e instanceof ApiError ? e : new ApiError('error', 'Something went wrong.'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, ...deps]);
   useFocusEffect(load);
   return { d, err, load, userId };
 }
@@ -47,13 +47,13 @@ export function useDataAsync<T>(fn: (userId: string) => Promise<T>) {
   return { d, err, load, userId };
 }
 
-export function Page({ title, sub, err, children, footer, fallback = '/edu/grow', wide }: { title: string; sub?: string; err?: ApiError | null; children?: React.ReactNode; footer?: React.ReactNode; fallback?: string; wide?: boolean }) {
+export function Page({ title, sub, err, children, footer, fallback = '/edu/grow', wide, right }: { title: string; sub?: string; err?: ApiError | null; children?: React.ReactNode; footer?: React.ReactNode; fallback?: string; wide?: boolean; right?: React.ReactNode }) {
   const { c } = useTheme();
   const { isDesktop } = useLayout();
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title={title} sub={sub} fallback={fallback} maxWidth={isDesktop ? (wide ? 1100 : 900) : 720} padX={isDesktop ? 32 : 16} />
+        <ScreenTop title={title} sub={sub} fallback={fallback} right={right} maxWidth={isDesktop ? (wide ? 1100 : 900) : 720} padX={isDesktop ? 32 : 16} />
         <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingBottom: 48 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={[shared.inner, isDesktop && { maxWidth: wide ? 1100 : 900 }]}>
             {err ? <Locked err={err} /> : children}

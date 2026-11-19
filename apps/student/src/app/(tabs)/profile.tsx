@@ -1,5 +1,5 @@
 /** Profile hub: account, learning records, settings, support. */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ModuleGrid, SwitchDashboardSheet, dashboardsOf, useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ import { Button } from '@/ui/Button';
 import { TextField } from '@/ui/TextField';
 import { Avatar, BottomSheet, Chip, Pill, useAsync } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
+import { pickImage } from '@/ui/pickMedia';
 import { Group, Row } from '@/ui/ListRow';
 import { hapticsEnabled, setHapticsEnabled } from '@/ui/haptics';
 import { PoweredBy } from '@/ui/Brand';
@@ -29,12 +30,23 @@ export default function Profile() {
   const [switching, setSwitching] = useState(false);
   const edu = educatorMembership(session);
   const adm = adminMembership(session);
-  const user = session!.user;
-  const sum = useAsync(() => account.summary(user.id), [user.id]);
-  useFocusEffect(useCallback(() => { sum.reload(); refresh(); }, [sum.reload, refresh])); // eslint-disable-line react-hooks/exhaustive-deps
-  const [settings, setSettings] = useState(() => account.settings(user.id));
+  const user = session?.user;
+  const userId = user?.id || '';
+  const sum = useAsync(() => (userId ? account.summary(userId) : Promise.resolve(null as any)), [userId]);
+  useFocusEffect(useCallback(() => { if (userId) { sum.reload(); refresh(); } }, [userId, sum.reload, refresh])); // eslint-disable-line react-hooks/exhaustive-deps
+  const [settings, setSettings] = useState(() => (userId ? account.settings(userId) : ({} as any)));
   const [sheet, setSheet] = useState<Sheet>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!session) {
+      router.replace('/sign-in');
+    }
+  }, [session]);
+
+  if (!session || !user) {
+    return <View style={{ flex: 1, backgroundColor: c.ivory }} />;
+  }
 
   const update = (patch: Partial<typeof settings>) => {
     const next = { ...settings, ...patch };
@@ -61,7 +73,7 @@ export default function Profile() {
           <View style={[styles.inner, isDesktop && { maxWidth: 960 }]}>
             <LinearGradient colors={[c.primaryDeep, c.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
               <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
-                <Avatar name={user.name} size={68} color={c.accent} />
+                <Avatar name={user.name} uri={user.avatarUrl} size={68} color={c.accent} />
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                   <Txt variant="title" color="#fff" numberOfLines={1} style={{ fontSize: 22 }}>{user.name}</Txt>
                   <Txt variant="label" color="rgba(255,255,255,0.8)" numberOfLines={1} style={{ fontWeight: '500' }}>{user.email}</Txt>
@@ -112,16 +124,6 @@ export default function Profile() {
               </Pressable>
             )}
 
-            {!edu && !adm && (
-              <Pressable onPress={() => router.push(auth.getApplication(user.id) && auth.getApplication(user.id)!.status !== 'draft' ? '/application-status' : '/apply')} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button">
-                <Ionicons name="school-outline" size={22} color={c.accent} />
-                <View style={{ flex: 1 }}>
-                  <Txt variant="bodyStrong" color="#fff">{auth.getApplication(user.id) && auth.getApplication(user.id)!.status !== 'draft' ? 'Your educator application' : 'Teach on Bodhin'}</Txt>
-                  <Txt variant="caption" color="rgba(255,255,255,0.75)">{auth.getApplication(user.id) && auth.getApplication(user.id)!.status !== 'draft' ? 'See where it stands' : 'Start your own academy · free trial'}</Txt>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#fff" />
-              </Pressable>
-            )}
             {dashboardsOf(session).some((d) => d.area !== 'learner') && !adm && (
               <Pressable onPress={() => setSwitching(true)} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button" accessibilityLabel="Switch dashboard">
                 <Ionicons name="swap-horizontal" size={22} color={c.accent} />
@@ -161,7 +163,7 @@ export default function Profile() {
               <Row icon="pricetag-outline" title="Offers & recommendations" toggle={{ value: settings.push.offers, onChange: (v) => update({ push: { ...settings.push, offers: v } }) }} />
               <Row icon="wifi-outline" title="Download on Wi-Fi only" toggle={{ value: settings.wifiOnly, onChange: (v) => update({ wifiOnly: v }) }} />
               <Row icon="phone-portrait-outline" title="Vibration" sub="Buzz on taps, wrong entries and success" toggle={{ value: vib, onChange: (v) => { setHapticsEnabled(v); setVib(v); } }} />
-              <Row icon="film-outline" title="Default video quality" sub={{ auto: 'Auto (recommended)', sd: 'Data saver (480p)', hd: 'High (720p)' }[settings.quality]} onPress={() => setSheet('quality')} />
+              <Row icon="film-outline" title="Default video quality" sub={({ auto: 'Auto (recommended)', sd: 'Data saver (480p)', hd: 'High (720p)' } as Record<string, string>)[settings.quality] ?? 'Auto'} onPress={() => setSheet('quality')} />
               <Row icon="language-outline" title="App language" sub={settings.language === 'en' ? 'English' : 'தமிழ் (Tamil)'} onPress={() => setSheet('language')} />
             </Group>
 
@@ -237,15 +239,31 @@ export default function Profile() {
 
 function EditSheet({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: (s: Awaited<ReturnType<typeof account.updateProfile>>) => void }) {
   const { session } = useAuth();
+  const { c } = useTheme();
   const [name, setName] = useState(session!.user.name);
   const [email, setEmail] = useState(session!.user.email);
+  const [avatarUrl, setAvatarUrl] = useState(session!.user.avatarUrl ?? '');
   const [err, setErr] = useState<{ field?: string; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const choosePhoto = async () => {
+    try {
+      const f = await pickImage();
+      if (f?.uri) {
+        setAvatarUrl(f.uri);
+      }
+    } catch {}
+  };
+
+  const removePhoto = () => {
+    setAvatarUrl('');
+  };
+
   const save = async () => {
     setBusy(true);
     setErr(null);
     try {
-      onSaved(await account.updateProfile(session!.user.id, { name, email }));
+      onSaved(await account.updateProfile(session!.user.id, { name, email, avatarUrl: avatarUrl || undefined }));
       onClose();
     } catch (e) {
       const a = e as ApiError;
@@ -256,6 +274,20 @@ function EditSheet({ open, onClose, onSaved }: { open: boolean; onClose: () => v
   };
   return (
     <BottomSheet open={open} onClose={onClose} title="Edit profile" footer={<Button title="Save changes" loading={busy} style={{ flex: 1 }} onPress={save} />}>
+      <View style={{ alignItems: 'center', gap: 10, marginVertical: 8 }}>
+        <View style={{ position: 'relative' }}>
+          <Avatar name={name || session!.user.name} uri={avatarUrl || undefined} size={84} color={c.accent} />
+          <Pressable onPress={choosePhoto} style={{ position: 'absolute', bottom: -2, right: -2, width: 32, height: 32, borderRadius: 16, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }} accessibilityRole="button" accessibilityLabel="Upload photo">
+            <Ionicons name="camera" size={16} color="#fff" />
+          </Pressable>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Button title={avatarUrl ? 'Change photo' : 'Upload photo'} iconLeft="image-outline" size="md" variant="soft" onPress={choosePhoto} />
+          {!!avatarUrl && (
+            <Button title="Remove" iconLeft="trash-outline" size="md" variant="outline" onPress={removePhoto} />
+          )}
+        </View>
+      </View>
       <TextField label="Full name" icon="person-outline" value={name} onChangeText={setName} hint="Shown on your certificates" error={err?.field === 'name' ? err.msg : null} />
       <TextField label="Email" icon="mail-outline" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={err?.field === 'email' ? err.msg : null} />
       {err && !err.field && <Banner text={err.msg} />}
@@ -265,6 +297,7 @@ function EditSheet({ open, onClose, onSaved }: { open: boolean; onClose: () => v
 
 function PasswordSheet({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
   const { session } = useAuth();
+  const { c } = useTheme();
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [err, setErr] = useState<{ field?: string; msg: string } | null>(null);
@@ -285,9 +318,20 @@ function PasswordSheet({ open, onClose, onSaved }: { open: boolean; onClose: () 
       setBusy(false);
     }
   };
+
+  const forgot = () => {
+    onClose();
+    router.push({ pathname: '/forgot-password', params: { identifier: session?.user.email } });
+  };
+
   return (
     <BottomSheet open={open} onClose={onClose} title="Change password" footer={<Button title="Update password" loading={busy} style={{ flex: 1 }} onPress={save} />}>
       <TextField label="Current password" icon="lock-closed-outline" secure value={cur} onChangeText={setCur} error={err?.field === 'current' ? err.msg : null} />
+      <View style={{ alignItems: 'flex-end', marginTop: -6, marginBottom: 6 }}>
+        <Pressable onPress={forgot} hitSlop={8} accessibilityRole="button">
+          <Txt variant="caption" color={c.primary} style={{ fontWeight: '600' }}>Forgot password? Reset via OTP &rarr;</Txt>
+        </Pressable>
+      </View>
       <TextField label="New password" icon="key-outline" secure value={next} onChangeText={setNext} error={err?.field === 'next' ? err.msg : null} hint="At least 8 characters with letters and numbers" />
     </BottomSheet>
   );

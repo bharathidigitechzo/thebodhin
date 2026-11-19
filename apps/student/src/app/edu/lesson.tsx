@@ -18,7 +18,7 @@ import { Button } from '@/ui/Button';
 import { TextField } from '@/ui/TextField';
 import { BottomSheet, Chip, IconButton, Pill, ProgressBar } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
-import { pickVideo } from '@/ui/pickMedia';
+import { pickVideo, getVideoDuration } from '@/ui/pickMedia';
 import { VideoPreview } from '@/ui/VideoPreview';
 import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
 import { saveMediaFile } from '@/ui/mediaStore';
@@ -84,6 +84,7 @@ export default function LessonEditor() {
     let name = '';
     let sizeMb = 0;
     let pickedUri: string | undefined = undefined;
+    let videoDurationSec: number | undefined = undefined;
 
     if (purpose === 'main' && want === 'video') {
       const f = await pickVideo();
@@ -91,10 +92,15 @@ export default function LessonEditor() {
         name = f.name;
         sizeMb = Math.max(0.2, Math.round(((f.sizeBytes ?? 0) / 1048576) * 10) / 10);
         pickedUri = f.uri;
+        videoDurationSec = f.durationSec;
         if (f.file) {
           pickedRawFileRef.current = f.file;
           saveMediaFile(f.name, f.file);
           if (existing?.id) saveMediaFile(existing.id, f.file);
+          if (!videoDurationSec) {
+            const d = await getVideoDuration(f.file);
+            if (d) videoDurationSec = d;
+          }
         }
       }
     }
@@ -115,6 +121,10 @@ export default function LessonEditor() {
           pickedRawFileRef.current = rawBlob;
           saveMediaFile(name, rawBlob);
           if (existing?.id) saveMediaFile(existing.id, rawBlob);
+          if (want === 'video') {
+            const d = await getVideoDuration(rawBlob);
+            if (d) videoDurationSec = d;
+          }
         }
       } catch {
         name = want === 'video' ? `${(title || 'lesson').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mp4` : 'lesson-notes.pdf';
@@ -132,7 +142,7 @@ export default function LessonEditor() {
 
     setProgress(0);
     try {
-      const res = await courseAdmin.upload(userId, want, name, sizeMb, setProgress, pickedUri);
+      const res = await courseAdmin.upload(userId, want, name, sizeMb, setProgress, pickedUri, videoDurationSec);
       const activeUri = res.videoUri || pickedUri;
       setFile({
         name: res.fileName,
@@ -269,6 +279,39 @@ export default function LessonEditor() {
                       <Button title="Replace" variant="soft" size="md" onPress={() => pick('main')} />
                     </View>
                   </View>
+                  {kind === 'video' && (
+                    <View style={[styles.durationRow, { borderColor: t.border, backgroundColor: t.surfaceMuted }]}>
+                      <Ionicons name="time-outline" size={18} color={t.primary} />
+                      <Txt variant="caption" color={t.inkSoft} style={{ fontWeight: '600' }}>Video duration:</Txt>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+                        <TextInput
+                          value={String(Math.floor((file.durationSec ?? 0) / 60))}
+                          onChangeText={(mStr) => {
+                            const m = Math.max(0, parseInt(mStr.replace(/[^0-9]/g, ''), 10) || 0);
+                            const s = Math.round((file.durationSec ?? 0) % 60);
+                            setFile({ ...file, durationSec: m * 60 + s });
+                          }}
+                          keyboardType="numeric"
+                          accessibilityLabel="Minutes"
+                          style={[styles.durInput, { color: t.ink, borderColor: t.border, backgroundColor: t.surface }]}
+                        />
+                        <Txt variant="caption" color={t.muted}>min</Txt>
+                        <TextInput
+                          value={String(Math.round((file.durationSec ?? 0) % 60)).padStart(2, '0')}
+                          onChangeText={(sStr) => {
+                            const raw = parseInt(sStr.replace(/[^0-9]/g, ''), 10) || 0;
+                            const s = Math.min(59, Math.max(0, raw));
+                            const m = Math.floor((file.durationSec ?? 0) / 60);
+                            setFile({ ...file, durationSec: m * 60 + s });
+                          }}
+                          keyboardType="numeric"
+                          accessibilityLabel="Seconds"
+                          style={[styles.durInput, { color: t.ink, borderColor: t.border, backgroundColor: t.surface }]}
+                        />
+                        <Txt variant="caption" color={t.muted}>sec</Txt>
+                      </View>
+                    </View>
+                  )}
                   {kind === 'video' && file.uri && (
                     <VideoPreview uri={file.uri} name={file.name} sizeMb={file.sizeMb} />
                   )}
@@ -392,6 +435,8 @@ const styles = StyleSheet.create({
   area: { minHeight: 90, borderWidth: 1.2, borderRadius: radius.md, padding: 12, fontSize: 15, textAlignVertical: 'top', outlineStyle: 'none' } as any,
   upload: { alignItems: 'center', gap: 6, padding: 22, borderRadius: radius.lg, borderWidth: 1.6, borderStyle: 'dashed' },
   fileCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.lg, borderWidth: 1 },
+  durationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, borderWidth: 1 },
+  durInput: { width: 52, height: 36, borderWidth: 1, borderRadius: 8, textAlign: 'center', fontSize: 14, fontWeight: '600', outlineStyle: 'none' } as any,
   fileIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   res: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 12, borderRadius: radius.md, borderWidth: 1 },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },

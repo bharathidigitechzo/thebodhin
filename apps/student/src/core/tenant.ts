@@ -15,7 +15,7 @@ export type HostResolution =
 
 export function resolveHost(hostname: string): HostResolution {
   const host = hostname.toLowerCase().replace(/:\d+$/, '');
-  if (host === ROOT_DOMAIN || host === 'localhost' || host.endsWith('.claude.ai') || host.endsWith('.claudeusercontent.com')) return { kind: 'platform' };
+  if (host === ROOT_DOMAIN || host === 'localhost' || host.endsWith('.vercel.app') || host.endsWith('.claude.ai') || host.endsWith('.claudeusercontent.com')) return { kind: 'platform' };
   if (host.endsWith('.' + ROOT_DOMAIN)) {
     const slug = host.slice(0, -(ROOT_DOMAIN.length + 1));
     return RESERVED.has(slug) ? { kind: 'platform' } : { kind: 'subdomain', slug };
@@ -23,4 +23,9 @@ export function resolveHost(hostname: string): HostResolution {
   return { kind: 'custom', host };
 }
 
-export const tenantUrl = (slug: string) => `https://${slug}.${ROOT_DOMAIN}`;
+export const tenantUrl = (slug: string) => {
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.endsWith('.vercel.app'))) {
+    return `${window.location.origin}/site/${slug}`;
+  }
+  return `https://${slug}.${ROOT_DOMAIN}`;
+};

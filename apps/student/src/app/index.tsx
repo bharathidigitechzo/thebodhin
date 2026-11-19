@@ -9,7 +9,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 
 export default function Splash() {
   const { ready, session, onboarded, mode } = useAuth();
-  const { c } = useTheme();
+  const { c, tenant } = useTheme();
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -19,11 +19,16 @@ export default function Splash() {
   useEffect(() => {
     if (!ready) return;
     const t = setTimeout(() => {
+      // If visiting an educator's subdomain without an active session, show the educator's public storefront / marketplace
+      if (tenant) {
+        router.replace((session ? homePath(session, mode) : `/site/${tenant.slug}`) as any);
+        return;
+      }
       // New web visitors (thebodhin.com) land on the public home; returning ones go to sign in. The phone app keeps onboarding.
       router.replace((session ? homePath(session, mode) : onboarded ? '/sign-in' : Platform.OS === 'web' ? '/welcome' : '/onboarding') as any);
     }, 1100);
     return () => clearTimeout(t);
-  }, [ready, session, onboarded, mode]);
+  }, [ready, session, onboarded, mode, tenant]);
 
   return (
     <View style={[styles.root, { backgroundColor: c.ivory }]}>

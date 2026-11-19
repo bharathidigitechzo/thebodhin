@@ -35,7 +35,14 @@ function tint(hex: string, amount: number) {
 function detectTenant(): Tenant | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null; // native: tenant chosen in-app (later step)
   const override = new URLSearchParams(window.location.search).get('tenant');
-  return tenants.resolve(window.location.hostname, override);
+  if (override) {
+    return tenants.resolve(window.location.hostname, override);
+  }
+  const siteMatch = window.location.pathname.match(/\/site\/([^\/?#]+)/i);
+  if (siteMatch && siteMatch[1]) {
+    return tenants.resolve(window.location.hostname, siteMatch[1]);
+  }
+  return tenants.resolve(window.location.hostname);
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

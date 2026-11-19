@@ -30,7 +30,18 @@ import { haptic } from '@/ui/haptics';
 
 const STEPS = ['Details', 'Content', 'Pricing', 'Publish'] as const;
 const LANGS = ['English', 'Tamil', 'Hindi', 'Telugu', 'Malayalam', 'Kannada'];
-const fmtDur = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m` : `${Math.round(s / 60)} min`);
+const fmtDur = (s: number) => {
+  if (!s || s <= 0) return '0:00 min';
+  if (s >= 3600) {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.round(s % 60);
+    return sec > 0 ? `${h}h ${m}m ${sec}s` : `${h}h ${m}m`;
+  }
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')} min`;
+};
 
 export default function CourseBuilder() {
   const { isDesktop } = useLayout();

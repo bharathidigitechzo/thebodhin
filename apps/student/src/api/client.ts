@@ -21,7 +21,7 @@ import { LIVE_SCALE, seatMode } from '@/live/scale';
 import { roomName } from '@/live/protocol';
 import { findClash, instructorClashIds, slotClashes, spanOf, weekDays, weekStart, type Clash } from '@/core/timetable';
 import { MAX_CODE_TESTS, rubricOf, score as scoreQuiz, type Assessment, type AssessStatus, type Attempt, type Question, type Submission } from '@/core/assess';
-import { sendEducatorApprovalEmail } from './mailer';
+import { sendEducatorApprovalEmail, sendPasswordResetOtpEmail } from './mailer';
 
 /** Apply educator-created/edited courses on top of the demo catalogue (in place, so every reader sees them). */
 function syncCourses() {
@@ -263,6 +263,8 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
   return sessionFor(u.id);
 }
 
+const resetStore = new Map<string, { code: string; expiresAt: number; userId: string }>();
+
 export const auth = {
   /** Current roles for a signed-in user (real: refresh the JWT so new claims, e.g. "approved educator", apply at once). */
   refreshMemberships: (userId: string) => (db.users.some((u) => u.id === userId) ? sessionFor(userId).memberships : null),
@@ -313,17 +315,40 @@ export const auth = {
     return { userId: user.id, otpSentTo: phone };
   },
 
+  /** In-memory reset store for active OTPs */
+  // (maps email/phone/userId to OTP details)
+
   /** Sends an OTP to a phone or email. Real backend: SMS/email provider + rate limit. */
-  async sendOtp(target: string): Promise<{ sentTo: string }> {
+  async sendOtp(target: string): Promise<{ sentTo: string; otp?: string }> {
     await wait(350);
-    if (cloud.enabled && !findByIdentifier(target)) {
-      const email = await resolveEmail(target);
-      if (!email) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'target');
-      return { sentTo: target.includes('@') ? email : target };
-    }
     const u = findByIdentifier(target);
-    if (!u) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'target');
-    return { sentTo: target.includes('@') ? u.email : u.phone };
+    if (!u) {
+      if (cloud.enabled) {
+        const email = await resolveEmail(target);
+        if (!email) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'target');
+        return { sentTo: target.includes('@') ? email : target };
+      }
+      throw new ApiError('not_found', 'No account found with this email or mobile number.', 'target');
+    }
+
+    // Generate real 6-digit OTP code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+    resetStore.set(u.id, { code, expiresAt, userId: u.id });
+    resetStore.set(u.email.toLowerCase(), { code, expiresAt, userId: u.id });
+    if (u.phone) resetStore.set(u.phone.replace(/\D/g, ''), { code, expiresAt, userId: u.id });
+
+    // Send real email via Bodhin SMTP (thebodhin@gmail.com)
+    if (u.email) {
+      sendPasswordResetOtpEmail({
+        email: u.email,
+        name: u.name,
+        otp: code,
+        resetLink: `http://localhost:8081/forgot-password?identifier=${encodeURIComponent(u.email)}&code=${code}`,
+      }).catch((e) => console.warn('Could not dispatch reset email:', e));
+    }
+
+    return { sentTo: target.includes('@') ? u.email : (u.email || u.phone), otp: code };
   },
 
   async verifySignupOtp(userId: string, code: string): Promise<Session> {
@@ -374,24 +399,37 @@ export const auth = {
 
   async verifyResetOtp(target: string, code: string): Promise<{ resetToken: string }> {
     await wait();
-    if (code !== DEMO_OTP) throw new ApiError('bad_otp', 'That code is not correct. Check the message and try again.', 'code');
+    const cleanCode = code.trim();
+    const u = findByIdentifier(target);
+    if (!u) throw new ApiError('not_found', 'Account not found with this email or mobile number.');
+
+    const entry = resetStore.get(u.id) || resetStore.get(u.email.toLowerCase()) || (u.phone ? resetStore.get(u.phone.replace(/\D/g, '')) : undefined);
+    const isMatch = (entry && entry.code === cleanCode && Date.now() <= entry.expiresAt) || cleanCode === DEMO_OTP;
+
+    if (!isMatch) {
+      throw new ApiError('bad_otp', 'That code is not correct or has expired. Check your email (or use demo code 123456) and try again.', 'code');
+    }
+
     if (cloud.enabled) {
       const email = await resolveEmail(target);
       if (!email) throw new ApiError('not_found', 'Account not found.');
       return { resetToken: email };
     }
-    const u = findByIdentifier(target);
-    if (!u) throw new ApiError('not_found', 'Account not found.');
     return { resetToken: u.id };
   },
 
   async resetPassword(resetToken: string, newPassword: string): Promise<void> {
     await wait();
-    // Shared database: passwords live in Supabase Auth and are reset from an emailed link (needs Site URL + a reset page — not set up yet).
-    if (cloud.enabled) throw new ApiError('reset_unavailable', 'Password reset isn’t switched on yet for online accounts. Contact support@thebodhin.com and we’ll reset it for you.');
-    const u = db.users.find((x) => x.id === resetToken);
+    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      throw new ApiError('weak', 'Use at least 8 characters with letters and numbers.', 'newPassword');
+    }
+    const u = db.users.find((x) => x.id === resetToken || x.email.toLowerCase() === resetToken.toLowerCase());
     if (!u) throw new ApiError('expired', 'This reset link has expired. Start again.');
     u.password = newPassword;
+    // Clean up reset store
+    resetStore.delete(u.id);
+    resetStore.delete(u.email.toLowerCase());
+    if (u.phone) resetStore.delete(u.phone.replace(/\D/g, ''));
     persist();
   },
 
@@ -415,10 +453,13 @@ export const auth = {
 export const tenants = {
   /** Production: server resolves host → tenant. POC: also accepts ?tenant=<slug> for demos. */
   resolve(hostname: string, override?: string | null): Tenant | null {
-    if (override) return db.tenants.find((t) => t.slug === override) ?? null;
+    if (override) {
+      const cleanOverride = override.trim().toLowerCase();
+      return db.tenants.find((t) => t.slug?.toLowerCase() === cleanOverride || t.id === override) ?? null;
+    }
     const r = resolveHost(hostname);
-    if (r.kind === 'subdomain') return db.tenants.find((t) => t.slug === r.slug) ?? null;
-    if (r.kind === 'custom') return db.tenants.find((t) => t.customDomain === r.host) ?? null;
+    if (r.kind === 'subdomain') return db.tenants.find((t) => t.slug?.toLowerCase() === r.slug.toLowerCase()) ?? null;
+    if (r.kind === 'custom') return db.tenants.find((t) => t.customDomain?.toLowerCase() === r.host.toLowerCase()) ?? null;
     return null;
   },
 };
@@ -1283,7 +1324,7 @@ export const account = {
       unread: db.notifications.filter((n) => n.userId === userId && !n.read).length,
     };
   },
-  async updateProfile(userId: string, patch: { name: string; email: string }) {
+  async updateProfile(userId: string, patch: { name: string; email: string; avatarUrl?: string }) {
     await wait(400);
     const u = db.users.find((x) => x.id === userId)!;
     if (patch.name.trim().length < 2) throw new ApiError('name', 'Enter your full name.', 'name');
@@ -1292,6 +1333,9 @@ export const account = {
     if (cloud.enabled && patch.email.trim().toLowerCase() !== u.email.toLowerCase()) throw new ApiError('email_locked', 'Your sign-in email can’t be changed here yet. Contact support@thebodhin.com to change it.', 'email');
     u.name = patch.name.trim();
     u.email = patch.email.trim().toLowerCase();
+    if (patch.avatarUrl !== undefined) {
+      u.avatarUrl = patch.avatarUrl;
+    }
     persist();
     return sessionFor(userId);
   },
@@ -1573,7 +1617,7 @@ export const educator = {
       ent,
       usage: usageReport(usage, sub),
       trialDaysLeft: sub.status === 'trialing' ? daysLeft(sub.periodEnd) : null,
-      host: tenant.customDomain ?? `${tenant.slug}.thebodhin.com`,
+      host: tenant.customDomain ?? (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.endsWith('.vercel.app')) ? `${window.location.host}/site/${tenant.slug}` : `${tenant.slug}.thebodhin.com`),
       gate,
       locked: gate.locked,
     };
@@ -1869,7 +1913,7 @@ export const courseAdmin = {
    * POC upload: simulated progress + extracted duration. Real: request a presigned URL, upload to
    * private object storage, then a transcoding job reports duration and renditions.
    */
-  upload(userId: string, kind: 'video' | 'pdf', fileName: string, sizeMb: number, onProgress: (p: number) => void, videoUri?: string) {
+  upload(userId: string, kind: 'video' | 'pdf', fileName: string, sizeMb: number, onProgress: (p: number) => void, videoUri?: string, durationSec?: number) {
     const check = courseAdmin.canUpload(userId, sizeMb);
     if (!check.ok) return Promise.reject(new ApiError('storage_full', check.message));
     return new Promise<{ fileName: string; sizeMb: number; durationSec?: number; videoUri?: string }>((resolve) => {
@@ -1883,7 +1927,7 @@ export const courseAdmin = {
           resolve({
             fileName,
             sizeMb,
-            durationSec: kind === 'video' ? Math.round(sizeMb * 2.2 + 120) : undefined,
+            durationSec: kind === 'video' ? (durationSec ?? Math.round(sizeMb * 2.2 + 120)) : undefined,
             videoUri: kind === 'video' ? videoUri : undefined,
           });
         }

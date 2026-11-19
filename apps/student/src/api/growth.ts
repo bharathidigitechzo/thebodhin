@@ -704,20 +704,36 @@ export const siteApi = {
   },
   /** Public render data for tutorslug.thebodhin.com (what visitors and Google see). */
   render(slug: string) {
-    const t = db.tenants.find((x) => x.slug === slug || x.customDomain === slug);
-    if (!t || t.status !== 'active') throw new ApiError('not_found', 'This academy site does not exist.');
-    const site = g().sites.find((s) => s.tenantId === t.id)!;
+    const cleanSlug = (slug || '').toLowerCase().trim();
+    const t = db.tenants.find((x) => x.slug?.toLowerCase() === cleanSlug || x.customDomain?.toLowerCase() === cleanSlug || x.id === slug);
+    if (!t) throw new ApiError('not_found', 'This academy site does not exist.');
+    let site = g().sites?.find((s) => s.tenantId === t.id);
+    if (!site) {
+      site = defaultSite(t.id, t.branding?.displayName || t.slug || 'Academy', now());
+      g().sites.push(site);
+    }
     const has = (f: Feature) => tenantHas(t.id, f);
-    if (!site.published || !has('website')) throw new ApiError('not_found', 'This site is not published yet.');
     const pro = has('website_pro');
-    const visible = site.sections.filter((s) => s.visible).filter((s) => { const m = SECTION_META.find((x) => x.kind === s.kind)!; return (!m.pro || pro) && (!m.needs || has(m.needs)); });
+    const visible = site.sections.filter((s) => s.visible).filter((s) => {
+      const m = SECTION_META.find((x) => x.kind === s.kind);
+      return !m || ((!m.pro || pro) && (!m.needs || has(m.needs)));
+    });
+
+    const allMyCourses = [...seedCourses, ...db.courses].filter(
+      (c, idx, arr) => arr.findIndex((x) => x.id === c.id) === idx && c.tenantId === t.id
+    );
+
     return {
-      t, site: { ...site, sections: visible, tracking: pro ? site.tracking : {} },
-      courses: seedCourses.filter((c) => c.tenantId === t.id && isPublished(c)).slice(0, 12),
-      webinars: g().webinars.filter((w) => w.tenantId === t.id && webinarState(w) === 'upcoming').slice(0, 4),
-      products: g().products.filter((p) => p.tenantId === t.id && p.status === 'published').slice(0, 6),
-      offers: g().offers.filter((o) => o.tenantId === t.id && o.active),
-      stats: { students: db.people.filter((p) => p.tenantId === t.id).length + (db.usage[t.id]?.activeStudents ?? 0), courses: seedCourses.filter((c) => c.tenantId === t.id).length },
+      t,
+      site: { ...site, sections: visible, tracking: pro ? site.tracking : {} },
+      courses: allMyCourses.slice(0, 12),
+      webinars: (g().webinars || []).filter((w) => w.tenantId === t.id && webinarState(w) === 'upcoming').slice(0, 4),
+      products: (g().products || []).filter((p) => p.tenantId === t.id && p.status === 'published').slice(0, 6),
+      offers: (g().offers || []).filter((o) => o.tenantId === t.id && o.active),
+      stats: {
+        students: db.people.filter((p) => p.tenantId === t.id).length + (db.usage[t.id]?.activeStudents ?? 0),
+        courses: allMyCourses.length,
+      },
     };
   },
   submitLead(slug: string, input: { name: string; phone: string; email?: string; courseId?: string; hp?: string }) {

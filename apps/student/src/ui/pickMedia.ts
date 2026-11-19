@@ -7,7 +7,59 @@ import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { saveMediaFile } from './mediaStore';
 
-export interface PickedFile { name: string; mime: string | null; sizeBytes: number | null; uri: string; file?: File }
+export interface PickedFile { name: string; mime: string | null; sizeBytes: number | null; uri: string; file?: File; durationSec?: number }
+
+export function getVideoDuration(fileOrUri: File | Blob | string): Promise<number | null> {
+  return new Promise((resolve) => {
+    try {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return resolve(null);
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      let urlToRevoke: string | undefined;
+      let settled = false;
+
+      const finish = (dur: number | null) => {
+        if (settled) return;
+        settled = true;
+        if (urlToRevoke) {
+          try { URL.revokeObjectURL(urlToRevoke); } catch {}
+        }
+        video.src = '';
+        resolve(dur);
+      };
+
+      // Timeout safeguard after 4 seconds
+      const timer = setTimeout(() => finish(null), 4000);
+
+      const checkDur = () => {
+        const d = video.duration;
+        if (d && !isNaN(d) && isFinite(d) && d > 0) {
+          clearTimeout(timer);
+          finish(Math.round(d));
+        }
+      };
+
+      video.onloadedmetadata = checkDur;
+      video.ondurationchange = checkDur;
+      video.onerror = () => {
+        clearTimeout(timer);
+        finish(null);
+      };
+
+      if (typeof fileOrUri === 'string') {
+        video.src = fileOrUri;
+      } else if (fileOrUri instanceof Blob) {
+        urlToRevoke = URL.createObjectURL(fileOrUri);
+        video.src = urlToRevoke;
+      } else {
+        clearTimeout(timer);
+        finish(null);
+      }
+    } catch {
+      resolve(null);
+    }
+  });
+}
 
 async function pick(type: string): Promise<PickedFile | null> {
   const r = await DocumentPicker.getDocumentAsync({ type, multiple: false, copyToCacheDirectory: true });
@@ -54,5 +106,11 @@ export async function pickImage(): Promise<PickedFile | null> {
 
 export async function pickVideo(): Promise<PickedFile | null> {
   const f = await pick('video/*');
-  return f ? { name: f.name, mime: f.mime, sizeBytes: f.sizeBytes, uri: f.uri, file: f.file } : null;
+  if (!f) return null;
+  let durationSec: number | undefined;
+  if (Platform.OS === 'web' && (f.file || f.uri)) {
+    const d = await getVideoDuration(f.file || f.uri);
+    if (d) durationSec = d;
+  }
+  return { name: f.name, mime: f.mime, sizeBytes: f.sizeBytes, uri: f.uri, file: f.file, durationSec };
 }

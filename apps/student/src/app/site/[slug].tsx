@@ -4,6 +4,7 @@ import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { siteApi } from '@/api/growth';
+import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
@@ -16,10 +17,12 @@ import { CookieConsent } from '@/ui/cookieConsent';
 import { Seo } from '@/ui/seo';
 
 export default function TutorSite() {
-  const { c } = useTheme();
+  const { c, tenant } = useTheme();
+  const { session } = useAuth();
   const { isDesktop } = useLayout();
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { d, err } = useData(() => siteApi.render(slug));
+  const activeSlug = slug || tenant?.slug || 'rajesh';
+  const { d, err } = useData(() => siteApi.render(activeSlug), [activeSlug]);
   const a = useAct();
   const [lead, setLead] = useState({ name: '', phone: '', hp: '' });
   if (!d) return <Page title="Academy" err={err} fallback="/home" />;
@@ -30,7 +33,19 @@ export default function TutorSite() {
   return (
     <View style={{ flex: 1 }}>
       <Seo title={d.site.seo.title} description={d.site.seo.description} path={`/site/${d.t.slug}`} />
-    <Page title={br.displayName} sub={d.t.customDomain ?? `${d.t.slug}.thebodhin.com`} fallback="/home" wide>
+      <Page
+        title={br.displayName}
+        sub={d.t.customDomain ?? `${d.t.slug}.thebodhin.com`}
+        fallback="/home"
+        wide
+        right={
+          session ? (
+            <Button title="My Learning" iconRight="arrow-forward" size="md" onPress={() => router.push('/home')} />
+          ) : (
+            <Button title="Student Sign In" iconRight="log-in-outline" size="md" onPress={() => router.push('/sign-in')} />
+          )
+        }
+      >
         {d.site.sections.map((s) => {
           switch (s.kind) {
             case 'hero':
@@ -43,13 +58,19 @@ export default function TutorSite() {
               );
             case 'courses':
               return d.courses.length ? (
-                <View key={s.id} style={{ gap: 8 }}>
+                <View key={s.id} style={{ gap: 12 }}>
                   <H t={s.heading} />
-                  <Grid cols={isDesktop ? 3 : 1} gap={10}>
+                  <Grid cols={isDesktop ? 3 : 1} gap={14}>
                     {d.courses.map((co) => (
                       <Pressable key={co.id} onPress={() => go('/course/[id]', co.id)} style={[styles.item, { backgroundColor: c.surface, borderColor: c.border }]} accessibilityRole="link">
-                        <Txt variant="bodyStrong" numberOfLines={2}>{co.title}</Txt>
-                        <Txt variant="caption" color={c.muted}>{co.priceInr ? inr(co.priceInr) : 'Free'}</Txt>
+                        <View style={{ flex: 1, gap: 6 }}>
+                          <Txt variant="bodyStrong" numberOfLines={2}>{co.title}</Txt>
+                          {co.subtitle ? <Txt variant="caption" color={c.inkSoft} numberOfLines={2}>{co.subtitle}</Txt> : null}
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border }}>
+                          <Txt variant="label" color={c.primary}>{co.priceInr ? inr(co.priceInr) : 'Free'}</Txt>
+                          <Txt variant="caption" color={c.primary} style={{ fontWeight: '600' }}>View course &rarr;</Txt>
+                        </View>
                       </Pressable>
                     ))}
                   </Grid>
