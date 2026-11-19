@@ -358,6 +358,7 @@ export interface Site {
   seo: { title: string; description: string };
   tracking: { ga4?: string; metaPixel?: string };
   contact: { phone?: string; email?: string; whatsapp?: string; address?: string };
+  selectedCourseIds?: string[];
   published: boolean;
   updatedAt: string;
 }

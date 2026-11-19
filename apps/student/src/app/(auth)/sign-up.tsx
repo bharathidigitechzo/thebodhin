@@ -36,7 +36,7 @@ export default function SignUp() {
     if (Object.values(e).some(Boolean)) return;
     setBusy(true);
     try {
-      const r = await auth.signUp({ ...f, role });
+      const r = await auth.signUp({ ...f, role, tenantId: tenant?.id });
       router.push({ pathname: '/verify', params: { userId: r.userId, to: r.otpSentTo, role } });
     } catch (err) {
       const a = err as ApiError;

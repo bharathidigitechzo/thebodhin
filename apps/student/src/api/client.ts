@@ -289,7 +289,7 @@ export const auth = {
     return sessionFor(u.id);
   },
 
-  async signUp(input: { name: string; email: string; phone: string; password: string; role: Extract<Role, 'student' | 'tutor'> }) {
+  async signUp(input: { name: string; email: string; phone: string; password: string; role: Extract<Role, 'student' | 'tutor'>; tenantId?: string }) {
     await wait();
     const email = input.email.trim().toLowerCase();
     const phone = normPhone(input.phone);
@@ -309,7 +309,11 @@ export const auth = {
     if (db.users.some((u) => u.phone === phone)) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
     const user = { id: uid('u'), name: input.name.trim(), email, phone, phoneVerified: false, password: input.password, createdAt: new Date().toISOString() };
     db.users.push(user);
-    db.memberships.push({ userId: user.id, tenantId: 't_bodhin', role: 'student' }); // educator access is granted on approval (Super Admin)
+    const activeTenantId = input.tenantId || 't_bodhin';
+    db.memberships.push({ userId: user.id, tenantId: activeTenantId, role: 'student' });
+    if (activeTenantId !== 't_bodhin') {
+      db.memberships.push({ userId: user.id, tenantId: 't_bodhin', role: 'student' });
+    }
     if (input.role === 'tutor') db.applications.push({ id: uid('app'), userId: user.id, status: 'draft' });
     persist();
     return { userId: user.id, otpSentTo: phone };
@@ -3645,11 +3649,20 @@ export const workspaceApi = {
     const t = tenantRow(ctx.tenant.id);
     return { ctx, t, canCustom: ctx.ent.has('custom_domain'), whiteLabel: ctx.ent.has('white_label') };
   },
-  saveBranding(userId: string, b: { displayName: string; tagline: string; primary: string; accent: string; hidePoweredBy?: boolean }) {
+  saveBranding(userId: string, b: { displayName: string; tagline: string; primary: string; accent: string; hidePoweredBy?: boolean; logoUrl?: string }) {
     const { t, whiteLabel } = workspaceApi.get(userId);
     if (b.displayName.trim().length < 3) throw new ApiError('name', 'Workspace name needs 3+ characters.', 'name');
     const darken = (hex: string) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.55).toString(16).padStart(2, '0')).join('');
-    t.branding = { ...t.branding, displayName: b.displayName.trim(), tagline: b.tagline.trim(), primary: b.primary, primaryDeep: darken(b.primary), accent: b.accent, hidePoweredBy: whiteLabel ? b.hidePoweredBy : false }; // white-label plans only
+    t.branding = {
+      ...t.branding,
+      displayName: b.displayName.trim(),
+      tagline: b.tagline.trim(),
+      primary: b.primary,
+      primaryDeep: darken(b.primary),
+      accent: b.accent,
+      logoUrl: b.logoUrl !== undefined ? b.logoUrl : t.branding.logoUrl,
+      hidePoweredBy: whiteLabel ? b.hidePoweredBy : false,
+    }; // white-label plans only
     persist();
   },
   checkSlug(userId: string, slug: string) {

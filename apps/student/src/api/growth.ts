@@ -680,7 +680,21 @@ export const siteApi = {
   get(userId: string) {
     const ctx = ctxOf(userId, 'website');
     const site = g().sites.find((s) => s.tenantId === ctx.tenant.id)!;
-    return { ctx, site: JSON.parse(JSON.stringify(site)) as Site, pro: ctx.ent.has('website_pro'), meta: SECTION_META.map((m) => ({ ...m, locked: (m.pro && !ctx.ent.has('website_pro')) || (!!m.needs && !ctx.ent.has(m.needs)) })) };
+    const availableCourses = [...seedCourses, ...db.courses]
+      .filter((c, idx, arr) => arr.findIndex((x) => x.id === c.id) === idx && c.tenantId === ctx.tenant.id && c.status !== 'archived' && !!c.title?.trim())
+      .map((c) => ({
+        id: c.id,
+        title: c.title,
+        subtitle: c.subtitle || '',
+        priceInr: c.priceInr ?? 0,
+      }));
+    return {
+      ctx,
+      site: JSON.parse(JSON.stringify(site)) as Site,
+      pro: ctx.ent.has('website_pro'),
+      courses: availableCourses,
+      meta: SECTION_META.map((m) => ({ ...m, locked: (m.pro && !ctx.ent.has('website_pro')) || (!!m.needs && !ctx.ent.has(m.needs)) })),
+    };
   },
   errors(userId: string, site: Site) {
     const ctx = ctxOf(userId, 'website');
@@ -695,7 +709,7 @@ export const siteApi = {
     for (const s of site.sections) {
       const m = SECTION_META.find((x) => x.kind === s.kind);
       if (s.visible && m?.needs && !ctx.ent.has(m.needs)) throw new ApiError('sections', `“${m.label}” needs a plan with ${m.needs.replace('_', ' ')}.`, 'sections');
-      if ((s.heading?.length ?? 0) > 80 || (s.text?.length ?? 0) > 600) throw new ApiError('sections', 'Headings up to 80 and text up to 600 characters.', 'sections');
+      if ((s.heading?.length ?? 0) > 120 || (s.text?.length ?? 0) > 2500) throw new ApiError('sections', 'Headings up to 120 and text up to 2500 characters.', 'sections');
     }
     const G = g();
     const i = G.sites.findIndex((s) => s.tenantId === ctx.tenant.id);
@@ -720,19 +734,28 @@ export const siteApi = {
     });
 
     const allMyCourses = [...seedCourses, ...db.courses].filter(
-      (c, idx, arr) => arr.findIndex((x) => x.id === c.id) === idx && c.tenantId === t.id
+      (c, idx, arr) =>
+        arr.findIndex((x) => x.id === c.id) === idx &&
+        c.tenantId === t.id &&
+        c.status !== 'archived' &&
+        !!c.title?.trim()
     );
+
+    const selectedIds = site.selectedCourseIds;
+    const storefrontCourses = selectedIds && selectedIds.length > 0
+      ? allMyCourses.filter((c) => selectedIds.includes(c.id))
+      : allMyCourses;
 
     return {
       t,
       site: { ...site, sections: visible, tracking: pro ? site.tracking : {} },
-      courses: allMyCourses.slice(0, 12),
+      courses: storefrontCourses.slice(0, 12),
       webinars: (g().webinars || []).filter((w) => w.tenantId === t.id && webinarState(w) === 'upcoming').slice(0, 4),
       products: (g().products || []).filter((p) => p.tenantId === t.id && p.status === 'published').slice(0, 6),
       offers: (g().offers || []).filter((o) => o.tenantId === t.id && o.active),
       stats: {
         students: db.people.filter((p) => p.tenantId === t.id).length + (db.usage[t.id]?.activeStudents ?? 0),
-        courses: allMyCourses.length,
+        courses: storefrontCourses.length,
       },
     };
   },

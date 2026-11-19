@@ -35,6 +35,7 @@ const L: NavItem[] = [
 /** Teaching first (requirement 1.2): dashboard, courses, create, live, quizzes, assignments, community … business last. */
 const E: (NavItem & { owner?: boolean; module?: string })[] = [
   { key: 'home', href: '/educator/home', title: 'Dashboard', icon: 'grid', primary: true },
+  { key: 'site', href: '/edu/site', title: 'Website & Store', icon: 'globe', match: ['/edu/site', '/edu/workspace'], owner: true },
   { key: 'courses', href: '/educator/courses', title: 'Courses', icon: 'layers', match: ['/edu/lesson'], primary: true },
   { key: 'create', href: '/edu/new-course', title: 'Create course', icon: 'add-circle', match: ['/edu/course', '/edu/new-course'] },
   { key: 'live', href: '/educator/live', title: 'Live classes', icon: 'radio', match: ['/edu/schedule', '/edu/summary', '/edu/host', '/edu/prejoin'], primary: true },

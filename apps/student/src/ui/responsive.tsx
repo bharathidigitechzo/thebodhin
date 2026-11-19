@@ -47,8 +47,8 @@ export const SIDEBAR_W = 248;
 type NavItem = readonly [name: string, title: string, icon: string];
 type Area = NavArea;
 
-/** Routes that stay full-screen on desktop (sign-in flow, video player, live rooms). */
-const NO_FRAME = ['/sign-in', '/sign-up', '/verify', '/forgot-password', '/onboarding', '/apply', '/application-status', '/learn/', '/live-room', '/edu/host', '/edu/board', '/edu/prejoin', '/quiz/', '/embed/', '/welcome', '/pricing', '/legal/', '/for-educators', '/features', '/about', '/contact', '/watch', '/cert/', '/mentor-room/'];
+/** Routes that stay full-screen on desktop (sign-in flow, public site/storefront, video player, live rooms). */
+const NO_FRAME = ['/site', '/site/', '/sign-in', '/sign-up', '/verify', '/forgot-password', '/onboarding', '/apply', '/application-status', '/learn/', '/live-room', '/edu/host', '/edu/board', '/edu/prejoin', '/quiz/', '/embed/', '/welcome', '/pricing', '/legal/', '/for-educators', '/features', '/about', '/contact', '/watch', '/cert/', '/mentor-room/'];
 
 /** Which dashboard a page belongs to. Bodhin staff on the shared /edu tools stay in the admin dashboard. */
 function areaOf(path: string, session: Session | null): Area {
