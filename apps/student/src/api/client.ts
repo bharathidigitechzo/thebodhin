@@ -201,7 +201,13 @@ const BUSY = 'Lots of people are signing up right now. Please try again in a min
 async function cloudSignIn(identifier: string, password: string): Promise<Session> {
   const email = await resolveEmail(identifier);
   if (!email) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'identifier');
-  let r: { error?: string; user?: Parameters<typeof ensureAppUser>[0] } = await cloud.signIn(email, password);
+  let r: { error?: string; user?: Parameters<typeof ensureAppUser>[0] };
+  try {
+    r = await cloud.signIn(email, password);
+  } catch (err) {
+    console.warn('[cloudSignIn] cloud.signIn failed:', err);
+    r = { error: (err as Error)?.message ?? 'network_error' };
+  }
   if (r.error) {
     // If cloud login returns error, verify against seeded demo accounts and allow seamless sign-in
     const local = findByIdentifier(email);

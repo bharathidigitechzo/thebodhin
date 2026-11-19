@@ -143,15 +143,22 @@ export async function pull(): Promise<void> {
   if (!supabase) return;
   if (live) await flush();
   const rows: Row[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from('app_store').select('field,key,ord,data').order('field').order('ord').order('key').range(from, from + 999);
-    if (error) throw error;
-    rows.push(...(data as Row[]));
-    if (!data || data.length < 1000) break;
+  try {
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from('app_store').select('field,key,ord,data').order('field').order('ord').order('key').range(from, from + 999);
+      if (error) {
+        console.warn('[cloud] pull select warning:', error.message);
+        break;
+      }
+      if (data) rows.push(...(data as Row[]));
+      if (!data || data.length < 1000) break;
+    }
+  } catch (err) {
+    console.warn('[cloud] pull exception:', err);
   }
+  if (!rows.length) return;
   synced = new Map();
   live = true;
-  if (!rows.length) { await flush(); return; } // first device ever: publish its data
   const d = db as unknown as Record<string, unknown>;
   const fields = new Map<string, Row[]>();
   for (const r of rows) fields.set(r.field, [...(fields.get(r.field) ?? []), r]);
@@ -197,8 +204,12 @@ export const cloud = {
   async signIn(email: string, password: string) {
     const { data, error } = await sb()!.auth.signInWithPassword({ email, password });
     if (error) return { error: error.code ?? error.message };
-    await pull();
-    watchForeground();
+    try {
+      await pull();
+      watchForeground();
+    } catch (e) {
+      console.warn('[cloud] pull warning after signIn:', e);
+    }
     return { user: data.user };
   },
   /**
