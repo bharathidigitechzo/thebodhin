@@ -3,7 +3,7 @@
  * Saves on every step. Private courses go live instantly; marketplace listings go to Bodhin review.
  * Tutors can edit details and content; pricing and publishing are owner-only.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
@@ -559,6 +559,26 @@ function Content({
   const [open, setOpen] = useState<Set<string>>(() => new Set(c.modules.map((m) => m.id)));
   const [sheet, setSheet] = useState<null | { mode: 'add' } | { mode: 'rename'; id: string; title: string } | { mode: 'delete'; id: string; title: string }>(null);
   const [name, setName] = useState('');
+  const autoPromptedRef = useRef(false);
+
+  useEffect(() => {
+    if (c.modules.length === 0 && !autoPromptedRef.current) {
+      autoPromptedRef.current = true;
+      setName('');
+      setSheet({ mode: 'add' });
+    }
+  }, [c.modules.length]);
+
+  useEffect(() => {
+    if (c.modules.length) {
+      setOpen((prev) => {
+        const next = new Set(prev);
+        c.modules.forEach((m) => next.add(m.id));
+        return next;
+      });
+    }
+  }, [c.modules]);
+
   const lessons = allLessons(c);
   const dur = lessons.reduce((s, l) => s + (l.durationSec ?? 0), 0);
   const resources = lessons.filter((l) => l.type === 'pdf').length + lessons.reduce((s, l) => s + (l.resources?.length ?? 0), 0);
@@ -586,6 +606,24 @@ function Content({
         ))}
       </View>
 
+      {c.modules.length === 0 && (
+        <View style={[styles.emptyBox, { backgroundColor: t.surface, borderColor: t.border }]}>
+          <View style={[styles.emptyIcon, { backgroundColor: t.primarySoft }]}>
+            <Ionicons name="folder-open-outline" size={28} color={t.primary} />
+          </View>
+          <Txt variant="bodyStrong">No modules yet</Txt>
+          <Txt variant="caption" color={t.muted} center style={{ maxWidth: 360 }}>
+            Every course begins with Module 1. Name and create your first module to organize lessons and curriculum.
+          </Txt>
+          <Button
+            title="Add Module 1"
+            iconLeft="add-circle-outline"
+            onPress={() => { setName(''); setSheet({ mode: 'add' }); }}
+            style={{ marginTop: 6 }}
+          />
+        </View>
+      )}
+
       {c.modules.map((m, mi) => {
         const isOpen = open.has(m.id);
         const mDur = m.lessons.reduce((s, l) => s + (l.durationSec ?? 0), 0);
@@ -600,6 +638,7 @@ function Content({
                 </View>
                 <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={20} color={t.muted} />
               </Pressable>
+              <IconButton icon="pencil-outline" label="Rename module" onPress={() => { setName(m.title); setSheet({ mode: 'rename', id: m.id, title: m.title }); }} />
             </View>
             {isOpen && (
               <>
@@ -642,7 +681,14 @@ function Content({
         );
       })}
 
-      <Button title="Add module" iconLeft="add-circle-outline" variant="outline" onPress={() => { setName(''); setSheet({ mode: 'add' }); }} />
+      {c.modules.length > 0 && (
+        <Button
+          title={`Add Module ${c.modules.length + 1}`}
+          iconLeft="add-circle-outline"
+          variant="outline"
+          onPress={() => { setName(''); setSheet({ mode: 'add' }); }}
+        />
+      )}
 
       <View style={[styles.tips, { backgroundColor: t.accentSoft }]}>
         <Ionicons name="bulb-outline" size={20} color={t.warning} />
@@ -652,10 +698,24 @@ function Content({
       <BottomSheet
         open={!!sheet && sheet.mode !== 'delete'}
         onClose={() => setSheet(null)}
-        title={sheet?.mode === 'rename' ? 'Rename module' : 'Add module'}
-        footer={<Button title={sheet?.mode === 'rename' ? 'Save' : 'Add module'} style={{ flex: 1 }} onPress={() => run(() => (sheet?.mode === 'rename' ? courseAdmin.renameModule(userId, c.id, sheet.id, name) : courseAdmin.addModule(userId, c.id, name)))} />}
+        title={sheet?.mode === 'rename' ? 'Rename module' : `Add Module ${c.modules.length + 1}`}
+        footer={
+          <Button
+            title={sheet?.mode === 'rename' ? 'Save' : `Add Module ${c.modules.length + 1}`}
+            disabled={name.trim().length < 3}
+            style={{ flex: 1 }}
+            onPress={() => run(() => (sheet?.mode === 'rename' ? courseAdmin.renameModule(userId, c.id, sheet.id, name) : courseAdmin.addModule(userId, c.id, name)))}
+          />
+        }
       >
-        <TextField label="Module name" placeholder="e.g. SEO Strategy & Tools" autoFocus value={name} onChangeText={setName} />
+        <TextField
+          label={sheet?.mode === 'rename' ? 'Module name' : `Module ${c.modules.length + 1} name`}
+          placeholder={c.modules.length === 0 ? 'e.g. Introduction & Fundamentals' : c.modules.length === 1 ? 'e.g. Core Concepts & Practical Projects' : 'e.g. Advanced Topics & Real-world Practice'}
+          hint="Minimum 3 characters"
+          autoFocus
+          value={name}
+          onChangeText={setName}
+        />
       </BottomSheet>
       <BottomSheet
         open={sheet?.mode === 'delete'}
@@ -1199,4 +1259,6 @@ const styles = StyleSheet.create({
   tutorNote: { padding: 10, borderRadius: radius.sm, gap: 4 },
   pricingNotice: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, borderWidth: 1 },
   videoReviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: radius.md, borderWidth: 1 },
+  emptyBox: { padding: 24, borderRadius: radius.lg, borderWidth: 1.2, alignItems: 'center', gap: 10, borderStyle: 'dashed' },
+  emptyIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });

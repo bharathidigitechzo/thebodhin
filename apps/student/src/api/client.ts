@@ -1694,7 +1694,7 @@ export const courseAdmin = {
     saveCourse({
       id, tenantId: ctx.tenant.id, tutorId: tutor.id, title: '', subtitle: '', description: '', categoryId: '', collections: [], level: 'beginner', format: 'recorded',
       priceInr: 0, rating: 0, ratingCount: 0, students: 0, visibility: 'private', moderation: 'approved', outcomes: [], projects: 0, certificate: true,
-      art: { ...cover, icon: 'school' }, modules: [{ id: uid('m'), title: 'Module 1', lessons: [] }], publishedAt: '', status: 'draft', language: 'English', accessMonths: 12, drip: { enabled: false, everyDays: 7 },
+      art: { ...cover, icon: 'school' }, modules: [], publishedAt: '', status: 'draft', language: 'English', accessMonths: 12, drip: { enabled: false, everyDays: 7 },
     });
     if (ctx.role === 'tutor') { db.tutorAssignments.push({ userId, courseId: id }); persist(); }
     return id;
