@@ -9,6 +9,7 @@ import React from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useGlobalSearchParams, usePathname } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/theme/ThemeProvider';
 import { adminMembership, educatorMembership, useAuth } from '@/store/auth';
 import type { Session } from '@/core/types';
@@ -204,13 +205,15 @@ export function SwitchDashboardSheet({ open, onClose, current }: { open: boolean
 export function AreaBar({ area, path }: { area: Area; path: string }) {
   const { c } = useTheme();
   const { items } = useNav(area);
+  const insets = useSafeAreaInsets();
   const q = useGlobalSearchParams<{ kind?: string }>();
   const prim = primaryOf(items);
   const activeAll = activeKey(items, path, q.kind ? `kind=${q.kind}` : '');
   // A module that is not in the bar (Community, Timetable …) lights up More.
   const active = prim.some((x) => x.key === activeAll) ? activeAll : prim[prim.length - 1].key;
+  const bottomInset = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 16);
   return (
-    <View style={[s.bar, { backgroundColor: c.surface, borderTopColor: c.border }]} accessibilityRole="tablist" testID="area-bar">
+    <View style={[s.bar, { backgroundColor: c.surface, borderTopColor: c.border, paddingBottom: bottomInset, minHeight: 58 + (Platform.OS === 'web' ? 8 : bottomInset) }]} accessibilityRole="tablist" testID="area-bar">
       {prim.map((it) => {
         const on = it.key === active;
         return (
@@ -267,7 +270,8 @@ export function DesktopFrame({ children }: { children: React.ReactNode }) {
   if (!inApp) return <>{children}</>;
   const area = areaOf(path, session);
   if (!isDesktop) {
-    if (TAB_ROOTS.includes(path) || !inAreaPage(path)) return <>{children}</>;
+    const cleanPath = path.split('?')[0].replace(/\/+$/, '') || '/';
+    if (TAB_ROOTS.some((r) => r === cleanPath || r === path) || !inAreaPage(path)) return <>{children}</>;
     return (
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1, minHeight: 0 }}>{children}</View>
@@ -295,6 +299,10 @@ function inAreaPage(path: string) {
 export function useAppTabs(_items: readonly NavItem[], _area: Area) {
   const { c } = useTheme();
   const { isDesktop, isTablet } = useLayout();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 16);
+  const barHeight = Platform.OS === 'web' ? 68 : 58 + bottomInset;
+
   return {
     tabBar: isDesktop ? () => null : undefined,
     screenOptions: {
@@ -304,11 +312,18 @@ export function useAppTabs(_items: readonly NavItem[], _area: Area) {
       tabBarPosition: (isTablet ? 'left' : 'bottom') as 'left' | 'bottom',
       tabBarVariant: (isTablet ? 'material' : 'uikit') as 'material' | 'uikit',
       tabBarLabelPosition: isTablet ? ('below-icon' as const) : undefined,
-      tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const },
+      tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const, marginBottom: Platform.OS === 'web' ? 0 : 2 },
       tabBarStyle: isTablet
         ? { backgroundColor: c.surface, borderRightColor: c.border, width: 104, paddingTop: 16 }
-        : { backgroundColor: c.surface, borderTopColor: c.border, height: Platform.OS === 'web' ? 68 : undefined, paddingTop: 6 },
-      tabBarItemStyle: isTablet ? { minHeight: 72 } : { paddingBottom: Platform.OS === 'web' ? 8 : 0 },
+        : {
+            backgroundColor: c.surface,
+            borderTopColor: c.border,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            height: barHeight,
+            paddingTop: 8,
+            paddingBottom: bottomInset,
+          },
+      tabBarItemStyle: isTablet ? { minHeight: 72 } : { paddingBottom: 0 },
     },
   };
 }
