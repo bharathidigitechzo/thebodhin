@@ -254,7 +254,7 @@ function KV({ k, v }: { k: string; v: string }) {
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 6 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 6 },
   pad: { paddingHorizontal: 16, alignItems: 'center' },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   card: { width: '100%', maxWidth: layout.contentMaxWidth, padding: 14, borderRadius: radius.lg, borderWidth: 1, gap: 12 },

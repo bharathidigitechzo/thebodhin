@@ -352,7 +352,7 @@ export default function LessonEditor() {
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 6 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 6 },
   nav: { flexDirection: 'row', alignItems: 'center' },
   scroll: { paddingHorizontal: 16, paddingBottom: 120, alignItems: 'center' },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },

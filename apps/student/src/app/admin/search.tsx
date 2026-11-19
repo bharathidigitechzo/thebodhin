@@ -76,7 +76,7 @@ export default function AdminSearch() {
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 8 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 8 },
   box: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 12, minHeight: 48 },
   input: { flex: 1, minWidth: 0, fontSize: 16, minHeight: 44 },
   scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 30 },

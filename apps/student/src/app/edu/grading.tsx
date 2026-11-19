@@ -83,7 +83,7 @@ export default function GradingQueue() {
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 24 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   list: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },

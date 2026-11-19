@@ -826,13 +826,13 @@ function ComposeSheet({ open, onClose, info, userId, flash, preset }: { open: bo
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 6 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 6 },
   pad: { paddingHorizontal: 16, alignItems: 'center' },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   summary: { width: '100%', maxWidth: layout.contentMaxWidth, padding: 12, borderRadius: radius.lg, borderWidth: 1, gap: 12 },
   metaGrid: { flexDirection: 'row', gap: 8 },
   next: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md },
-  tabsWrap: { paddingVertical: 10 },
+  tabsWrap: { alignSelf: 'center', width: '100%', maxWidth: 752, paddingVertical: 10 },
   alert: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: radius.lg, borderWidth: 1.2 },
   kpis: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   kpi: { flexBasis: '46%', flexGrow: 1, padding: 12, borderRadius: radius.lg, borderWidth: 1, gap: 2 },

@@ -54,7 +54,7 @@ export default function Coupons() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title="Coupons & offers" />
+        <ScreenTop title="Coupons & offers" maxWidth={isDesktop ? 1000 : 720} padX={isDesktop ? 32 : 16} />
         <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
           <View style={[shared.inner, isDesktop && { maxWidth: 1000 }]}>
             {msg && <Banner tone="success" text={msg} />}

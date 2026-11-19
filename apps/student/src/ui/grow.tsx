@@ -53,7 +53,7 @@ export function Page({ title, sub, err, children, footer, fallback = '/edu/grow'
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title={title} sub={sub} fallback={fallback} />
+        <ScreenTop title={title} sub={sub} fallback={fallback} maxWidth={isDesktop ? (wide ? 1100 : 900) : 720} padX={isDesktop ? 32 : 16} />
         <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingBottom: 48 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={[shared.inner, isDesktop && { maxWidth: wide ? 1100 : 900 }]}>
             {err ? <Locked err={err} /> : children}

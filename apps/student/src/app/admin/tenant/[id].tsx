@@ -15,7 +15,7 @@ export default function TenantScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title="Workspace" fallback="/admin/tenants" />
+        <ScreenTop maxWidth={788} title="Workspace" fallback="/admin/tenants" />
         <View style={{ flex: 1, paddingHorizontal: 16, width: '100%', maxWidth: 820, alignSelf: 'center' }}>
           <TenantPanel id={id} userId={session?.user.id ?? ''} />
         </View>

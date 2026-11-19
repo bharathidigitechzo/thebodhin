@@ -702,8 +702,8 @@ function Small({ icon, label, onPress, disabled }: { icon: keyof typeof Ionicons
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 8 },
-  tabsWrap: { paddingHorizontal: 16, paddingBottom: 8 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 8 },
+  tabsWrap: { alignSelf: 'center', width: '100%', maxWidth: 752, paddingHorizontal: 16, paddingBottom: 8 },
   scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 30 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   card: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 10 },

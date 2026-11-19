@@ -17,7 +17,7 @@ export default function ReviewScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title={kind === 'course' ? 'Course review' : 'Educator application'} fallback="/admin/inbox" />
+        <ScreenTop maxWidth={728} title={kind === 'course' ? 'Course review' : 'Educator application'} fallback="/admin/inbox" />
         <View style={{ flex: 1, paddingHorizontal: 16, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
           {kind === 'course' ? <CourseReview id={id} userId={userId} onDone={done} /> : <ApplicationReview id={id} userId={userId} onDone={done} />}
         </View>

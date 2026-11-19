@@ -59,8 +59,10 @@ export default function Content() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         <ScreenTop title="Bodhin content" sub="Bodhin’s academy & the marketplace" fallback="/admin/more" />
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
+          <View style={{ width: '100%', maxWidth: 720 }}>
           <PillTabs<Tab> value={tab} onChange={setTab} tabs={[{ id: 'courses', label: `Bodhin courses · ${courses.length}`, icon: 'layers-outline' }, { id: 'curation', label: 'Curation', icon: 'star-outline' }, { id: 'categories', label: 'Categories', icon: 'grid-outline' }]} />
+          </View>
         </View>
         <ScrollView contentContainerStyle={shared.scroll} showsVerticalScrollIndicator={false}>
           <View style={shared.inner}>

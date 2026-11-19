@@ -143,7 +143,7 @@ export default function Timetable() {
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 32 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 14 },
   rem: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8, minHeight: 56 },

@@ -249,10 +249,10 @@ function Section({ title, action, onAction, children }: { title: string; action?
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   pad: { paddingHorizontal: 16, alignItems: 'center' },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
-  tabsWrap: { paddingVertical: 10, paddingHorizontal: 16 },
+  tabsWrap: { alignSelf: 'center', width: '100%', maxWidth: 752, paddingVertical: 10, paddingHorizontal: 16 },
   card: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 8 },
   stats: { flexDirection: 'row', gap: 8, marginTop: 4 },
   stat: { flex: 1, borderRadius: 12, padding: 8, alignItems: 'center', gap: 2 },

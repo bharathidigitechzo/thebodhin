@@ -86,7 +86,7 @@ export default function Subscription() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title="Subscription & usage" sub={`${ctx.tenant.branding.displayName}`} />
+        <ScreenTop padX={isDesktop ? 32 : 16} maxWidth={isDesktop ? 1180 : 720} title="Subscription & usage" sub={`${ctx.tenant.branding.displayName}`} />
         <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingTop: 8, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
           <View style={[shared.inner, isDesktop && { maxWidth: 1180 }]}>
             {!!reason && !msg && <Banner tone="info" text={String(reason)} />}

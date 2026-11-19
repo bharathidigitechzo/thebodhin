@@ -8,16 +8,19 @@ import { Txt } from './Txt';
 import { haptic } from './haptics';
 import { IconButton } from './kit';
 
-export function ScreenTop({ title, sub, fallback = '/educator/more', right }: { title: string; sub?: string; fallback?: string; right?: React.ReactNode }) {
+/** `maxWidth` must match the page body's column so the header lines up with the content (default 720 = shared.inner). */
+export function ScreenTop({ title, sub, fallback = '/educator/more', right, maxWidth = 720, padX = 16 }: { title: string; sub?: string; fallback?: string; right?: React.ReactNode; maxWidth?: number; padX?: number }) {
   const { c } = useTheme();
   return (
-    <View style={styles.top}>
-      <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace(fallback as never))} />
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Txt variant="heading" numberOfLines={1}>{title}</Txt>
-        {!!sub && <Txt variant="caption" color={c.muted} numberOfLines={1}>{sub}</Txt>}
+    <View style={[styles.topOuter, { paddingHorizontal: padX }]}>
+      <View style={[styles.top, { maxWidth }]}>
+        <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace(fallback as never))} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt variant="heading" numberOfLines={1}>{title}</Txt>
+          {!!sub && <Txt variant="caption" color={c.muted} numberOfLines={1}>{sub}</Txt>}
+        </View>
+        {right}
       </View>
-      {right}
     </View>
   );
 }
@@ -117,7 +120,9 @@ const styles = StyleSheet.create({
   numBtn: { width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   numVal: { flex: 1, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   unl: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, minHeight: 36, justifyContent: 'center' },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
+  // same centred 720px column as the page body, so the header lines up with the content on wide screens
+  topOuter: { alignItems: 'center', paddingHorizontal: 16 },
+  top: { width: '100%', maxWidth: 720, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   card: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 10 },
   stat: { flex: 1, borderWidth: 1, borderRadius: 14, padding: 10, gap: 2 },
 });

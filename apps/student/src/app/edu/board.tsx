@@ -13,7 +13,7 @@ export default function BoardScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title="Smart board" sub="Write in any language — it turns neat" fallback="/educator/more" />
+        <ScreenTop maxWidth={4000} padX={isDesktop ? 20 : 10} title="Smart board" sub="Write in any language — it turns neat" fallback="/educator/more" />
         <View style={{ flex: 1, padding: isDesktop ? 20 : 10, paddingTop: 4 }}>
           <SmartBoard />
         </View>
