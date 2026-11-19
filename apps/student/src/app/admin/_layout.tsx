@@ -27,7 +27,11 @@ export default function AdminLayout() {
   if (!me) return <Redirect href="/home" />;
   if (!me.verified) return <TwoStep userId={session.user.id} name={me.user.name} role={ROLE_LABEL[me.role]} onDone={() => force((n) => n + 1)} onCancel={() => { signOut(); router.replace('/sign-in'); }} />;
   if (!canOpenAdmin(me.role, path)) return <NoAccess role={ROLE_LABEL[me.role]} />;
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    </Stack>
+  );
 }
 
 /** Direct link to an admin page outside this staff role: explain instead of crashing. */
