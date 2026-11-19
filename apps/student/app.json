@@ -37,6 +37,12 @@
       "favicon": "./assets/brand/mark.png"
     },
     "scheme": "bodhin",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/933923a0-d669-47e3-925e-5156b9679433"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -48,7 +54,8 @@
         {
           "asyncRoutes": false
         }
-      ]
+      ],
+      "expo-updates"
     ],
     "experiments": {
       "typedRoutes": false
