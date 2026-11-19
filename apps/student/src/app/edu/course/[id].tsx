@@ -657,7 +657,7 @@ function Content({
                           icon="play-circle"
                           label="Preview video"
                           tone="filled"
-                          onPress={() => onPreviewVideo({ title: l.title, durationSec: l.durationSec, sizeMb: l.sizeMb, uri: l.videoUri, moduleTitle: m.title })}
+                          onPress={() => onPreviewVideo({ title: l.title, durationSec: l.durationSec, sizeMb: l.sizeMb, uri: l.videoUrl || l.videoUri, moduleTitle: m.title })}
                         />
                       )}
                       <IconButton icon="chevron-up" label="Move lesson up" onPress={() => run(() => courseAdmin.moveLesson(userId, c.id, m.id, l.id, -1))} />
@@ -996,8 +996,8 @@ function Publish({
           vids.push({
             id: l.id,
             title: l.title,
-            videoUri: l.videoUri,
-            uri: l.videoUri,
+            videoUri: l.videoUrl || l.videoUri,
+            uri: l.videoUrl || l.videoUri,
             sizeMb: l.sizeMb,
             durationSec: l.durationSec,
             moduleTitle: m.title,

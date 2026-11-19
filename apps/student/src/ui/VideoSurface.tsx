@@ -7,6 +7,7 @@ import { GestureResponderEvent, LayoutChangeEvent, Platform, Pressable, StyleShe
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Course, Lesson } from '@/core/catalog';
+import { getMediaFile, saveMediaFile } from './mediaStore';
 import { Txt } from './Txt';
 
 export interface VideoState {
@@ -48,6 +49,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   const [seekHint, setSeekHint] = useState<null | 'back' | 'fwd'>(null);
   const [barW, setBarW] = useState(1);
   const [hasVideoError, setHasVideoError] = useState(false);
+  const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | null>(null);
   const lastTap = useRef<{ at: number; x: number } | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const width = useRef(1);
@@ -56,9 +58,84 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
 
   const rawUrl = lesson.videoUrl || (lesson as any).videoUri || course.intro?.uri;
   const ytEmbed = getYouTubeEmbedUrl(rawUrl);
-  const videoSource = rawUrl || DEFAULT_SAMPLE_VIDEO;
+
+  const videoSource = resolvedMediaUrl || rawUrl || DEFAULT_SAMPLE_VIDEO;
   const isWeb = Platform.OS === 'web';
   const hasRealVideo = isWeb && !ytEmbed && !hasVideoError;
+
+  // Resolve persistent media from IndexedDB if uploaded previously
+  useEffect(() => {
+    let active = true;
+    let localBlobUrl: string | null = null;
+
+    async function resolveMedia() {
+      // 1. YouTube embeds
+      if (rawUrl && getYouTubeEmbedUrl(rawUrl)) {
+        if (active) setResolvedMediaUrl(rawUrl);
+        return;
+      }
+      // 2. Real remote HTTP/HTTPS video URL
+      if (rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) && !rawUrl.startsWith('blob:') && !rawUrl.includes('commondatastorage.googleapis.com')) {
+        if (active) setResolvedMediaUrl(rawUrl);
+        return;
+      }
+
+      // 3. Check IndexedDB by lesson id, course_lesson, or title
+      const keys = [
+        lesson.id,
+        `${course.id}_${lesson.id}`,
+        lesson.title,
+        `${lesson.title}.mp4`,
+        (lesson as any).fileName,
+      ];
+      for (const k of keys) {
+        if (!k) continue;
+        const blob = await getMediaFile(k);
+        if (blob && active) {
+          localBlobUrl = URL.createObjectURL(blob);
+          setResolvedMediaUrl(localBlobUrl);
+          return;
+        }
+      }
+
+      // 4. If rawUrl is a live blob in the current browser session, cache it and use it
+      if (rawUrl && rawUrl.startsWith('blob:')) {
+        try {
+          const res = await fetch(rawUrl);
+          if (res.ok) {
+            const blob = await res.blob();
+            if (active) {
+              localBlobUrl = URL.createObjectURL(blob);
+              setResolvedMediaUrl(localBlobUrl);
+            }
+            saveMediaFile(lesson.id, blob);
+            saveMediaFile(`${course.id}_${lesson.id}`, blob);
+            if (lesson.title) saveMediaFile(lesson.title, blob);
+            return;
+          }
+        } catch {
+          // Dead blob URL
+        }
+      }
+
+      if (active) {
+        if (rawUrl && !rawUrl.startsWith('blob:')) {
+          setResolvedMediaUrl(rawUrl);
+        } else {
+          setResolvedMediaUrl(DEFAULT_SAMPLE_VIDEO);
+        }
+      }
+    }
+
+    resolveMedia();
+
+    return () => {
+      active = false;
+      if (localBlobUrl) {
+        try { URL.revokeObjectURL(localBlobUrl); } catch { /* ignore */ }
+      }
+    };
+  }, [lesson.id, rawUrl, course.id, lesson.title]);
 
   // reset when lesson changes
   useEffect(() => {
@@ -70,7 +147,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
       videoElRef.current.currentTime = startAt;
       videoElRef.current.pause();
     }
-  }, [lesson.id, rawUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lesson.id, rawUrl, resolvedMediaUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // sync playback rate
   useEffect(() => {
@@ -225,7 +302,13 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
           }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
-          onError={() => setHasVideoError(true)}
+          onError={() => {
+            if (videoSource !== DEFAULT_SAMPLE_VIDEO) {
+              setResolvedMediaUrl(DEFAULT_SAMPLE_VIDEO);
+            } else {
+              setHasVideoError(true);
+            }
+          }}
         />
       ) : (
         <View style={[styles.slide, chrome && { opacity: 0 }]}>

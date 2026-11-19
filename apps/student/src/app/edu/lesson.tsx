@@ -2,7 +2,7 @@
  * Lesson editor (full screen over the builder). Video or PDF, upload with progress,
  * storage-limit check, extra resources, free preview and completion rule.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -21,6 +21,7 @@ import { Banner } from '@/ui/misc';
 import { pickVideo } from '@/ui/pickMedia';
 import { VideoPreview } from '@/ui/VideoPreview';
 import { PdfPreviewModal, type PreviewFile } from '@/ui/PdfPreviewModal';
+import { saveMediaFile } from '@/ui/mediaStore';
 
 type Kind = 'video' | 'pdf';
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -45,7 +46,8 @@ export default function LessonEditor() {
   const [title, setTitle] = useState(existing?.title ?? '');
   const [desc, setDesc] = useState(existing?.description ?? '');
   const [kind, setKind] = useState<Kind>(existing?.type === 'pdf' ? 'pdf' : 'video');
-  const [videoUrl, setVideoUrl] = useState(existing?.videoUrl ?? (existing as any)?.videoUri ?? '');
+  const [videoUrl, setVideoUrl] = useState(existing?.videoUrl && !existing.videoUrl.startsWith('blob:') ? existing.videoUrl : '');
+  const pickedRawFileRef = useRef<File | Blob | null>(null);
   const [file, setFile] = useState<LessonFile | null>(
     existing && (existing.durationSec || existing.sizeMb || existing.videoUrl || (existing as any)?.videoUri) ? {
       name: existing.type === 'pdf' ? `${existing.title}.pdf` : `${existing.title}.mp4`,
@@ -89,6 +91,11 @@ export default function LessonEditor() {
         name = f.name;
         sizeMb = Math.max(0.2, Math.round(((f.sizeBytes ?? 0) / 1048576) * 10) / 10);
         pickedUri = f.uri;
+        if (f.file) {
+          pickedRawFileRef.current = f.file;
+          saveMediaFile(f.name, f.file);
+          if (existing?.id) saveMediaFile(existing.id, f.file);
+        }
       }
     }
 
@@ -102,8 +109,12 @@ export default function LessonEditor() {
         name = r.assets[0].name;
         sizeMb = Math.max(0.2, Math.round(((r.assets[0].size ?? 0) / 1048576) * 10) / 10);
         pickedUri = r.assets[0].uri;
-        if (typeof window !== 'undefined' && (r.assets[0] as any).file instanceof Blob) {
-          pickedUri = URL.createObjectURL((r.assets[0] as any).file);
+        const rawBlob = (r.assets[0] as any).file;
+        if (typeof window !== 'undefined' && rawBlob instanceof Blob) {
+          pickedUri = URL.createObjectURL(rawBlob);
+          pickedRawFileRef.current = rawBlob;
+          saveMediaFile(name, rawBlob);
+          if (existing?.id) saveMediaFile(existing.id, rawBlob);
         }
       } catch {
         name = want === 'video' ? `${(title || 'lesson').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mp4` : 'lesson-notes.pdf';
@@ -130,7 +141,7 @@ export default function LessonEditor() {
         uri: activeUri,
         videoUrl: activeUri,
       });
-      if (activeUri && !videoUrl) setVideoUrl(activeUri);
+      if (activeUri && !activeUri.startsWith('blob:') && !videoUrl) setVideoUrl(activeUri);
     } catch (e) {
       setErr({ field: 'file', msg: (e as ApiError).message });
     } finally {
@@ -143,7 +154,7 @@ export default function LessonEditor() {
     setErr(null);
     try {
       const finalVideoUrl = videoUrl.trim() || file?.videoUrl || file?.uri || undefined;
-      courseAdmin.saveLesson(userId, course.id, moduleId, {
+      const savedLesson = courseAdmin.saveLesson(userId, course.id, moduleId, {
         id: existing?.id,
         title,
         description: desc.trim() || undefined,
@@ -156,6 +167,26 @@ export default function LessonEditor() {
         completion: kind === 'video' ? completion : 'manual',
         videoUrl: kind === 'video' ? finalVideoUrl : undefined,
       });
+
+      if (pickedRawFileRef.current && savedLesson) {
+        saveMediaFile(savedLesson.id, pickedRawFileRef.current);
+        saveMediaFile(`${course.id}_${savedLesson.id}`, pickedRawFileRef.current);
+        saveMediaFile(savedLesson.title, pickedRawFileRef.current);
+        if (savedLesson.title) saveMediaFile(`${savedLesson.title}.mp4`, pickedRawFileRef.current);
+        if (file?.name) saveMediaFile(file.name, pickedRawFileRef.current);
+      } else if (file?.uri?.startsWith('blob:') && savedLesson) {
+        fetch(file.uri)
+          .then((r) => r.blob())
+          .then((blob) => {
+            saveMediaFile(savedLesson.id, blob);
+            saveMediaFile(`${course.id}_${savedLesson.id}`, blob);
+            saveMediaFile(savedLesson.title, blob);
+            if (savedLesson.title) saveMediaFile(`${savedLesson.title}.mp4`, blob);
+            if (file?.name) saveMediaFile(file.name, blob);
+          })
+          .catch(() => {});
+      }
+
       if (andNext) router.replace({ pathname: '/edu/lesson', params: { courseId: course.id, moduleId } });
       else router.back();
     } catch (e) {

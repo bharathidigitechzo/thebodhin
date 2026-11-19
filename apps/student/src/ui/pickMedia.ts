@@ -5,10 +5,11 @@
  */
 import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { saveMediaFile } from './mediaStore';
 
-export interface PickedFile { name: string; mime: string | null; sizeBytes: number | null; uri: string }
+export interface PickedFile { name: string; mime: string | null; sizeBytes: number | null; uri: string; file?: File }
 
-async function pick(type: string): Promise<(PickedFile & { file?: File }) | null> {
+async function pick(type: string): Promise<PickedFile | null> {
   const r = await DocumentPicker.getDocumentAsync({ type, multiple: false, copyToCacheDirectory: true });
   if (r.canceled || !r.assets?.length) return null;
   const a = r.assets[0] as DocumentPicker.DocumentPickerAsset & { file?: File };
@@ -16,6 +17,7 @@ async function pick(type: string): Promise<(PickedFile & { file?: File }) | null
   if (Platform.OS === 'web' && a.file) {
     try {
       uri = URL.createObjectURL(a.file);
+      saveMediaFile(a.name, a.file);
     } catch {
       // fallback to a.uri
     }
@@ -52,5 +54,5 @@ export async function pickImage(): Promise<PickedFile | null> {
 
 export async function pickVideo(): Promise<PickedFile | null> {
   const f = await pick('video/*');
-  return f ? { name: f.name, mime: f.mime, sizeBytes: f.sizeBytes, uri: f.uri } : null;
+  return f ? { name: f.name, mime: f.mime, sizeBytes: f.sizeBytes, uri: f.uri, file: f.file } : null;
 }
