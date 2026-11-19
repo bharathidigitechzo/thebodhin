@@ -14,8 +14,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { db, dbListeners, loadHooks, persistHooks } from './mockDb';
 
-const URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xxfukitplxbjbspzcfom.supabase.co';
-const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_51qHExHC2em522VcSEfjHA_ajJQmzgV';
+const URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://pfjlpcrextppuixgriot.supabase.co';
+const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmamxwY3JleHRwcHVpeGdyaW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwNTY0NzYsImV4cCI6MjExMDYzMjQ3Nn0.GSjYJw-zQKqLbhJrhkZAARn3nX0CHZjQD1L6LkL_1rw';
 export const cloudEnabled = process.env.EXPO_PUBLIC_CLOUD !== 'off';
 
 const web = typeof document !== 'undefined' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';

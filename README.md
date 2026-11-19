@@ -70,6 +70,81 @@ npm run web
 
 ---
 
+### Mode 3: Live Production Mode (Supabase Cloud + Vercel Web + Mobile APK)
+
+Both the **Vercel Web Portal** and the **Android APK** connect to the same real-time Supabase Cloud database, keeping learners, educators, courses, batches, and progress 100% synchronized in real time.
+
+#### 🔑 Live Supabase Cloud Credentials
+| Property | Value |
+| :--- | :--- |
+| **Supabase Project URL** | `https://pfjlpcrextppuixgriot.supabase.co` |
+| **Supabase Anon Public Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmamxwY3JleHRwcHVpeGdyaW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwNTY0NzYsImV4cCI6MjExMDYzMjQ3Nn0.GSjYJw-zQKqLbhJrhkZAARn3nX0CHZjQD1L6LkL_1rw` |
+| **Database Password** | `Bodhin_2026` |
+| **Cloud Sync Switch** | `EXPO_PUBLIC_CLOUD=on` |
+
+---
+
+#### ⚡ முக்கியமான தகவல் / Crucial Supabase Setup: SQL Editor
+If starting on a fresh Supabase project or setting up auth, ensure these two migrations are run in **Supabase Dashboard ➔ SQL Editor ➔ New Query ➔ Run**:
+1. `supabase/migrations/0011_app_store_sync.sql` (Creates `public.app_store` table, RLS policies, and `login_email` RPC)
+2. `supabase/migrations/0012_app_sign_up.sql` (Creates `public.app_sign_up` RPC so students/educators register instantly with pre-confirmed email without hitting Supabase mailer limits)
+
+---
+
+#### பகுதி 1: Vercel-ல் Database ENV போடுவது (Web Live)
+1. Vercel Dashboard-ல் Project ➔ **Settings** ➔ **Environment Variables** பகுதிக்குச் செல்லவும்.
+2. கீழே உள்ள 3 Variables-ஐ ஒவ்வொன்றாக Add செய்யவும் (**Production**, **Preview**, **Development** என 3 டிக் பாக்ஸும் Select ஆகியிருக்க வேண்டும்):
+
+| Variable Key | Value | Targets |
+| :--- | :--- | :--- |
+| `EXPO_PUBLIC_SUPABASE_URL` | `https://pfjlpcrextppuixgriot.supabase.co` | Production, Preview, Development |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmamxwY3JleHRwcHVpeGdyaW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwNTY0NzYsImV4cCI6MjExMDYzMjQ3Nn0.GSjYJw-zQKqLbhJrhkZAARn3nX0CHZjQD1L6LkL_1rw` | Production, Preview, Development |
+| `EXPO_PUBLIC_CLOUD` | `on` | Production, Preview, Development |
+
+3. **அடுத்து செய்ய வேண்டியது (Redeploy):**
+   - மேலே உள்ள **Deployments** tab-ஐ கிளிக் செய்யவும்.
+   - பட்டியலில் முதலில் இருக்கும் (கடைசி deployment)-ன் வலதுபுறம் உள்ள மூன்று புள்ளிகளை **`...`** கிளிக் செய்து **"Redeploy"** கொடுக்கவும்.
+   - 1 அல்லது 2 நிமிடங்களில் Vercel Website Live Supabase Database உடன் முழுமையாக இயங்கத் தொடங்கிவிடும்!
+
+---
+
+#### பகுதி 2: லேப்டாப்பில் APK Build செய்வது (Mobile App Live)
+Web மற்றும் APK இரண்டும் ஒரே டேட்டாபேஸை பயன்படுத்த, லேப்டாப்பில் கீழ்வரும் 2 எளிய படிகளைச் செய்யவும்:
+
+##### படி 1: Local Environment-ல் புதிய Supabase Keys-ஐ சரிபார்க்கவும்
+Codebase-ல் உள்ள `apps/student/.env.local` ஃபைலில் (மற்றும் `apps/student/.env`, `apps/student/eas.json`) Live Keys ஏற்கனவே தயார் செய்யப்பட்டுள்ளன:
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://pfjlpcrextppuixgriot.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmamxwY3JleHRwcHVpeGdyaW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwNTY0NzYsImV4cCI6MjExMDYzMjQ3Nn0.GSjYJw-zQKqLbhJrhkZAARn3nX0CHZjQD1L6LkL_1rw
+EXPO_PUBLIC_CLOUD=on
+```
+
+##### படி 2: Terminal / VS Code-ல் APK Build ரன் செய்யுங்கள்
+Terminal (PowerShell / Command Prompt)-ல் கீழ்வரும் கமாண்டுகளை ஒவ்வொன்றாக இயக்கவும்:
+```bash
+# 1. student ஃபோல்டருக்கு செல்லவும்
+cd apps/student
+
+# 2. Expo-வில் Login செய்யவும் (அவர்களின் Expo username & password கேட்கும்)
+npx eas-cli login
+
+# 3. APK Build கமாண்டை இயக்கவும்
+npx eas-cli build -p android --profile preview
+```
+
+---
+
+#### பகுதி 3: எப்படி வேலை செய்கிறது என்று Verify செய்வது (Checking & Realtime Sync)
+1. **Vercel Website-ல்:**
+   - Live Website URL-க்குச் சென்று, **Sign Up** செய்து ஒரு புதிய மாணவர் கணக்கை உருவாக்குங்கள் (அல்லது course வாங்குங்கள்).
+2. **APK-ல்:**
+   - EAS Build முடிந்ததும் வரும் லிங்க்கில் இருந்து APK-ஐ டவுன்லோட் செய்து மொபைலில் Install செய்து கொள்ளுங்கள்.
+   - Vercel வெப்சைட்டில் நீங்கள் Register செய்த அதே email & password போட்டு மொபைல் ஆப்பில் **Login** செய்யுங்கள்.
+3. **முடிவு:**
+   - வெப்சைட்டில் செய்த அனைத்தும் மொபைலிலும் உடனே தோன்றும்! (100% Realtime Synced) 🎉
+
+---
+
 ## 🔑 Demo Logins & Roles
 
 All demo accounts use password **`demo123`** and OTP **`123456`**.
