@@ -604,7 +604,7 @@ export const learning = {
       .filter((x): x is NonNullable<typeof x> => !!x);
 
     const recommended = sortCourses(visible(tenantId).filter((c) => !myCourseIds.has(c.id)), 'relevance')
-      .slice(0, 6)
+      .slice(0, 8)
       .map((c) => ({ course: c, tutor: tutorOf(c) }));
 
     return {

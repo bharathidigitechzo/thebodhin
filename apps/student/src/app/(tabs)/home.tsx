@@ -73,8 +73,8 @@ export default function Home() {
               </View>
             ) : data ? (
               <>
-              <View style={isDesktop ? styles.deskRow : undefined}>
-              <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined}>
+              <View style={isDesktop && live ? styles.deskRow : undefined}>
+              <View style={isDesktop && live ? { flex: 1, minWidth: 0 } : undefined}>
                 {/* Overall progress */}
                 <LinearGradient colors={[c.primaryDeep, c.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
                   <ProgressRing pct={data.overallPct} size={78} stroke={8} track="rgba(255,255,255,0.18)" color="#3FD17C" textColor="#fff" />
@@ -235,15 +235,13 @@ export default function Home() {
                 ) : null}
 
               </View>
-              {/* Next live class (desktop: right rail) */}
-              <View style={isDesktop ? { width: 380 } : undefined}>
-                {live && (
-                  <>
-                    <SectionHeader title="Upcoming Live Class" action="Schedule" onAction={() => router.navigate('/live')} />
-                    <LiveCard live={live} />
-                  </>
-                )}
-              </View>
+              {/* Next live class (desktop: right rail only when there is an active live class) */}
+              {isDesktop && live ? (
+                <View style={{ width: 380 }}>
+                  <SectionHeader title="Upcoming Live Class" action="Schedule" onAction={() => router.navigate('/live')} />
+                  <LiveCard live={live} />
+                </View>
+              ) : null}
               </View>
 
                 {/* Recommendations */}
@@ -266,7 +264,7 @@ export default function Home() {
                   </>
                 )}
 
-                {data.enrolled.length === 0 && (
+                {data.enrolled.length === 0 && data.recommended.length === 0 && (
                   <View style={[styles.empty, { backgroundColor: c.surface, borderColor: c.border }]}>
                     <Ionicons name="sparkles-outline" size={30} color={c.accent} />
                     <Txt variant="bodyStrong" center>

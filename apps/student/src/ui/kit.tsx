@@ -75,19 +75,23 @@ export function AppHeader({ profileHref = '/profile', action }: { profileHref?: 
         </View>
       ) : width >= 1024 ? (
         // Desktop: the sidebar already shows the logo — use the space for search.
-        <Pressable onPress={() => router.push('/search')} accessibilityRole="search" accessibilityLabel="Search courses" style={({ hovered }: any) => [styles.deskSearch, { backgroundColor: c.surface, borderColor: hovered ? c.borderStrong : c.border }]}>
-          <Ionicons name="search" size={18} color={c.muted} />
-          <Txt color={c.muted}>Search courses, skills or tutors</Txt>
-        </Pressable>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
+          <Pressable onPress={() => router.push('/search')} accessibilityRole="search" accessibilityLabel="Search courses" style={({ hovered }: any) => [styles.deskSearch, { backgroundColor: c.surface, borderColor: hovered ? c.borderStrong : c.border }]}>
+            <Ionicons name="search" size={18} color={c.muted} />
+            <Txt color={c.muted}>Search courses, skills or tutors</Txt>
+          </Pressable>
+        </View>
       ) : (
         <View style={{ alignItems: 'flex-start', flex: 1 }}>
           <BrandLogo size="sm" align="flex-start" />
         </View>
       )}
-      <IconButton icon="notifications-outline" label="Notifications" dot={!!session && notifications.unread(session.user.id) > 0} onPress={() => router.push('/notifications')} />
-      <Pressable onPress={() => router.navigate(profileHref as any)} accessibilityRole="button" accessibilityLabel="Your profile" hitSlop={6}>
-        <Avatar name={session?.user.name ?? 'You'} uri={session?.user.avatarUrl} size={42} color={c.primaryDeep} />
-      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <IconButton icon="notifications-outline" label="Notifications" dot={!!session && notifications.unread(session.user.id) > 0} onPress={() => router.push('/notifications')} />
+        <Pressable onPress={() => router.navigate(profileHref as any)} accessibilityRole="button" accessibilityLabel="Your profile" hitSlop={6}>
+          <Avatar name={session?.user.name ?? 'You'} uri={session?.user.avatarUrl} size={42} color={c.primaryDeep} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -319,14 +323,14 @@ export function BottomSheet({ open, onClose, title, children, footer }: { open: 
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 6 },
   iconBtn: { width: touch.min, height: touch.min, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   dot: { position: 'absolute', top: 11, right: 12, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
   section: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 26, marginBottom: 12 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 4 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.pill, alignSelf: 'flex-start' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, minHeight: 42, borderRadius: radius.pill, borderWidth: 1.2 },
-  deskSearch: { flex: 1, maxWidth: 520, marginRight: 'auto', flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14 },
+  deskSearch: { width: '100%', maxWidth: 540, flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, borderWidth: 1, borderRadius: 14, paddingHorizontal: 16 },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 28, borderTopRightRadius: 28, width: '100%', maxWidth: 640, alignSelf: 'center' },
   dialog: { position: 'absolute', alignSelf: 'center', width: '92%', maxWidth: 600, borderRadius: 24, paddingBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 40, shadowOffset: { width: 0, height: 16 } },
   sheetTop: { paddingTop: 10, paddingHorizontal: 20, paddingBottom: 8 },

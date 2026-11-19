@@ -54,8 +54,7 @@
         {
           "asyncRoutes": false
         }
-      ],
-      "expo-updates"
+      ]
     ],
     "experiments": {
       "typedRoutes": false
