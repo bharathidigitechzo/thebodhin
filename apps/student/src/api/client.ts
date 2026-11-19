@@ -474,12 +474,17 @@ export const catalog = {
   },
 
   get(id: string) {
-    const c = seedCourses.find((x) => x.id === id);
+    const c = db.courses.find((x) => x.id === id) ?? seedCourses.find((x) => x.id === id);
     return c ? { course: c, tutor: tutorOf(c) } : null;
   },
 
   /** Every published course on the platform (staff tools only). */
-  allCourses: () => seedCourses.filter((c) => c.status !== 'draft' && c.status !== 'archived'),
+  allCourses: () => {
+    const map = new Map<string, Course>();
+    for (const c of seedCourses) map.set(c.id, c);
+    for (const c of db.courses) map.set(c.id, c);
+    return Array.from(map.values()).filter((c) => c.status !== 'draft' && c.status !== 'archived');
+  },
 
   isWishlisted: (userId: string, courseId: string) => db.wishlist.some((w) => w.userId === userId && w.courseId === courseId),
   toggleWishlist(userId: string, courseId: string) {
@@ -755,7 +760,7 @@ export const player = {
    * (private object storage + controlled delivery, per the architecture blueprint).
    */
   open(userId: string, courseId: string, lessonId?: string) {
-    const course = seedCourses.find((c) => c.id === courseId) ?? db.courses.find((c) => c.id === courseId);
+    const course = db.courses.find((c) => c.id === courseId) ?? seedCourses.find((c) => c.id === courseId);
     if (!course) throw new ApiError('not_found', 'Course not found.');
     const e = db.enrollments.find((x) => x.userId === userId && x.courseId === courseId);
     const lessons = allLessons(course);
@@ -782,7 +787,7 @@ export const player = {
       enrolled: !!e,
       completed: new Set(e?.completedLessonIds ?? []),
       position: db.positions[`${userId}:${lesson.id}`] ?? 0,
-      streamUrl: lesson.videoUri || `https://media.thebodhin.com/hls/${lesson.id}/master.m3u8?sig=demo`, // placeholder
+      streamUrl: lesson.videoUrl || lesson.videoUri || `https://media.thebodhin.com/hls/${lesson.id}/master.m3u8?sig=demo`, // placeholder
     };
   },
 
@@ -1641,7 +1646,7 @@ const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 function canManage(userId: string, courseId: string, allowLocked = false) {
   const ctx = educator.context(userId);
-  const c = seedCourses.find((x) => x.id === courseId) ?? seedCourses.find((x) => x.id === `${courseId}_growth` || x.id.startsWith(courseId));
+  const c = db.courses.find((x) => x.id === courseId) ?? seedCourses.find((x) => x.id === courseId) ?? db.courses.find((x) => x.id === `${courseId}_growth` || x.id.startsWith(courseId)) ?? seedCourses.find((x) => x.id === `${courseId}_growth` || x.id.startsWith(courseId));
   if (!ctx || !c || c.tenantId !== ctx.tenant.id) return null;
   if (ctx.locked && !allowLocked) throw new ApiError('locked', `${ctx.gate.title}. ${ctx.gate.message}`);
   if (ctx.role === 'tutor' && !db.tutorAssignments.some((a) => a.userId === userId && a.courseId === courseId)) return null;

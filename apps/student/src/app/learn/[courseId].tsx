@@ -109,6 +109,17 @@ export default function Player() {
     return () => clearTimeout(t);
   }, [upNext]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const currentCourseId = data.ok ? data.course.id : '';
+  const activeLessonId = data.ok ? data.lesson.id : '';
+
+  const markLessonDone = useCallback(() => {
+    if (!currentCourseId || !activeLessonId) return;
+    player.setComplete(userId, currentCourseId, activeLessonId, true);
+    setRev((r) => r + 1);
+    flash('Lesson completed ✓');
+    haptic('success');
+  }, [userId, currentCourseId, activeLessonId]);
+
   if (!data.ok) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: c.ivory, padding: 20, justifyContent: 'center', gap: 16 }}>
@@ -131,13 +142,6 @@ export default function Player() {
   const lessonNo = module.lessons.indexOf(lesson) + 1;
   const downloaded = downloads.has(userId, lesson.id);
   const bookmarked = player.isBookmarked(userId, lesson.id);
-
-  const markLessonDone = useCallback(() => {
-    player.setComplete(userId, course.id, lesson.id, true);
-    setRev((r) => r + 1);
-    flash('Lesson completed ✓');
-    haptic('success');
-  }, [userId, course.id, lesson.id]);
 
   const onTime = (t: number, duration: number) => {
     setNow(t);

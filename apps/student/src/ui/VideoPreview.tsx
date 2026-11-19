@@ -1,14 +1,29 @@
 /** Preview of a picked video before saving: a real player on the web; file details on phones (player after upload). */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/theme/ThemeProvider';
+import { saveMediaFile } from './mediaStore';
 import { Txt } from './Txt';
 
 export function VideoPreview({ uri, name, sizeMb }: { uri: string; name: string; sizeMb?: number }) {
   const { c } = useTheme();
   const validUri = uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
   const playable = Platform.OS === 'web' && /^(blob:|data:|https?:)/.test(validUri);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && validUri && validUri.startsWith('blob:') && name) {
+      fetch(validUri)
+        .then((r) => r.blob())
+        .then((blob) => {
+          saveMediaFile(name, blob);
+          if (name.endsWith('.mp4')) {
+            saveMediaFile(name.replace('.mp4', ''), blob);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [validUri, name]);
   return (
     <View style={[s.box, { borderColor: c.border, backgroundColor: c.surfaceMuted }]}>
       {playable ? (
