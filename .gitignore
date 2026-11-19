@@ -7,3 +7,4 @@ preview/
 !.env.example
 .vercel/
 .playwright-mcp/
+apps/student/apps/
