@@ -3562,7 +3562,13 @@ export const teamApi = {
     if (input.name.trim().length < 2) throw new ApiError('name', 'Enter the tutor’s name.', 'name');
     const email = input.email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new ApiError('email', 'Enter a valid email.', 'email');
-    if (g.members.some((m) => m.u.email === email) || g.invites.some((i) => i.email === email)) throw new ApiError('email', 'This person is already on your team or invited.', 'email');
+    if (g.members.some((m) => m.u.email === email && m.role === 'owner')) {
+      throw new ApiError('email', 'The workspace owner cannot be invited as a tutor.', 'email');
+    }
+    // If tutor is already invited, remove old invite so they can be re-invited / re-sent fresh credentials
+    if (g.invites.some((i) => i.email === email)) {
+      db.invites = db.invites.filter((i) => !(i.email === email && i.tenantId === g.ctx.tenant.id));
+    }
     const courseIds = input.courseIds.length ? input.courseIds : (g.courses.length === 0 ? ['all'] : []);
     if (!courseIds.length) throw new ApiError('courses', 'Assign at least one course.', 'courses');
 
@@ -3598,7 +3604,8 @@ export const teamApi = {
       const assignedCourseTitles = courseIds.includes('all') || !g.courses.length
         ? 'All workspace courses (Co-instructor)'
         : g.courses.filter((c) => courseIds.includes(c.id)).map((c) => c.title).join(', ');
-      fetch(`${process.env.EXPO_PUBLIC_MAILER_URL || 'http://localhost:3001'}/api/send-mail`, {
+      const mailerUrl = process.env.EXPO_PUBLIC_MAILER_URL || 'http://localhost:3001';
+      const mailRes = await fetch(`${mailerUrl}/api/send-mail`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3607,8 +3614,11 @@ export const teamApi = {
           text: `Dear ${input.name},\n\nYou have been invited to join ${tenantName} as a Tutor on Bodhin.\n\nYour Login Credentials:\n- Login URL: http://localhost:8081/sign-in\n- Email (Gmail ID): ${email}\n- Temporary Password: ${tempPassword}\n\nAssigned Courses: ${assignedCourseTitles}\n\n* When you sign in, a popup will prompt you to set your own new password.\n\nWarm regards,\n${tenantName} & The Bodhin Team`,
           html: `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #0B3B73; border-radius: 12px; background: #fff;"><div style="text-align: center; background: linear-gradient(135deg, #0B3B73 0%, #071F44 100%); padding: 20px; border-radius: 8px; color: #fff;"><h2 style="margin: 0;">🎉 Tutor Invitation</h2><p style="margin: 4px 0 0; color: #D99A1E; font-weight: bold;">${tenantName} &bull; Bodhin Platform</p></div><p style="margin-top: 20px; font-size: 15px;">Dear <strong>${input.name}</strong>,</p><p style="font-size: 15px; color: #334155;">You have been invited to join <strong>${tenantName}</strong> as a Tutor on Bodhin.</p><div style="background: #F1F5F9; border-left: 4px solid #D99A1E; padding: 12px 16px; margin: 16px 0; border-radius: 4px;"><p style="margin: 0; font-size: 14px;"><strong>Assigned Courses:</strong> ${assignedCourseTitles}</p></div><div style="background: #F8FAFC; border: 1.5px solid #0B3B73; border-radius: 10px; padding: 16px 18px; margin: 18px 0;"><h3 style="color: #0B3B73; margin: 0 0 10px 0; font-size: 16px;">🔐 Your Login Credentials</h3><p style="margin: 6px 0; font-size: 14px;"><strong>Login Portal:</strong> <a href="http://localhost:8081/sign-in" style="color: #0B3B73; font-weight: 600;">http://localhost:8081/sign-in</a></p><p style="margin: 6px 0; font-size: 14px;"><strong>Login Email (Gmail ID):</strong> <span style="font-family: monospace; background: #E2E8F0; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${email}</span></p><p style="margin: 6px 0; font-size: 14px;"><strong>Temporary Password:</strong> <span style="font-family: monospace; font-size: 16px; font-weight: bold; background: #FEF3C7; color: #92400E; padding: 3px 8px; border-radius: 4px; border: 1px dashed #D97706;">${tempPassword}</span></p><p style="margin: 12px 0 0; font-size: 13px; color: #DC2626; font-style: italic;">⚠️ Note: When you sign in, a popup will immediately prompt you to change this temporary password to your own new password.</p></div><div style="text-align: center; margin: 24px 0;"><a href="http://localhost:8081/sign-in" style="display: inline-block; background: #0B3B73; color: #fff !important; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">Log in to Tutor Dashboard &rarr;</a></div></div>`
         })
-      }).catch(() => {});
-    } catch {}
+      });
+      console.log('[Team Invite] Mail delivery status:', mailRes.status);
+    } catch (mailErr) {
+      console.warn('[Team Invite] Mail delivery failed:', mailErr);
+    }
 
     return { tempPassword };
   },
