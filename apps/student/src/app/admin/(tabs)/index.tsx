@@ -13,6 +13,7 @@ import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Txt } from '@/ui/Txt';
 import { Avatar, BottomSheet, Pill, Skeleton } from '@/ui/kit';
+import { BrandLogo } from '@/ui/Brand';
 import { useLayout } from '@/ui/responsive';
 import { PeekSheet, SearchBar, ago, greeting, lakh, type PeekTarget } from '@/ui/admin';
 import { Card } from '@/ui/section';
@@ -109,13 +110,45 @@ export default function CommandCenter() {
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />} showsVerticalScrollIndicator={false}>
           <View style={[styles.inner, wide && { maxWidth: 1240 }]}>
-            <View style={styles.head}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Txt variant="caption" color={c.muted}>{greeting()} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</Txt>
-                <Txt variant="title" numberOfLines={1}>{me?.user.name.split(' ')[0]}</Txt>
+            {!isDesktop ? (
+              <View style={styles.mobileHead}>
+                <View style={styles.topRow}>
+                  <BrandLogo size="sm" align="flex-start" />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {role && <Pill text={ROLE_LABEL[role]} tone="gold" icon="shield-checkmark" />}
+                    <Pressable onPress={() => router.push('/admin/more')} accessibilityRole="button" accessibilityLabel="Admin profile">
+                      <Avatar name={me?.user.name ?? 'Admin'} size={38} color={c.primaryDeep} />
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={styles.greetingWrap}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={[styles.statusDot, { backgroundColor: '#10B981' }]} />
+                    <Txt variant="caption" color={c.muted} style={{ fontWeight: '600' }}>
+                      {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · {greeting()}
+                    </Txt>
+                  </View>
+                  <Txt variant="title" color={c.primaryDeep} style={{ fontSize: 24, lineHeight: 30, letterSpacing: -0.4, marginTop: 2 }}>
+                    Welcome back, {me?.user.name.split(' ')[0] ?? 'Admin'} 👋
+                  </Txt>
+                </View>
               </View>
-              {role && <Pill text={ROLE_LABEL[role]} tone="gold" icon="shield-checkmark" />}
-            </View>
+            ) : (
+              <View style={styles.deskHead}>
+                <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={[styles.statusDot, { backgroundColor: '#10B981' }]} />
+                    <Txt variant="caption" color={c.muted} style={{ fontWeight: '600' }}>
+                      {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · {greeting()}
+                    </Txt>
+                  </View>
+                  <Txt variant="display" color={c.primaryDeep} style={{ fontSize: 28, lineHeight: 34 }}>
+                    Command Center
+                  </Txt>
+                </View>
+                {role && <Pill text={ROLE_LABEL[role]} tone="gold" icon="shield-checkmark" />}
+              </View>
+            )}
             <SearchBar />
             {!d ? (
               <View style={{ gap: 12 }}><Skeleton h={170} r={20} /><Skeleton h={120} /><Skeleton h={90} /></View>
@@ -277,7 +310,11 @@ function Rule({ v, l }: { v: string; l: string }) {
 const styles = StyleSheet.create({
   scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 90 },
   inner: { width: '100%', maxWidth: 720, gap: 12 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 8 },
+  mobileHead: { gap: 12, paddingTop: 4, marginBottom: 2 },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  greetingWrap: { gap: 2 },
+  statusDot: { width: 7, height: 7, borderRadius: 3.5 },
+  deskHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 10, marginBottom: 4 },
   hero: { borderRadius: 22, padding: 18, gap: 6, backgroundColor: '#071F44' },
   heroSplit: { flexDirection: 'row', gap: 10, marginTop: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)' },
   spark: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 42, marginTop: 8 },
