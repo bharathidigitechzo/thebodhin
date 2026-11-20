@@ -1,12 +1,12 @@
 /** Profile hub: account, learning records, settings, support. */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { ModuleGrid, SwitchDashboardSheet, dashboardsOf, useLayout } from '@/ui/responsive';
+import { SwitchDashboardSheet, dashboardsOf, useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ApiError, account, auth } from '@/api/client';
+import { ApiError, account } from '@/api/client';
 import { adminMembership, educatorMembership, useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout, radius } from '@/theme/tokens';
@@ -70,114 +70,137 @@ export default function Profile() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={[styles.scroll, isDesktop && { paddingHorizontal: pad, paddingTop: 24 }]} showsVerticalScrollIndicator={false}>
-          <View style={[styles.inner, isDesktop && { maxWidth: 960 }]}>
-            <LinearGradient colors={[c.primaryDeep, c.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-              <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
-                <Avatar name={user.name} uri={user.avatarUrl} size={68} color={c.accent} />
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <Txt variant="title" color="#fff" numberOfLines={1} style={{ fontSize: 22 }}>{user.name}</Txt>
-                  <Txt variant="label" color="rgba(255,255,255,0.8)" numberOfLines={1} style={{ fontWeight: '500' }}>{user.email}</Txt>
-                  <Txt variant="label" color="rgba(255,255,255,0.8)" style={{ fontWeight: '500' }}>{user.phone.replace(/^(\+91)(\d{5})(\d{5})$/, '$1 $2 $3')}</Txt>
-                </View>
-                <Pressable onPress={() => setSheet('edit')} style={styles.editBtn} accessibilityRole="button" accessibilityLabel="Edit profile">
-                  <Ionicons name="pencil" size={18} color="#fff" />
-                </Pressable>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                <Pill text={adm ? 'Admin' : edu ? 'Educator' : 'Student'} tone="gold" icon={adm ? 'shield-checkmark' : 'school'} />
-                <Txt variant="caption" color="rgba(255,255,255,0.75)">Member since {new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</Txt>
-              </View>
-              <View style={{ marginTop: 14, gap: 6 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Txt variant="label" color="#fff">Overall learning progress</Txt>
-                  <Txt variant="label" color="#fff">{s?.pct ?? 0}%</Txt>
-                </View>
-                <View style={styles.track}><View style={[styles.fill, { width: `${s?.pct ?? 0}%`, backgroundColor: c.accent }]} /></View>
-              </View>
-            </LinearGradient>
+          <View style={[styles.inner, isDesktop && { maxWidth: 1040 }]}>
+            <View style={[styles.mainLayout, isDesktop && styles.desktopLayout]}>
+              {/* Left Column (Desktop 35% / Mobile Full) */}
+              <View style={[styles.leftCol, isDesktop && styles.desktopLeftCol]}>
+                {/* Profile Identity Card */}
+                <LinearGradient colors={[c.primaryDeep, c.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+                  <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+                    <Avatar name={user.name} uri={user.avatarUrl} size={68} color={c.accent} />
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                      <Txt variant="title" color="#fff" numberOfLines={1} style={{ fontSize: 22 }}>{user.name}</Txt>
+                      <Txt variant="label" color="rgba(255,255,255,0.8)" numberOfLines={1} style={{ fontWeight: '500' }}>{user.email}</Txt>
+                      <Txt variant="label" color="rgba(255,255,255,0.8)" style={{ fontWeight: '500' }}>{user.phone.replace(/^(\+91)(\d{5})(\d{5})$/, '$1 $2 $3')}</Txt>
+                    </View>
+                    <Pressable onPress={() => setSheet('edit')} style={styles.editBtn} accessibilityRole="button" accessibilityLabel="Edit profile">
+                      <Ionicons name="pencil" size={18} color="#fff" />
+                    </Pressable>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                    <Pill text={adm ? 'Admin' : edu ? 'Educator' : 'Student'} tone="gold" icon={adm ? 'shield-checkmark' : 'school'} />
+                    <Txt variant="caption" color="rgba(255,255,255,0.75)">Member since {new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</Txt>
+                  </View>
+                  <View style={{ marginTop: 14, gap: 6 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Txt variant="label" color="#fff">Overall learning progress</Txt>
+                      <Txt variant="label" color="#fff">{s?.pct ?? 0}%</Txt>
+                    </View>
+                    <View style={styles.track}><View style={[styles.fill, { width: `${s?.pct ?? 0}%`, backgroundColor: c.accent }]} /></View>
+                  </View>
+                </LinearGradient>
 
-            <View style={[styles.stats, { backgroundColor: c.surface, borderColor: c.border }]}>
-              {stats.map(([icon, v, l, col, href]) => (
-                <Pressable key={l} onPress={() => router.push(href as any)} style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 }} accessibilityRole="button" accessibilityLabel={`${v} ${l}`}>
-                  <Ionicons name={icon} size={22} color={col} />
-                  <Txt variant="heading">{String(v)}</Txt>
-                  <Txt variant="caption" color={c.muted}>{l}</Txt>
-                </Pressable>
-              ))}
+                {/* Academic Quick Stats Highlights */}
+                <View style={[styles.stats, isDesktop && styles.desktopStats, { backgroundColor: c.surface, borderColor: c.border }]}>
+                  {stats.map(([icon, v, l, col, href]) => (
+                    <Pressable
+                      key={l}
+                      onPress={() => router.push(href as any)}
+                      style={[styles.statItem, isDesktop && styles.desktopStatItem]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${v} ${l}`}
+                    >
+                      <Ionicons name={icon} size={22} color={col} />
+                      <Txt variant="heading">{String(v)}</Txt>
+                      <Txt variant="caption" color={c.muted}>{l}</Txt>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {tenant && (
+                  <View style={[styles.tenant, { backgroundColor: c.primarySoft }]}>
+                    <Ionicons name="business-outline" size={20} color={c.primary} />
+                    <Txt variant="label" style={{ flex: 1 }}>Learning with {brand.displayName}</Txt>
+                  </View>
+                )}
+
+                {adm && (
+                  <Pressable onPress={() => { setMode(null as any); router.replace('/admin'); }} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button">
+                    <Ionicons name="shield-checkmark" size={22} color={c.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Txt variant="bodyStrong" color="#fff">Switch to Admin Portal</Txt>
+                      <Txt variant="caption" color="rgba(255,255,255,0.75)">Command Center, tenants & platform controls</Txt>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#fff" />
+                  </Pressable>
+                )}
+
+                {dashboardsOf(session).some((d) => d.area !== 'learner') && !adm && (
+                  <Pressable onPress={() => setSwitching(true)} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button" accessibilityLabel="Switch dashboard">
+                    <Ionicons name="swap-horizontal" size={22} color={c.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Txt variant="bodyStrong" color="#fff">Switch dashboard</Txt>
+                      <Txt variant="caption" color="rgba(255,255,255,0.75)">{edu ? 'Educator dashboard with the same login' : 'Another dashboard with the same login'}</Txt>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#fff" />
+                  </Pressable>
+                )}
+
+                {isDesktop && (
+                  <Pressable onPress={() => setSheet('logout')} style={[styles.logout, { borderColor: c.danger }]} accessibilityRole="button">
+                    <Ionicons name="log-out-outline" size={20} color={c.danger} />
+                    <Txt variant="bodyStrong" color={c.danger}>Log out</Txt>
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Right Column (Desktop 65% / Mobile Full) */}
+              <View style={[styles.rightCol, isDesktop && styles.desktopRightCol]}>
+                {/* 1. Orders & Billing */}
+                <Group title="Orders & Billing" icon="receipt-outline">
+                  <Row icon="card-outline" title="Payments & enrollments" sub="Orders, invoices and course access dates" onPress={() => router.push('/payments')} />
+                  <Row icon="bag-handle-outline" title="My purchases" sub="Notes, 1:1 sessions, webinars, instalments" onPress={() => router.push('/my-purchases')} />
+                  <Row icon="download-outline" title="Downloads" sub="Lessons and materials saved for offline" onPress={() => router.push('/downloads')} />
+                  <Row icon="gift-outline" title="Refer & earn" sub="Share academies you learn with and earn discounts" onPress={() => router.push('/refer')} />
+                </Group>
+
+                {/* 2. Account & Security */}
+                <Group title="Account & Security" icon="shield-checkmark-outline">
+                  <Row icon="create-outline" title="Edit profile" sub="Name and avatar photo" onPress={() => setSheet('edit')} />
+                  <Row icon="lock-closed-outline" title="Change password" sub="Use 8+ characters with letters and numbers" onPress={() => setSheet('password')} />
+                  <Row icon="call-outline" title="Email & phone" sub={user.phone} onPress={() => setSheet('contact')} right={user.phoneVerified ? <Pill text="Verified" tone="success" icon="checkmark" /> : <Pill text="Verify" tone="warning" />} />
+                </Group>
+
+                {/* 3. App Preferences */}
+                <Group title="App Preferences" icon="options-outline">
+                  <Row icon="radio-outline" title="Live class reminders" toggle={{ value: settings.push.live, onChange: (v) => update({ push: { ...settings.push, live: v } }) }} />
+                  <Row icon="document-text-outline" title="Assignment & grade updates" toggle={{ value: settings.push.assignments, onChange: (v) => update({ push: { ...settings.push, assignments: v } }) }} />
+                  <Row icon="book-outline" title="New lessons & course news" toggle={{ value: settings.push.course, onChange: (v) => update({ push: { ...settings.push, course: v } }) }} />
+                  <Row icon="wifi-outline" title="Download on Wi-Fi only" toggle={{ value: settings.wifiOnly, onChange: (v) => update({ wifiOnly: v }) }} />
+                  <Row icon="film-outline" title="Default video quality" sub={({ auto: 'Auto (recommended)', sd: 'Data saver (480p)', hd: 'High (720p)' } as Record<string, string>)[settings.quality] ?? 'Auto'} onPress={() => setSheet('quality')} />
+                  <Row icon="language-outline" title="App language" sub={settings.language === 'en' ? 'English' : 'தமிழ் (Tamil)'} onPress={() => setSheet('language')} />
+                  <Row icon="phone-portrait-outline" title="Haptic vibration" sub="Tactile feedback on taps and actions" toggle={{ value: vib, onChange: (v) => { setHapticsEnabled(v); setVib(v); } }} />
+                </Group>
+
+                {/* 4. Support & Feedback */}
+                <Group title="Support & Feedback" icon="help-buoy-outline">
+                  <Row icon="help-circle-outline" title="Help center" sub="FAQs, guides and ticket status" onPress={() => router.push('/help')} />
+                  <Row icon="star-outline" title="Send feedback" sub="Tell us what to improve" onPress={() => setSheet('feedback')} />
+                </Group>
+
+                {!isDesktop && (
+                  <Pressable onPress={() => setSheet('logout')} style={[styles.logout, { borderColor: c.danger }]} accessibilityRole="button">
+                    <Ionicons name="log-out-outline" size={20} color={c.danger} />
+                    <Txt variant="bodyStrong" color={c.danger}>Log out</Txt>
+                  </Pressable>
+                )}
+
+                <PoweredBy />
+                <Txt variant="caption" color={c.muted} center style={{ paddingBottom: 12 }}>Bodhin v1.0.0 (POC)</Txt>
+              </View>
             </View>
 
-            {tenant && (
-              <View style={[styles.tenant, { backgroundColor: c.primarySoft }]}>
-                <Ionicons name="business-outline" size={20} color={c.primary} />
-                <Txt variant="label" style={{ flex: 1 }}>Learning with {brand.displayName}</Txt>
-              </View>
-            )}
-
-            {adm && (
-              <Pressable onPress={() => { setMode(null as any); router.replace('/admin'); }} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button">
-                <Ionicons name="shield-checkmark" size={22} color={c.accent} />
-                <View style={{ flex: 1 }}>
-                  <Txt variant="bodyStrong" color="#fff">Switch to Admin Portal</Txt>
-                  <Txt variant="caption" color="rgba(255,255,255,0.75)">Command Center, tenants & platform controls</Txt>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#fff" />
-              </Pressable>
-            )}
-
-            {dashboardsOf(session).some((d) => d.area !== 'learner') && !adm && (
-              <Pressable onPress={() => setSwitching(true)} style={[styles.switch, { backgroundColor: c.primaryDeep }]} accessibilityRole="button" accessibilityLabel="Switch dashboard">
-                <Ionicons name="swap-horizontal" size={22} color={c.accent} />
-                <View style={{ flex: 1 }}>
-                  <Txt variant="bodyStrong" color="#fff">Switch dashboard</Txt>
-                  <Txt variant="caption" color="rgba(255,255,255,0.75)">{edu ? 'Educator dashboard with the same login' : 'Another dashboard with the same login'}</Txt>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#fff" />
-              </Pressable>
-            )}
-            <ModuleGrid area="learner" exclude={['home', 'explore', 'learning', 'live', 'profile']} title="Your sections" compact />
             <SwitchDashboardSheet open={switching} onClose={() => setSwitching(false)} current="learner" />
-
-            <Group title="Learning" icon="school-outline">
-              <Row icon="card-outline" title="Payments & enrollments" sub="Orders, invoices and access dates" onPress={() => router.push('/payments')} />
-              <Row icon="help-circle-outline" title="Quizzes & assignments" sub="From the courses you bought" onPress={() => router.push('/quizzes')} />
-              <Row icon="person-circle-outline" title="1:1 mentorship" sub="Book time with your tutor" onPress={() => router.push('/mentorship')} />
-              <Row icon="ribbon-outline" title="Certificates & achievements" sub="Download, share and verify" onPress={() => router.push('/certificates')} />
-              <Row icon="code-slash-outline" title="Code Playground" sub="Practise any language, run challenges" onPress={() => router.push('/playground')} />
-              <Row icon="chatbubbles-outline" title="Community" sub="Channels with your batchmates and tutors" onPress={() => router.push('/community')} />
-              <Row icon="bag-handle-outline" title="My purchases" sub="Notes, 1:1 sessions, webinars, instalments" onPress={() => router.push('/my-purchases')} />
-              <Row icon="gift-outline" title="Refer & earn" sub="Share academies you learn with" onPress={() => router.push('/refer')} />
-              <Row icon="download-outline" title="Downloads" sub="Lessons saved for offline" onPress={() => router.push('/downloads')} />
-              <Row icon="notifications-outline" title="Notifications" sub={s?.unread ? `${s.unread} unread` : 'All caught up'} onPress={() => router.push('/notifications')} />
-            </Group>
-
-            <Group title="My account" icon="person-outline">
-              <Row icon="create-outline" title="Edit profile" sub="Name and email" onPress={() => setSheet('edit')} />
-              <Row icon="lock-closed-outline" title="Change password" sub="Use 8+ characters with letters and numbers" onPress={() => setSheet('password')} />
-              <Row icon="call-outline" title="Email & phone" sub={user.phone} onPress={() => setSheet('contact')} right={user.phoneVerified ? <Pill text="Verified" tone="success" icon="checkmark" /> : <Pill text="Verify" tone="warning" />} />
-            </Group>
-
-            <Group title="App settings" icon="settings-outline">
-              <Row icon="radio-outline" title="Live class reminders" toggle={{ value: settings.push.live, onChange: (v) => update({ push: { ...settings.push, live: v } }) }} />
-              <Row icon="document-text-outline" title="Assignment & grade updates" toggle={{ value: settings.push.assignments, onChange: (v) => update({ push: { ...settings.push, assignments: v } }) }} />
-              <Row icon="book-outline" title="New lessons & course news" toggle={{ value: settings.push.course, onChange: (v) => update({ push: { ...settings.push, course: v } }) }} />
-              <Row icon="pricetag-outline" title="Offers & recommendations" toggle={{ value: settings.push.offers, onChange: (v) => update({ push: { ...settings.push, offers: v } }) }} />
-              <Row icon="wifi-outline" title="Download on Wi-Fi only" toggle={{ value: settings.wifiOnly, onChange: (v) => update({ wifiOnly: v }) }} />
-              <Row icon="phone-portrait-outline" title="Vibration" sub="Buzz on taps, wrong entries and success" toggle={{ value: vib, onChange: (v) => { setHapticsEnabled(v); setVib(v); } }} />
-              <Row icon="film-outline" title="Default video quality" sub={({ auto: 'Auto (recommended)', sd: 'Data saver (480p)', hd: 'High (720p)' } as Record<string, string>)[settings.quality] ?? 'Auto'} onPress={() => setSheet('quality')} />
-              <Row icon="language-outline" title="App language" sub={settings.language === 'en' ? 'English' : 'தமிழ் (Tamil)'} onPress={() => setSheet('language')} />
-            </Group>
-
-            <Group title="Support" icon="headset-outline">
-              <Row icon="help-circle-outline" title="Help center" sub="FAQs, guides and your tickets" onPress={() => router.push('/help')} />
-              <Row icon="star-outline" title="Send feedback" sub="Tell us what to improve" onPress={() => setSheet('feedback')} />
-            </Group>
-
-            <Pressable onPress={() => setSheet('logout')} style={[styles.logout, { borderColor: c.danger }]} accessibilityRole="button">
-              <Ionicons name="log-out-outline" size={20} color={c.danger} />
-              <Txt variant="bodyStrong" color={c.danger}>Log out</Txt>
-            </Pressable>
-            <PoweredBy />
-            <Txt variant="caption" color={c.muted} center>Bodhin v1.0.0 (POC)</Txt>
           </View>
         </ScrollView>
         {toast && (
@@ -366,14 +389,23 @@ function FeedbackSheet({ open, onClose, onSent }: { open: boolean; onClose: () =
 const styles = StyleSheet.create({
   scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 30, paddingTop: 8 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
+  mainLayout: { width: '100%', gap: 14 },
+  desktopLayout: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
+  leftCol: { width: '100%', gap: 14 },
+  desktopLeftCol: { width: 360, gap: 16 },
+  rightCol: { width: '100%', gap: 14 },
+  desktopRightCol: { flex: 1, gap: 16 },
   hero: { borderRadius: 24, padding: 18 },
   editBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
   track: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden' },
   fill: { height: 8, borderRadius: 4 },
   stats: { flexDirection: 'row', paddingVertical: 12, borderRadius: radius.lg, borderWidth: 1 },
+  desktopStats: { flexWrap: 'wrap', paddingVertical: 6 },
+  statItem: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 },
+  desktopStatItem: { flex: 0, width: '50%', paddingVertical: 12 },
   tenant: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md },
   switch: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg },
-  logout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 54, borderRadius: radius.pill, borderWidth: 1.4, marginTop: 4 },
+  logout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, borderRadius: radius.pill, borderWidth: 1.4, marginTop: 4 },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, borderWidth: 1.2 },
   toast: { position: 'absolute', bottom: 20, alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 12, borderRadius: radius.pill },
 });
