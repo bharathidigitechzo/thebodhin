@@ -156,7 +156,17 @@ export default function Profile() {
 
               {/* Right Column (Desktop 65% / Mobile Full) */}
               <View style={[styles.rightCol, isDesktop && styles.desktopRightCol]}>
-                {/* 1. Orders & Billing */}
+                {/* 1. Learning & Student Hub (Full parity for Mobile & Desktop) */}
+                <Group title="Learning & Student Hub" icon="school-outline">
+                  <Row icon="help-circle-outline" title="Quizzes & Tests" sub="Practise quizzes and track test performance" onPress={() => router.push('/quizzes')} />
+                  <Row icon="document-text-outline" title="Assignments" sub="Pending submissions and tutor reviews" onPress={() => router.push('/assignments')} />
+                  <Row icon="person-circle-outline" title="1:1 Mentorship" sub="Book personal guidance sessions with tutors" onPress={() => router.push('/mentorship')} />
+                  <Row icon="chatbubbles-outline" title="Student Community" sub="Discuss lessons with peers and instructors" onPress={() => router.push('/community')} />
+                  <Row icon="code-slash-outline" title="Code Playground" sub="Run Python, JavaScript, SQL in-browser" onPress={() => router.push('/playground')} />
+                  <Row icon="ribbon-outline" title="Certificates & Badges" sub="View, download and share verified credentials" onPress={() => router.push('/certificates')} />
+                </Group>
+
+                {/* 2. Orders & Billing */}
                 <Group title="Orders & Billing" icon="receipt-outline">
                   <Row icon="card-outline" title="Payments & enrollments" sub="Orders, invoices and course access dates" onPress={() => router.push('/payments')} />
                   <Row icon="bag-handle-outline" title="My purchases" sub="Notes, 1:1 sessions, webinars, instalments" onPress={() => router.push('/my-purchases')} />

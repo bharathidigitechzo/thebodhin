@@ -37,9 +37,13 @@ export default function Home() {
   const quick = [
     { label: 'My Learning', icon: 'book-outline', color: c.primary, go: () => router.navigate('/learning') },
     { label: 'Live Classes', icon: 'calendar-outline', color: c.accent, go: () => router.navigate('/live') },
-    { label: 'Assignments', icon: 'document-text-outline', color: '#7C3AED', go: () => router.navigate({ pathname: '/learning', params: { tab: 'assessments' } }), badge: data?.counts.assignmentsPending },
+    { label: 'Quizzes', icon: 'help-circle-outline', color: '#E11D48', go: () => router.push('/quizzes') },
+    { label: 'Assignments', icon: 'document-text-outline', color: '#7C3AED', go: () => router.push('/assignments'), badge: data?.counts.assignmentsPending },
+    { label: '1:1 Mentorship', icon: 'person-circle-outline', color: '#2563EB', go: () => router.push('/mentorship') },
+    { label: 'Community', icon: 'chatbubbles-outline', color: '#059669', go: () => router.push('/community') },
+    { label: 'Playground', icon: 'code-slash-outline', color: '#D97706', go: () => router.push('/playground') },
     { label: 'Certificates', icon: 'ribbon-outline', color: c.success, go: () => router.push('/certificates') },
-  ] as const;
+  ];
 
   const cont = data?.inProgress[0];
   const live = data?.upcomingLive[0];
@@ -103,7 +107,7 @@ export default function Home() {
                       ]}
                     >
                       <View style={styles.quickIconWrap}>
-                        <Ionicons name={q.icon} size={28} color={q.color} />
+                        <Ionicons name={q.icon as any} size={28} color={q.color} />
                         {'badge' in q && !!q.badge && (
                           <View style={[styles.badge, { backgroundColor: c.live }]}>
                             <Txt variant="caption" color="#fff" style={{ fontSize: 10, lineHeight: 14 }}>
@@ -333,8 +337,8 @@ const styles = StyleSheet.create({
   inner: { width: '100%', maxWidth: layout.contentMaxWidth },
   deskRow: { flexDirection: 'row', gap: 28, alignItems: 'flex-start' },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18, borderRadius: 22 },
-  quick: { flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 14 },
-  quickItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 4, borderRadius: radius.lg, borderWidth: 1, minHeight: 88, minWidth: 0 },
+  quick: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, marginBottom: 14 },
+  quickItem: { width: '23%', flexGrow: 1, minWidth: 74, maxWidth: 180, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 4, borderRadius: radius.lg, borderWidth: 1, minHeight: 82 },
   quickIconWrap: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', top: -4, right: -10, minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   playground: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: radius.lg, borderWidth: 1, marginBottom: 6 },
