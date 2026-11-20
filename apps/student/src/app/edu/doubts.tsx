@@ -65,7 +65,7 @@ export default function DoubtsInbox() {
             {(data?.courses.length ?? 0) > 1 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                 <Chip label="All courses" active={!courseId} onPress={() => setCourseId(undefined)} />
-                {data!.courses.map((x) => <Chip key={x.c.id} label={`${x.c.title.length > 22 ? `${x.c.title.slice(0, 21)}…` : x.c.title}${x.open ? ` · ${x.open}` : ''}`} active={courseId === x.c.id} onPress={() => setCourseId(x.c.id)} />)}
+                {data!.courses.map((x, i) => <Chip key={`${x.c.id}-${i}`} label={`${x.c.title.length > 22 ? `${x.c.title.slice(0, 21)}…` : x.c.title}${x.open ? ` · ${x.open}` : ''}`} active={courseId === x.c.id} onPress={() => setCourseId(x.c.id)} />)}
               </ScrollView>
             )}
             {!data ? <View style={{ gap: 8 }}><Skeleton h={100} /><Skeleton h={100} /></View> : data.rows.length === 0 ? (
@@ -74,8 +74,8 @@ export default function DoubtsInbox() {
                 <Txt color={c.muted} center>{filter === 'open' ? 'No doubts waiting. Nice work!' : 'No answered doubts yet.'}</Txt>
               </View>
             ) : (
-              data.rows.map((r) => (
-                <Pressable key={r.q.id} onPress={() => { setSel(r); setText(r.q.answer?.text ?? ''); setErr(null); }} style={({ pressed }) => [styles.card, { backgroundColor: c.surface, borderColor: filter === 'open' && r.ageH > 24 ? c.warning : c.border }, pressed && { opacity: 0.85 }]} accessibilityRole="button" accessibilityLabel={`Doubt from ${r.q.userName}: ${r.q.text}`}>
+              data.rows.map((r, i) => (
+                <Pressable key={`${r.q.id}-${i}`} onPress={() => { setSel(r); setText(r.q.answer?.text ?? ''); setErr(null); }} style={({ pressed }) => [styles.card, { backgroundColor: c.surface, borderColor: filter === 'open' && r.ageH > 24 ? c.warning : c.border }, pressed && { opacity: 0.85 }]} accessibilityRole="button" accessibilityLabel={`Doubt from ${r.q.userName}: ${r.q.text}`}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <Avatar name={r.q.userName} size={34} />
                     <View style={{ flex: 1, minWidth: 0 }}>
@@ -125,7 +125,7 @@ export default function DoubtsInbox() {
 }
 
 const styles = StyleSheet.create({
-  top: { alignSelf: 'center', width: '100%', maxWidth: 752, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
+  top: { alignSelf: 'center', width: '100%', maxWidth: layout.contentMaxWidth, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 24 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   card: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 10 },

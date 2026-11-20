@@ -105,8 +105,8 @@ const styles = StyleSheet.create({
   divider: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   line: { flex: 1, height: 1 },
   banner: { flexDirection: 'row', gap: 10, alignItems: 'center', padding: 12, borderRadius: radius.md },
-  otpRow: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  otpBox: { width: 48, height: 58, borderRadius: radius.md, borderWidth: 1.4, alignItems: 'center', justifyContent: 'center' },
+  otpRow: { flexDirection: 'row', gap: 6, justifyContent: 'center', width: '100%', maxWidth: 360, alignSelf: 'center' },
+  otpBox: { flex: 1, maxWidth: 46, height: 56, borderRadius: radius.md, borderWidth: 1.4, alignItems: 'center', justifyContent: 'center' },
   hidden: { position: 'absolute', opacity: 0, width: 1, height: 1 },
 });
 

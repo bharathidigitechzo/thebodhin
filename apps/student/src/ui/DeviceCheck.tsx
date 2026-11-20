@@ -39,7 +39,7 @@ export function useDeviceCheck(initial: { mic: boolean; cam: boolean } = { mic: 
       setCamStream(new MediaStream([t]));
       setCam(true);
       setErr((e) => ({ ...e, cam: undefined }));
-      setCamId(t.getSettings().deviceId);
+      setCamId(t.getSettings?.()?.deviceId);
       void refreshDevices();
     } catch (e) {
       camTrack.current = null;
@@ -69,7 +69,7 @@ export function useDeviceCheck(initial: { mic: boolean; cam: boolean } = { mic: 
       stopMeter.current = watchLevel(t, (l) => alive.current && setLevel(l));
       setMic(true);
       setErr((e) => ({ ...e, mic: undefined }));
-      setMicId(t.getSettings().deviceId);
+      setMicId(t.getSettings?.()?.deviceId);
       void refreshDevices();
     } catch (e) {
       micTrack.current = null;

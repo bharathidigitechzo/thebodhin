@@ -31,7 +31,7 @@ export default function AdminMore() {
               <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                 <Txt variant="heading" numberOfLines={1}>{me.user.name}</Txt>
                 <Txt variant="caption" color={c.muted} numberOfLines={1}>{me.user.email}</Txt>
-                <View style={{ flexDirection: 'row', gap: 6 }}><Pill text={ROLE_LABEL[r]} tone="gold" icon="shield-checkmark" /><Pill text={`${ROLE_PERMS[r].length} permissions`} tone="info" /></View>
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}><Pill text={ROLE_LABEL[r]} tone="gold" icon="shield-checkmark" /><Pill text={`${ROLE_PERMS[r].length} permissions`} tone="info" /></View>
               </View>
             </View>
 

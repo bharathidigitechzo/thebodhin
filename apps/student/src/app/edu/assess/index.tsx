@@ -87,7 +87,7 @@ export default function AssessHub() {
                       <Pressable key={r.a.id} onPress={() => router.push({ pathname: '/edu/assess/[id]', params: { id: r.a.id } })} style={({ pressed }) => [styles.row, { backgroundColor: c.surface, borderColor: c.border }, pressed && { opacity: 0.85 }]} accessibilityRole="button" accessibilityLabel={`${m.label}: ${r.a.title || 'Untitled'}`}>
                         <View style={[styles.icon, { backgroundColor: m.tint }]}><Ionicons name={m.icon} size={22} color={m.color} /></View>
                         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                             {r.status === 'draft' ? <Pill text="Draft" tone="neutral" /> : <Pill text={m.label} tone="info" />}
                             {r.toGrade > 0 && <Pill text={`${r.toGrade} to grade`} tone="warning" />}
                           </View>

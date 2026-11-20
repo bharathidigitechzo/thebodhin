@@ -37,4 +37,4 @@ export const type = {
 };
 
 /** Max content width so web/tablet layouts don't stretch phone screens edge-to-edge. */
-export const layout = { authMaxWidth: 440, contentMaxWidth: 720 } as const;
+export const layout = { authMaxWidth: 440, contentMaxWidth: 1100 } as const;

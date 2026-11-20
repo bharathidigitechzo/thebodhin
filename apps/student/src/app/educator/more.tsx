@@ -38,7 +38,7 @@ export default function More() {
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Txt variant="heading" numberOfLines={1}>{session.user.name}</Txt>
                 <Txt variant="caption" color={c.muted} numberOfLines={1}>{ctx.tenant.branding.displayName}</Txt>
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                   <Pill text={owner ? 'Owner' : 'Tutor'} tone="info" />
                   {owner && <Pill text={`${ctx.ent.plan.name} · ${ctx.sub.billing}`} tone="gold" />}
                 </View>

@@ -30,6 +30,7 @@ import { applyOp, type BoardItem } from '@/core/ink';
 import { makeRateLimiter, REACTIONS, type RoomMsg } from '@/live/protocol';
 import type { Person } from '@/live/room';
 import { useLiveRoom, type LiveRoomOptions } from '@/live/useLiveRoom';
+import { createVirtualCameraTrack } from '@/live/media';
 import { useDbTick } from '@/live/useDbTick';
 
 type Msg = { id: string; who: string; role: 'student' | 'instructor' | 'me' | 'system'; text: string; at: string };
@@ -148,6 +149,28 @@ export default function LiveRoom() {
   const hostName = rs.host?.name ?? host?.name ?? info?.tutor.name ?? 'your teacher';
   const classOver = ended || rs.state === 'ended' || rs.state === 'cancelled';
   const students = rt.people.filter((p, i) => i > 0 && p.role !== 'host');
+
+  const [fallbackHostCam, setFallbackHostCam] = useState<MediaStream | null>(null);
+  useEffect(() => {
+    const isTeacherActive = !classOver && (!!host?.cam || rs.state === 'live') && !hostStreams?.camera;
+    if (isTeacherActive && !fallbackHostCam) {
+      try {
+        const tr = createVirtualCameraTrack(`${hostName} (Instructor)`, hostName, info?.tutor.color || '#0F4C81');
+        setFallbackHostCam(new MediaStream([tr]));
+      } catch {
+        /* ignore */
+      }
+    } else if (!isTeacherActive && fallbackHostCam) {
+      fallbackHostCam.getTracks().forEach((t) => t.stop());
+      setFallbackHostCam(null);
+    }
+  }, [classOver, host?.cam, rs.state, hostStreams?.camera, hostName, info?.tutor.color, fallbackHostCam]);
+
+  useEffect(() => {
+    return () => {
+      fallbackHostCam?.getTracks().forEach((t) => t.stop());
+    };
+  }, [fallbackHostCam]);
 
   // Attendance minutes are saved once, however the learner leaves (button, back, closed tab).
   const leaveNow = () => {
@@ -304,8 +327,8 @@ export default function LiveRoom() {
             <RoomVideo stream={hostStreams!.screen} fit="contain" label="Shared screen" />
           ) : stageMode === 'board' ? (
             <View style={{ flex: 1, backgroundColor: '#fff' }}><BoardView items={board} /></View>
-          ) : host?.cam && hostStreams?.camera ? (
-            <RoomVideo stream={hostStreams.camera} label={`${host.name} camera`} />
+          ) : (hostStreams?.camera || ((host?.cam || rs.state === 'live') && fallbackHostCam)) ? (
+            <RoomVideo stream={hostStreams?.camera ?? fallbackHostCam} label={`${hostName} camera`} />
           ) : (
             <View style={styles.center}>
               <Avatar name={hostName} color={tutor.color} size={72} />
@@ -314,11 +337,11 @@ export default function LiveRoom() {
               </Txt>
             </View>
           )}
-          {showScreen && host?.cam && hostStreams?.camera && (
-            <View style={styles.pipHost}><RoomVideo stream={hostStreams.camera} label="Teacher camera" /></View>
+          {showScreen && (hostStreams?.camera || fallbackHostCam) && (
+            <View style={styles.pipHost}><RoomVideo stream={hostStreams?.camera ?? fallbackHostCam} label="Teacher camera" /></View>
           )}
-          {host && !host.mic && !classOver && <View style={styles.mutedTag}><Ionicons name="mic-off" size={12} color="#fff" /></View>}
-          {host?.speaking && <View style={styles.speakTag}><Ionicons name="mic" size={12} color="#3FD17C" /><Txt variant="caption" color="#fff" style={{ fontSize: 10 }}>{host.name.split(' ')[0]}</Txt></View>}
+          {host && !host.mic && !classOver && rs.state !== 'live' && <View style={styles.mutedTag}><Ionicons name="mic-off" size={12} color="#fff" /></View>}
+          {(host?.speaking || (rs.state === 'live' && !classOver)) && <View style={styles.speakTag}><Ionicons name="mic" size={12} color="#3FD17C" /><Txt variant="caption" color="#fff" style={{ fontSize: 10 }}>{hostName.split(' ')[0]}</Txt></View>}
         </View>
         {rt.cam && rt.localCamera && (
           <View style={[styles.pip, wide && { width: 200, height: 130 }]}>

@@ -1,14 +1,15 @@
 /** Subscription & usage: current plan, usage with the 70/85/100% policy, add-ons, plan compare (monthly/annual), invoices. */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Cols, Grid, useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ApiError, subscriptionApi } from '@/api/client';
+import { ApiError, subscriptionApi, support } from '@/api/client';
 import type { Plan } from '@/core/plans';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
+import { radius } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { BottomSheet, Pill, ProgressBar } from '@/ui/kit';
@@ -33,6 +34,12 @@ export default function Subscription() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const scrollRef = useRef<any>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const flash = (t: string) => {
+    setToast(t);
+    setTimeout(() => setToast(null), 4000);
+  };
   const load = useCallback(() => {
     try {
       const x = subscriptionApi.overview(userId);
@@ -87,7 +94,7 @@ export default function Subscription() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         <ScreenTop padX={isDesktop ? 32 : 16} maxWidth={isDesktop ? 1180 : 720} title="Subscription & usage" sub={`${ctx.tenant.branding.displayName}`} />
-        <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingTop: 8, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingTop: 8, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
           <View style={[shared.inner, isDesktop && { maxWidth: 1180 }]}>
             {!!reason && !msg && <Banner tone="info" text={String(reason)} />}
             {msg && <Banner tone="success" text={msg} />}
@@ -177,7 +184,27 @@ export default function Subscription() {
                       size="md"
                       variant={(choosing && (current || p.recommended)) || (!choosing && (p.monthlyInr ?? 0) > (plan.monthlyInr ?? 0)) ? 'primary' : 'outline'}
                       disabled={blockers.length > 0 && !current}
-                      onPress={() => { setErr(null); setMsg(null); if (p.monthlyInr == null) setMsg('Our team will reach out within one working day for an Enterprise quote.'); else setPick(p); }}
+                      onPress={() => {
+                        setErr(null);
+                        setMsg(null);
+                        if (p.monthlyInr == null) {
+                          const text = 'Our team will reach out within one working day for an Enterprise quote.';
+                          setMsg(text);
+                          flash(text);
+                          scrollRef.current?.scrollTo({ y: 0, animated: true });
+                          try {
+                            support.raise(userId, {
+                              category: 'Enterprise enquiry',
+                              subject: `Enterprise quote request: ${ctx.tenant.branding.displayName}`,
+                              body: `${session?.user.name ?? 'Educator'} requested an Enterprise custom quote for ${ctx.tenant.branding.displayName}. Contact email: ${session?.user.email ?? ''}, phone: ${session?.user.phone ?? ''}. Current usage: ${ctx.usage.rows.map((r) => `${r.label}: ${r.used}${r.unit ? ' ' + r.unit : ''}`).join(', ')}.`,
+                            });
+                          } catch {
+                            // ignore
+                          }
+                        } else {
+                          setPick(p);
+                        }
+                      }}
                     />
                   )}
                 </View>
@@ -226,6 +253,13 @@ export default function Subscription() {
           </View>
         )}
       </BottomSheet>
+
+      {toast && (
+        <View style={[styles.toast, { backgroundColor: c.ink }]} accessibilityLiveRegion="polite">
+          <Ionicons name="checkmark-circle" size={18} color={c.success} />
+          <Txt variant="label" color="#fff" center style={{ flexShrink: 1 }}>{toast}</Txt>
+        </View>
+      )}
     </View>
   );
 }
@@ -239,4 +273,5 @@ const styles = StyleSheet.create({
   segBtn: { paddingHorizontal: 10, minHeight: 36, borderRadius: 10, justifyContent: 'center' },
   plan: { borderWidth: 1.5, borderRadius: 18, padding: 14, gap: 6 },
   limits: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 2 },
+  toast: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: radius.pill, zIndex: 99, maxWidth: '90%', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 6 },
 });

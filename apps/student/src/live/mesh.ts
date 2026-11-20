@@ -373,7 +373,7 @@ export class MeshRoom implements LiveRoom {
   async setCam(on: boolean, deviceId?: string) {
     if (on) {
       stopTrack(this.cam);
-      this.cam = await openCam(deviceId);
+      this.cam = await openCam(deviceId, this.me.name);
       this.camStream = new MediaStream([this.cam]);
       this.cam.onended = () => {
         if (this.cam && this.cam.readyState === 'ended') void this.setCam(false).catch(() => {});

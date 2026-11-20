@@ -70,7 +70,7 @@ export default function Profile() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={[styles.scroll, isDesktop && { paddingHorizontal: pad, paddingTop: 24 }]} showsVerticalScrollIndicator={false}>
-          <View style={[styles.inner, isDesktop && { maxWidth: 1040 }]}>
+          <View style={[styles.inner, isDesktop && { maxWidth: layout.contentMaxWidth }]}>
             <View style={[styles.mainLayout, isDesktop && styles.desktopLayout]}>
               {/* Left Column (Desktop 35% / Mobile Full) */}
               <View style={[styles.leftCol, isDesktop && styles.desktopLeftCol]}>
@@ -410,9 +410,9 @@ const styles = StyleSheet.create({
   track: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden' },
   fill: { height: 8, borderRadius: 4 },
   stats: { flexDirection: 'row', paddingVertical: 12, borderRadius: radius.lg, borderWidth: 1 },
-  desktopStats: { flexWrap: 'wrap', paddingVertical: 6 },
+  desktopStats: { flexDirection: 'row', flexWrap: 'wrap', paddingVertical: 8 },
   statItem: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 },
-  desktopStatItem: { flex: 0, width: '50%', paddingVertical: 12 },
+  desktopStatItem: { width: '50%', flexBasis: '50%', maxWidth: '50%', flexGrow: 0, flexShrink: 0, paddingVertical: 12 },
   tenant: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md },
   switch: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg },
   logout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, borderRadius: radius.pill, borderWidth: 1.4, marginTop: 4 },

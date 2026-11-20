@@ -66,7 +66,7 @@ export default function Inbox() {
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Txt variant="bodyStrong" numberOfLines={1}>{a.workspaceName}</Txt>
             <Txt variant="caption" color={c.muted} numberOfLines={1}>{u.name} · {a.city} · {a.subjects?.join(', ')}</Txt>
-            <View style={{ flexDirection: 'row', gap: 6, marginTop: 2 }}>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
               {a.status === 'changes_requested' ? <Pill text="Waiting on applicant" tone="neutral" /> : ready ? <Pill text="All checks pass" tone="success" icon="checkmark" /> : <Pill text="Missing info" tone="warning" />}
               {a.status === 'under_review' && <Pill text={a.reviewedBy ? `Opened by ${a.reviewedBy.split(' ')[0]}` : 'In review'} tone="info" />}
             </View>
@@ -80,7 +80,7 @@ export default function Inbox() {
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Txt variant="bodyStrong" numberOfLines={1}>{co.title}</Txt>
             <Txt variant="caption" color={c.muted} numberOfLines={1}>{t.branding.displayName} · ₹{co.priceInr.toLocaleString('en-IN')}</Txt>
-            <View style={{ flexDirection: 'row', gap: 6, marginTop: 2 }}>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
               {ready ? <Pill text="Checks pass" tone="success" icon="checkmark" /> : <Pill text="Needs fixes" tone="warning" />}
               {co.visibility === 'public_promoted' && <Pill text="Promotion" tone="gold" />}
             </View>
@@ -120,13 +120,15 @@ export default function Inbox() {
           <Txt variant="title" style={{ flex: 1 }}>Inbox</Txt>
           {tab !== 'reports' && ids.length > 1 && (pick ? <Button title="Cancel" size="md" variant="ghost" onPress={() => setPick(null)} /> : <Button title="Select" size="md" variant="outline" iconLeft="checkbox-outline" onPress={() => setPick([])} />)}
         </View>
-        <View style={styles.tabsRow}>
-          {tabs.map(([k, l, n]) => (
-            <Pressable key={k} onPress={() => setTab(k)} style={[styles.tab, { backgroundColor: tab === k ? c.primary : c.surface, borderColor: tab === k ? c.primary : c.border }]} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
-              <Txt variant="label" color={tab === k ? '#fff' : c.ink}>{l}</Txt>
-              {n > 0 && <View style={[styles.count, { backgroundColor: tab === k ? 'rgba(255,255,255,0.25)' : c.primarySoft }]}><Txt variant="caption" color={tab === k ? '#fff' : c.primary}>{n}</Txt></View>}
-            </Pressable>
-          ))}
+        <View style={styles.tabsWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsRow} style={{ flex: 1 }}>
+            {tabs.map(([k, l, n]) => (
+              <Pressable key={k} onPress={() => setTab(k)} style={[styles.tab, { backgroundColor: tab === k ? c.primary : c.surface, borderColor: tab === k ? c.primary : c.border }]} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
+                <Txt variant="label" color={tab === k ? '#fff' : c.ink}>{l}</Txt>
+                {n > 0 && <View style={[styles.count, { backgroundColor: tab === k ? 'rgba(255,255,255,0.25)' : c.primarySoft }]}><Txt variant="caption" color={tab === k ? '#fff' : c.primary}>{n}</Txt></View>}
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
         {msg && <View style={{ paddingHorizontal: 16 }}><Banner tone="success" text={msg} /></View>}
         {wide && tab !== 'reports' ? (
@@ -180,10 +182,11 @@ function Empty({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
+  tabsWrap: { height: 48, flexShrink: 0, marginBottom: 6 },
   tabsRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, minHeight: 40 },
   count: { borderRadius: 999, paddingHorizontal: 7, minWidth: 22, alignItems: 'center' },
-  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 30 },
+  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 30 },
   inner: { width: '100%', maxWidth: 720, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 16, padding: 12, minHeight: 72 },
   report: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 8 },

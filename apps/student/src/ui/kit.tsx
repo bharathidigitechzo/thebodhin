@@ -210,7 +210,7 @@ export function Pill({ text, tone = 'neutral', icon }: { text?: string | null; t
     <View style={[styles.pill, { backgroundColor: bg }]}>
       {icon && <Ionicons name={icon} size={12} color={fg} />}
       {!!content && (
-        <Txt variant="caption" color={fg} style={{ fontWeight: '700' }}>
+        <Txt variant="caption" color={fg} numberOfLines={1} style={{ fontWeight: '700' }}>
           {content}
         </Txt>
       )}
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
   dot: { position: 'absolute', top: 11, right: 12, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
   section: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 26, marginBottom: 12 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 4 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.pill, alignSelf: 'flex-start' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.pill, alignSelf: 'flex-start', maxWidth: '100%' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, minHeight: 42, borderRadius: radius.pill, borderWidth: 1.2 },
   deskSearch: { width: '100%', maxWidth: 540, flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, borderWidth: 1, borderRadius: 14, paddingHorizontal: 16 },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 28, borderTopRightRadius: 28, width: '100%', maxWidth: 640, alignSelf: 'center' },

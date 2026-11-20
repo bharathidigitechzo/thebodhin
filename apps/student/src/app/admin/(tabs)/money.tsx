@@ -32,12 +32,14 @@ export default function Money() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <View style={styles.head}><Txt variant="title">Money</Txt></View>
-        <View style={styles.tabs}>
-          {TABS.map(([k, l]) => (
-            <Pressable key={k} onPress={() => setTab(k)} style={[styles.tab, { backgroundColor: tab === k ? c.primary : c.surface, borderColor: tab === k ? c.primary : c.border }]} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
-              <Txt variant="label" color={tab === k ? '#fff' : c.ink}>{l}</Txt>
-            </Pressable>
-          ))}
+        <View style={styles.tabsWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} style={{ flex: 1 }}>
+            {TABS.map(([k, l]) => (
+              <Pressable key={k} onPress={() => setTab(k)} style={[styles.tab, { backgroundColor: tab === k ? c.primary : c.surface, borderColor: tab === k ? c.primary : c.border }]} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
+                <Txt variant="label" color={tab === k ? '#fff' : c.ink}>{l}</Txt>
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={styles.inner}>
@@ -272,9 +274,10 @@ const Legend = ({ color, l }: { color: string; l: string }) => {
 
 const styles = StyleSheet.create({
   head: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
-  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8, flexWrap: 'wrap' },
+  tabsWrap: { height: 48, flexShrink: 0, marginBottom: 6 },
+  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
   tab: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, minHeight: 40, justifyContent: 'center' },
-  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 30 },
+  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 30 },
   inner: { width: '100%', maxWidth: 860, gap: 12 },
   hero: { borderRadius: 22, padding: 18, gap: 4 },
   card: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 6 },

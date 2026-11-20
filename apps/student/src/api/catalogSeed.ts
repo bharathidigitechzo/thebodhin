@@ -300,7 +300,7 @@ export const MISSED_PAST = new Set(['lp_4', 'lp_9']);
 export const liveSessions: LiveSession[] = [
   { id: 'ls_now', courseId: 'c_dm_ai', title: 'SEO Strategy with AI Tools – Live Class 03', ...liveNow(), registeredUserIds: [] },
   ...pastSessions,
-  { id: 'ls_1', courseId: 'c_dm_ai', title: 'AI Tools for Marketers – Practical Session', ...at(0, 19, 0, 60), registeredUserIds: ['u_arjun'] },
+  { id: 'ls_1', courseId: 'c_dm_ai', title: 'AI Tools for Marketers – Practical Session', ...liveNow(), registeredUserIds: ['u_arjun'] },
   { id: 'ls_2', courseId: 'c_dm_ai', title: 'SEO Strategy with AI Insights', ...at(1, 17, 0, 90), registeredUserIds: ['u_arjun'] },
   { id: 'ls_3', courseId: 'c_meta_ads', title: 'Meta Ads Masterclass: Scaling', ...at(3, 19, 0, 60), registeredUserIds: [] },
   { id: 'ls_4', courseId: 'c_web_ai', title: 'Build a Landing Page Live', ...at(4, 18, 30, 90), registeredUserIds: [] },

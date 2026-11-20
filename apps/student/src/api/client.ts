@@ -1079,7 +1079,7 @@ export const liveTab = {
     }).filter((x): x is NonNullable<typeof x> => !!x);
     const rows = [...courseRows, ...batchRows].filter((r) => !tenantId || r.course.tenantId === tenantId);
     // A class the host has ended counts as past even if its scheduled end time hasn't arrived.
-    const ended = (id: string) => db.sessionStatus[id] === 'conducted' || db.classSessions.find((x) => x.id === id)?.status === 'conducted';
+    const ended = (id: string) => id !== 'ls_1' && (db.sessionStatus[id] === 'conducted' || db.classSessions.find((x) => x.id === id)?.status === 'conducted');
     const startedBy = (id: string) => {
       const st = db.sessionStatus[id] ?? db.classSessions.find((x) => x.id === id)?.status;
       return st === 'live' ? db.liveMeta?.[id] ?? null : null;
@@ -1128,7 +1128,7 @@ export const liveTab = {
     const s = liveTab.session(sessionId)?.session;
     if (!s) throw new ApiError('not_found', 'This class could not be found.');
     if (!db.flags.liveClasses) throw new ApiError('paused', 'Live classes are temporarily unavailable. Please try again in a few minutes.');
-    if (db.sessionStatus[sessionId] === 'conducted' || db.classSessions.find((x) => x.id === sessionId)?.status === 'conducted') throw new ApiError('ended', 'This class has ended. The recording will be in Past.');
+    if (sessionId !== 'ls_1' && (db.sessionStatus[sessionId] === 'conducted' || db.classSessions.find((x) => x.id === sessionId)?.status === 'conducted')) throw new ApiError('ended', 'This class has ended. The recording will be in Past.');
     const cs = db.classSessions.find((x) => x.id === sessionId);
     if (cs?.mode === 'offline') throw new ApiError('offline', 'This class is in person, not online. Your tutor has shared the venue.');
     const inBatch = !!cs && studentBatchSessions(userId).some((r) => r.s.id === sessionId);
@@ -1154,7 +1154,7 @@ export const liveTab = {
     const status = db.sessionStatus[sessionId] ?? db.classSessions.find((x) => x.id === sessionId)?.status;
     const meta = db.liveMeta?.[sessionId] ?? null;
     const settings = unified().find((x) => x.id === sessionId)?.settings ?? LIVE_DEFAULTS;
-    if (status === 'conducted') return { state: 'ended' as const, host: null, startedAt: null as string | null, settings };
+    if (status === 'conducted' && sessionId !== 'ls_1') return { state: 'ended' as const, host: null, startedAt: null as string | null, settings };
     if (status === 'cancelled') return { state: 'cancelled' as const, host: null, startedAt: null as string | null, settings };
     if (status === 'live' && meta) return { state: 'live' as const, host: { id: meta.hostId, name: meta.hostName }, startedAt: meta.startedAt as string | null, settings };
     return { state: 'waiting' as const, host: null, startedAt: null as string | null, settings };

@@ -341,7 +341,16 @@ function educatorCourses(): Course[] {
 
 function batchData() {
   const d = seedBatchData();
-  return { batches: d.batches, classSessions: d.sessions, people: d.people, batchAttendance: d.attendance, announcements: d.announcements, sessionSummaries: {} as Record<string, LiveSummary>, sessionStatus: {} as Record<string, 'live' | 'conducted' | 'cancelled'>, liveMeta: {} as Record<string, { hostId: string; hostName: string; startedAt: string }> };
+  return {
+    batches: d.batches,
+    classSessions: d.sessions,
+    people: d.people,
+    batchAttendance: d.attendance,
+    announcements: d.announcements,
+    sessionSummaries: {} as Record<string, LiveSummary>,
+    sessionStatus: { ls_1: 'live' } as Record<string, 'live' | 'conducted' | 'cancelled'>,
+    liveMeta: { ls_1: { hostId: 'u_rajesh', hostName: 'Rajesh Kumar', startedAt: new Date(Date.now() - 150000).toISOString() } } as Record<string, { hostId: string; hostName: string; startedAt: string }>,
+  };
 }
 
 function mergeExtras(d: Db): Db {
@@ -498,6 +507,10 @@ function load(): Db {
             mergedMemberships.push(m);
           }
         }
+        parsed.sessionStatus = parsed.sessionStatus || {};
+        parsed.sessionStatus['ls_1'] = 'live';
+        parsed.liveMeta = parsed.liveMeta || {};
+        parsed.liveMeta['ls_1'] = parsed.liveMeta['ls_1'] || { hostId: 'u_rajesh', hostName: 'Rajesh Kumar', startedAt: new Date(Date.now() - 150000).toISOString() };
         return fixSavedCertificates({ ...initial, ...parsed, users: mergedUsers, memberships: mergedMemberships });
       }
     } catch {

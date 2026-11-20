@@ -53,13 +53,13 @@ export function Page({ title, sub, err, children, footer, fallback = '/edu/grow'
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title={title} sub={sub} fallback={fallback} right={right} maxWidth={isDesktop ? (wide ? 1100 : 900) : 720} padX={isDesktop ? 32 : 16} />
+        <ScreenTop title={title} sub={sub} fallback={fallback} right={right} maxWidth={isDesktop ? (wide === false ? 900 : 1100) : 720} padX={isDesktop ? 32 : 16} />
         <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingBottom: 48 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={[shared.inner, isDesktop && { maxWidth: wide ? 1100 : 900 }]}>
+          <View style={[shared.inner, isDesktop && { maxWidth: wide === false ? 900 : 1100 }]}>
             {err ? <Locked err={err} /> : children}
           </View>
         </ScrollView>
-        {!err && footer && <View style={[shared.footer, { borderTopColor: c.border, backgroundColor: c.surface }]}><View style={{ width: '100%', maxWidth: 720, flexDirection: 'row', gap: 8 }}>{footer}</View></View>}
+        {!err && footer && <View style={[shared.footer, { borderTopColor: c.border, backgroundColor: c.surface }]}><View style={{ width: '100%', maxWidth: isDesktop ? 1100 : 720, flexDirection: 'row', gap: 8 }}>{footer}</View></View>}
       </SafeAreaView>
     </View>
   );
