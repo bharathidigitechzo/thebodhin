@@ -14,6 +14,7 @@
     "build": "npm --prefix apps/student run build",
     "export:web": "npm --prefix apps/student run export:web",
     "typecheck": "npm --prefix apps/student run typecheck",
+    "postinstall": "node scripts/patch_metro_onedrive.js",
     "backend:local": "node backend/local_server.js",
     "backend:start": "npx supabase start",
     "backend:stop": "npx supabase stop",
