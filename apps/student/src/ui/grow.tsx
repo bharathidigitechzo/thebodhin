@@ -7,7 +7,7 @@ import { haptic } from '@/ui/haptics';
 import { ApiError } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
-import { useLayout } from './responsive';
+import { useFrame, useLayout } from './responsive';
 import { Txt } from './Txt';
 import { Button } from './Button';
 import { Banner } from './misc';
@@ -50,16 +50,18 @@ export function useDataAsync<T>(fn: (userId: string) => Promise<T>) {
 export function Page({ title, sub, err, children, footer, fallback = '/edu/grow', wide, right }: { title: string; sub?: string; err?: ApiError | null; children?: React.ReactNode; footer?: React.ReactNode; fallback?: string; wide?: boolean; right?: React.ReactNode }) {
   const { c } = useTheme();
   const { isDesktop } = useLayout();
+  const frame = useFrame();
+  void wide; // all pages share the same frame now (kept for callers)
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title={title} sub={sub} fallback={fallback} right={right} maxWidth={isDesktop ? (wide ? 1100 : 900) : 720} padX={isDesktop ? 32 : 16} />
-        <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingBottom: 48 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={[shared.inner, isDesktop && { maxWidth: wide ? 1100 : 900 }]}>
+        <ScreenTop title={title} sub={sub} fallback={fallback} right={right} />
+        <ScrollView contentContainerStyle={[shared.scroll, { paddingHorizontal: frame.padX }, isDesktop && { paddingBottom: 48 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={[shared.inner, { maxWidth: frame.maxWidth }]}>
             {err ? <Locked err={err} /> : children}
           </View>
         </ScrollView>
-        {!err && footer && <View style={[shared.footer, { borderTopColor: c.border, backgroundColor: c.surface }]}><View style={{ width: '100%', maxWidth: 720, flexDirection: 'row', gap: 8 }}>{footer}</View></View>}
+        {!err && footer && <View style={[shared.footer, { borderTopColor: c.border, backgroundColor: c.surface, paddingHorizontal: frame.padX }]}><View style={{ width: '100%', maxWidth: frame.maxWidth, flexDirection: 'row', gap: 8 }}>{footer}</View></View>}
       </SafeAreaView>
     </View>
   );

@@ -17,10 +17,11 @@ interface Props extends TextInputProps {
   secure?: boolean;
 }
 
-export const TextField = forwardRef<InputRef, Props>(function TextField({ label, icon, error, hint, prefix, secure, style, onFocus, onBlur, ...rest }, ref) {
+export const TextField = forwardRef<InputRef, Props>(function TextField({ label, icon, error, hint, prefix, secure, secureTextEntry: rawSecureTextEntry, style, onFocus, onBlur, ...rest }, ref) {
   const { c } = useTheme();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(true);
+  const isSecure = Boolean(secure || rawSecureTextEntry);
   const borderColor = error ? c.danger : focused ? c.primary : c.border;
   const shake = useShake(error || null);
 
@@ -41,7 +42,7 @@ export const TextField = forwardRef<InputRef, Props>(function TextField({ label,
         <TextInput
           ref={ref}
           placeholderTextColor={c.muted}
-          secureTextEntry={secure && hidden}
+          secureTextEntry={isSecure ? hidden : undefined}
           accessibilityLabel={label}
           onFocus={(e) => {
             setFocused(true);
@@ -54,7 +55,7 @@ export const TextField = forwardRef<InputRef, Props>(function TextField({ label,
           style={[styles.input, { color: c.ink }, style]}
           {...rest}
         />
-        {secure && (
+        {isSecure && (
           <Pressable onPress={() => setHidden((h) => !h)} hitSlop={10} accessibilityRole="button" accessibilityLabel={hidden ? 'Show password' : 'Hide password'} style={styles.eye}>
             <Ionicons name={hidden ? 'eye-outline' : 'eye-off-outline'} size={22} color={c.inkSoft} />
           </Pressable>

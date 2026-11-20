@@ -1,6 +1,6 @@
 /** Educator Live tab: live now, upcoming by day, conducted (summary + recording), live-hours usage. */
 import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
@@ -11,7 +11,9 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { layout } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
-import { AppHeader, Chip, Pill, ProgressBar, Skeleton } from '@/ui/kit';
+import { Chip, Pill, ProgressBar, Skeleton } from '@/ui/kit';
+import { ScreenTop } from '@/ui/section';
+import { useFrame } from '@/ui/responsive';
 
 type Data = Awaited<ReturnType<typeof liveAdmin.list>>;
 type Seg = 'upcoming' | 'conducted' | 'cancelled';
@@ -28,8 +30,7 @@ const dayKey = (iso: string) => {
 };
 
 export default function LiveTab() {
-  const { width } = useWindowDimensions();
-  const headerHasAction = width >= 1024; // AppHeader shows "Schedule" itself on wide screens
+  const frame = useFrame(); // shared educator page frame (Certificates template)
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -49,14 +50,9 @@ export default function LiveTab() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.inner}>
-            <AppHeader profileHref="/educator/more" action={{ title: 'Schedule', onPress: () => router.push('/edu/schedule') }} />
-            {/* Schedule sits beside the title (no floating button covering the class list). */}
-            <View style={styles.titleRow}>
-              <Txt variant="title" style={{ flex: 1 }}>Live classes</Txt>
-              {!headerHasAction && <Button title="Schedule" iconLeft="add" size="md" onPress={() => router.push('/edu/schedule')} />}
-            </View>
+        <ScreenTop title="Live classes" sub="Schedule, host and review your classes" fallback="/educator/home" right={<Button title="Schedule" iconLeft="add" size="md" onPress={() => router.push('/edu/schedule')} />} />
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX }]} showsVerticalScrollIndicator={false}>
+          <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
             {!data ? (
               <View style={{ gap: 12 }}><Skeleton h={150} r={20} /><Skeleton h={70} /><Skeleton h={70} /></View>
             ) : (
@@ -160,8 +156,7 @@ function Stat({ v, l }: { v: string; l: string }) {
 }
 
 const styles = StyleSheet.create({
-  scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 40 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  scroll: { alignItems: 'center', paddingTop: 4, paddingBottom: 40 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 14 },
   liveCard: { borderRadius: 20, padding: 16, gap: 6 },
   stats: { flexDirection: 'row', gap: 10 },

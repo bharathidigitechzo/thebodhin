@@ -1,7 +1,7 @@
 /** Coupons & offers: real, dated offers only. Create %, or ₹ off, per course or all, with usage limits. */
 import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { Cols, Grid, useLayout } from '@/ui/responsive';
+import { Cols, Grid, useLayout, useFrame } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,6 +22,7 @@ const STATE = { active: ['Active', 'success'], scheduled: ['Starts later', 'info
 const blank = () => ({ code: '', type: 'pct' as 'pct' | 'flat', value: '10', courseIds: [] as string[], maxUses: '100', unlimited: false, startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 7 * 864e5).toISOString() });
 
 export default function Coupons() {
+  const frame = useFrame(); // shared educator page frame (same width and side spacing on every section)
   const { isDesktop } = useLayout();
   const { c } = useTheme();
   const { session } = useAuth();
@@ -54,9 +55,9 @@ export default function Coupons() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title="Coupons & offers" maxWidth={isDesktop ? 1000 : 720} padX={isDesktop ? 32 : 16} />
-        <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
-          <View style={[shared.inner, isDesktop && { maxWidth: 1000 }]}>
+        <ScreenTop title="Coupons & offers" />
+        <ScrollView contentContainerStyle={[shared.scroll, { paddingHorizontal: frame.padX }, isDesktop && { paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
+          <View style={[shared.inner, { maxWidth: frame.maxWidth }]}>
             {msg && <Banner tone="success" text={msg} />}
             {!d.enabled && <Banner tone="info" text="Coupons are available from the Creator plan." />}
             <Txt variant="caption" color={c.muted}>Every offer has a real end date — no fake countdowns. Coupons apply to your direct and marketplace sales; Bodhin’s commission is calculated on the discounted price.</Txt>
@@ -84,7 +85,7 @@ export default function Coupons() {
           </View>
         </ScrollView>
         <View style={[shared.footer, { borderTopColor: c.border, backgroundColor: c.surface }]}>
-          <Button title="New coupon" iconLeft="add" disabled={!d.enabled} onPress={() => { setForm(blank()); setFe(null); }} style={{ width: '100%', maxWidth: 720 }} />
+          <Button title="New coupon" iconLeft="add" disabled={!d.enabled} onPress={() => { setForm(blank()); setFe(null); }} style={{ width: '100%', maxWidth: frame.maxWidth }} />
         </View>
       </SafeAreaView>
 

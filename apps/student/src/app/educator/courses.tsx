@@ -16,6 +16,8 @@ import { AppHeader, BottomSheet, Chip, Pill, ProgressBar, Skeleton, useAsync } f
 import { CourseArt } from '@/ui/course';
 import { Banner } from '@/ui/misc';
 import { STATE_META } from '@/ui/courseState';
+import { ScreenTop } from '@/ui/section';
+import { useFrame } from '@/ui/responsive';
 
 type Row = Awaited<ReturnType<typeof courseAdmin.list>>[number];
 type Filter = 'all' | 'live' | 'draft' | 'review';
@@ -27,6 +29,7 @@ const FILTERS: { id: Filter; label: string; match: (s: CourseState) => boolean }
 ];
 
 export default function EducatorCourses() {
+  const frame = useFrame(); // shared educator page frame (Certificates template)
   const { isDesktop } = useLayout();
   const { c } = useTheme();
   const { session } = useAuth();
@@ -74,13 +77,9 @@ export default function EducatorCourses() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={[styles.inner, cols && { maxWidth: 1080 }]}>
-            <AppHeader profileHref="/educator/more" action={{ title: 'New course', onPress: create }} />
-            <View style={{ marginTop: 10, marginBottom: 12 }}>
-              <TwoTone lead="My" accent="Courses" variant="title" />
-              <Txt color={c.inkSoft}>{owner ? 'Create, publish and choose where each course is sold.' : 'Create and edit your courses. The academy owner sets pricing and publishes.'}</Txt>
-            </View>
+        <ScreenTop title="My courses" sub={owner ? 'Create, publish and choose where each course is sold' : 'Create and edit your courses. The owner sets pricing and publishes'} fallback="/educator/home" right={<Button title="New course" iconLeft="add" size="md" onPress={create} />} />
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX }]} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ flexGrow: 0 }}>
               {FILTERS.map((f) => (
@@ -256,7 +255,7 @@ function SheetRow({ icon, label, sub, onPress, danger }: { icon: keyof typeof Io
 }
 
 const styles = StyleSheet.create({
-  scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 110 },
+  scroll: { alignItems: 'center', paddingTop: 4, paddingBottom: 48 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, minHeight: 50, borderRadius: radius.pill, borderWidth: 1 },
   searchInput: { flex: 1, minWidth: 0, fontSize: 16, minHeight: 48, outlineStyle: 'none' } as any,

@@ -26,6 +26,17 @@ export const BP = { tablet: 768, desktop: 1024 } as const;
 /** Page widths on large screens (phones are always full width). */
 export const PAGE = { wide: 1200, read: 860, form: 720 } as const;
 
+/**
+ * Page frame for educator and admin screens — the Certificates page template: header and content share one centred
+ * column, with the same side spacing on every section. Web/desktop: 1100 px column, 32 px sides. Phone/tablet: 720, 16.
+ */
+export const FRAME = { maxWidth: 1100, padX: 32, phoneMaxWidth: 720, phonePadX: 16 } as const;
+export function useFrame() {
+  const { width } = useWindowDimensions();
+  const desktop = width >= BP.desktop;
+  return desktop ? { maxWidth: FRAME.maxWidth, padX: FRAME.padX, desktop } : { maxWidth: FRAME.phoneMaxWidth, padX: FRAME.phonePadX, desktop };
+}
+
 export function useLayout() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= BP.desktop;

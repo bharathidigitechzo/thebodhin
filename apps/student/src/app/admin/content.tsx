@@ -16,7 +16,8 @@ import { Banner } from '@/ui/misc';
 import { CourseArt } from '@/ui/course';
 import { STATE_META } from '@/ui/courseState';
 import { PillTabs } from '@/ui/pickers';
-import { Card, ScreenTop, ToggleRow, inr, shared } from '@/ui/section';
+import { Page } from '@/ui/grow';
+import { Card, ToggleRow, inr, shared } from '@/ui/section';
 
 type Tab = 'courses' | 'curation' | 'categories';
 const ICONS = ['apps', 'megaphone', 'hardware-chip', 'code-slash', 'color-palette', 'briefcase', 'language', 'school', 'musical-notes', 'fitness', 'calculator', 'camera', 'leaf', 'heart'];
@@ -56,18 +57,10 @@ export default function Content() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: c.ivory }}>
-      <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop title="Bodhin content" sub="Bodhin’s academy & the marketplace" fallback="/admin/more" />
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
-          <View style={{ width: '100%', maxWidth: 720 }}>
-          <PillTabs<Tab> value={tab} onChange={setTab} tabs={[{ id: 'courses', label: `Bodhin courses · ${courses.length}`, icon: 'layers-outline' }, { id: 'curation', label: 'Curation', icon: 'star-outline' }, { id: 'categories', label: 'Categories', icon: 'grid-outline' }]} />
-          </View>
-        </View>
-        <ScrollView contentContainerStyle={shared.scroll} showsVerticalScrollIndicator={false}>
-          <View style={shared.inner}>
-            {msg && <Banner tone="success" text={msg} />}
-            {err && <Banner text={err} />}
+    <Page title="Bodhin content" sub="Bodhin’s academy & the marketplace" fallback="/admin/more" wide>
+      <PillTabs<Tab> value={tab} onChange={setTab} tabs={[{ id: 'courses', label: `Bodhin courses · ${courses.length}`, icon: 'layers-outline' }, { id: 'curation', label: 'Curation', icon: 'star-outline' }, { id: 'categories', label: 'Categories', icon: 'grid-outline' }]} />
+      {msg && <Banner tone="success" text={msg} />}
+      {err && <Banner text={err} />}
             {tab === 'courses' && (
               <>
                 <Txt variant="caption" color={c.muted}>Sold and collected by Bodhin (100% to Bodhin). Uses the same course builder as educators; publishing skips review.</Txt>
@@ -114,9 +107,6 @@ export default function Content() {
                 </Card>
               </>
             )}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
 
       <BottomSheet open={!!pick} onClose={() => setPick(null)} title={pick === 'banners' ? 'Add hero banner' : 'Add featured course'}>
         <View style={{ gap: 8 }}>
@@ -139,7 +129,7 @@ export default function Content() {
           </View>
         )}
       </BottomSheet>
-    </View>
+    </Page>
   );
 }
 
