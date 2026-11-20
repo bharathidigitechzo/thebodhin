@@ -1,7 +1,7 @@
 /** Subscription & usage: current plan, usage with the 70/85/100% policy, add-ons, plan compare (monthly/annual), invoices. */
 import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Cols, Grid, useLayout } from '@/ui/responsive';
+import { Cols, Grid, useLayout, useFrame } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +21,7 @@ type Data = ReturnType<typeof subscriptionApi.overview>;
 type Addon = Data['addons'][number];
 
 export default function Subscription() {
+  const frame = useFrame(); // shared educator page frame (same width and side spacing on every section)
   const { isDesktop } = useLayout();
   const { c } = useTheme();
   const { session } = useAuth();
@@ -93,9 +94,9 @@ export default function Subscription() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop padX={isDesktop ? 32 : 16} maxWidth={isDesktop ? 1180 : 720} title="Subscription & usage" sub={`${ctx.tenant.branding.displayName}`} />
-        <ScrollView ref={scrollRef} contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingTop: 8, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
-          <View style={[shared.inner, isDesktop && { maxWidth: 1180 }]}>
+        <ScreenTop title="Subscription & usage" sub={`${ctx.tenant.branding.displayName}`} />
+        <ScrollView ref={scrollRef} contentContainerStyle={[shared.scroll, { paddingHorizontal: frame.padX }, isDesktop && { paddingTop: 8, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
+          <View style={[shared.inner, { maxWidth: frame.maxWidth }]}>
             {!!reason && !msg && <Banner tone="info" text={String(reason)} />}
             {msg && <Banner tone="success" text={msg} />}
             {d.priceLock && <Banner tone="info" text={`Your current price (${inr(d.priceLock.monthly ?? 0)}/mo · ${inr(d.priceLock.annual ?? 0)}/yr) is kept until ${fmtDay(d.priceLock.until)}. The new ${plan.name} price applies after that.`} />}

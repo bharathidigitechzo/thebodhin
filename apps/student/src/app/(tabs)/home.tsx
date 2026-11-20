@@ -46,83 +46,10 @@ export default function Home() {
   ];
 
   const cont = data?.inProgress[0];
-  const live = data?.upcomingLive[0];
 
-  return (
-    <View style={{ flex: 1, backgroundColor: c.ivory }}>
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={[styles.scroll, isDesktop && { paddingHorizontal: pad, paddingTop: 24 }]}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} tintColor={c.primary} />}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={[styles.inner, isDesktop && { maxWidth: PAGE.wide }]}>
-            <AppHeader />
-            <View style={{ marginTop: 10, marginBottom: 16 }}>
-              <Txt variant="label" color={c.muted}>
-                {greeting()}
-              </Txt>
-              <Txt variant="title" color={c.primaryDeep}>
-                Hello, {first} 👋
-              </Txt>
-            </View>
-
-            {error ? (
-              <ErrorState text={error} onRetry={reload} />
-            ) : loading && !data ? (
-              <View style={{ gap: 14 }}>
-                <Skeleton h={112} r={22} />
-                <Skeleton h={92} r={18} />
-                <Skeleton h={120} r={18} />
-              </View>
-            ) : data ? (
-              <>
-              <View style={isDesktop && live ? styles.deskRow : undefined}>
-              <View style={isDesktop && live ? { flex: 1, minWidth: 0 } : undefined}>
-                {/* Overall progress */}
-                <LinearGradient colors={[c.primaryDeep, c.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-                  <ProgressRing pct={data.overallPct} size={78} stroke={8} track="rgba(255,255,255,0.18)" color="#3FD17C" textColor="#fff" />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Txt variant="heading" color="#fff">
-                      Your learning progress
-                    </Txt>
-                    <Txt variant="label" color="rgba(255,255,255,0.78)" style={{ fontWeight: '500' }}>
-                      {data.inProgress.length} of {data.enrolled.length} courses in progress · {data.completedCount} completed
-                    </Txt>
-                  </View>
-                  <Ionicons name="stats-chart" size={30} color="rgba(255,255,255,0.9)" />
-                </LinearGradient>
-
-                {/* Quick actions */}
-                <View style={styles.quick}>
-                  {quick.map((q) => (
-                    <Pressable
-                      key={q.label}
-                      onPress={q.go}
-                      accessibilityRole="button"
-                      style={({ pressed }) => [
-                        styles.quickItem,
-                        { backgroundColor: c.surface, borderColor: c.border },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                    >
-                      <View style={styles.quickIconWrap}>
-                        <Ionicons name={q.icon as any} size={28} color={q.color} />
-                        {'badge' in q && !!q.badge && (
-                          <View style={[styles.badge, { backgroundColor: c.live }]}>
-                            <Txt variant="caption" color="#fff" style={{ fontSize: 10, lineHeight: 14 }}>
-                              {q.badge}
-                            </Txt>
-                          </View>
-                        )}
-                      </View>
-                      <Txt variant="caption" center numberOfLines={2} style={{ fontWeight: '600', fontSize: 11, lineHeight: 14, letterSpacing: -0.2 }}>
-                        {q.label}
-                      </Txt>
-                    </Pressable>
-                  ))}
-                </View>
-
+  /** Playground, latest notification and tutors' answers — main column on phones, right column on web. */
+  const sideCards = (
+    <>
                 {/* Code Playground */}
                 <Pressable
                   onPress={() => router.push('/playground')}
@@ -210,6 +137,87 @@ export default function Home() {
                     </View>
                   </>
                 )}
+    </>
+  );
+  const live = data?.upcomingLive[0];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.ivory }}>
+      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, isDesktop && { paddingHorizontal: pad, paddingTop: 24 }]}
+          refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} tintColor={c.primary} />}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.inner, isDesktop && { maxWidth: PAGE.wide }]}>
+            <AppHeader />
+            <View style={{ marginTop: 10, marginBottom: 16 }}>
+              <Txt variant="label" color={c.muted}>
+                {greeting()}
+              </Txt>
+              <Txt variant="title" color={c.primaryDeep}>
+                Hello, {first} 👋
+              </Txt>
+            </View>
+
+            {error ? (
+              <ErrorState text={error} onRetry={reload} />
+            ) : loading && !data ? (
+              <View style={{ gap: 14 }}>
+                <Skeleton h={112} r={22} />
+                <Skeleton h={92} r={18} />
+                <Skeleton h={120} r={18} />
+              </View>
+            ) : data ? (
+              <>
+              <View style={isDesktop ? styles.deskRow : undefined}>
+              <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined}>
+                {/* Overall progress */}
+                <LinearGradient colors={[c.primaryDeep, c.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+                  <ProgressRing pct={data.overallPct} size={78} stroke={8} track="rgba(255,255,255,0.18)" color="#3FD17C" textColor="#fff" />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Txt variant="heading" color="#fff">
+                      Your learning progress
+                    </Txt>
+                    <Txt variant="label" color="rgba(255,255,255,0.78)" style={{ fontWeight: '500' }}>
+                      {data.inProgress.length} of {data.enrolled.length} courses in progress · {data.completedCount} completed
+                    </Txt>
+                  </View>
+                  <Ionicons name="stats-chart" size={30} color="rgba(255,255,255,0.9)" />
+                </LinearGradient>
+
+                {/* Quick actions */}
+                <View style={styles.quick}>
+                  {quick.map((q) => (
+                    <Pressable
+                      key={q.label}
+                      onPress={q.go}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.quickItem,
+                        { backgroundColor: c.surface, borderColor: c.border },
+                        pressed && { opacity: 0.8 },
+                      ]}
+                    >
+                      <View style={styles.quickIconWrap}>
+                        <Ionicons name={q.icon as any} size={28} color={q.color} />
+                        {'badge' in q && !!q.badge && (
+                          <View style={[styles.badge, { backgroundColor: c.live }]}>
+                            <Txt variant="caption" color="#fff" style={{ fontSize: 10, lineHeight: 14 }}>
+                              {q.badge}
+                            </Txt>
+                          </View>
+                        )}
+                      </View>
+                      <Txt variant="caption" center numberOfLines={2} style={{ fontWeight: '600', fontSize: 11, lineHeight: 14, letterSpacing: -0.2 }}>
+                        {q.label}
+                      </Txt>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {/* Phone: shortcuts stay here. Web: they move to the right column (see sideCards). */}
+                {!isDesktop && sideCards}
 
                 {/* Continue learning */}
                 {cont ? (
@@ -239,11 +247,16 @@ export default function Home() {
                 ) : null}
 
               </View>
-              {/* Next live class (desktop: right rail only when there is an active live class) */}
-              {isDesktop && live ? (
-                <View style={{ width: 380 }}>
-                  <SectionHeader title="Upcoming Live Class" action="Schedule" onAction={() => router.navigate('/live')} />
-                  <LiveCard live={live} />
+              {/* Web right column: next live class + shortcuts, so the page has no empty half */}
+              {isDesktop ? (
+                <View style={styles.deskRail}>
+                  {live && (
+                    <>
+                      <SectionHeader title="Upcoming Live Class" action="Schedule" onAction={() => router.navigate('/live')} />
+                      <LiveCard live={live} />
+                    </>
+                  )}
+                  {sideCards}
                 </View>
               ) : null}
               </View>
@@ -336,6 +349,7 @@ const styles = StyleSheet.create({
   scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 28 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth },
   deskRow: { flexDirection: 'row', gap: 28, alignItems: 'flex-start' },
+  deskRail: { width: 380 },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18, borderRadius: 22 },
   quick: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, marginBottom: 14 },
   quickItem: { width: '23%', flexGrow: 1, minWidth: 74, maxWidth: 180, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 4, borderRadius: radius.lg, borderWidth: 1, minHeight: 82 },

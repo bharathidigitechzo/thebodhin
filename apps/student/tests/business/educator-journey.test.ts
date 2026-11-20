@@ -36,7 +36,7 @@ async function main() {
   const res = await noThrow(() => api.approvals.approveEducator('u_mod', row!.a.id), 'approve') as any;
   const tid = res?.tenantId ?? db.tenants.find((t) => t.ownerUserId === s.userId)?.id;
   const t = db.tenants.find((x) => x.id === tid)!;
-  ok(t?.subscription?.plan === 'growth' && t.subscription.status === 'trialing', '14-day Growth trial');
+  ok(t?.subscription?.plan === 'growth' && t.subscription.status === 'trialing', 'Growth free trial');
   const prof = seedTutors.find((x) => x.tenantId === tid);
   ok(prof && prof.name === 'Udhay Test' && /Maths/.test(prof.headline), 'own instructor profile created', prof);
   const ctx = api.educator.context(s.userId);

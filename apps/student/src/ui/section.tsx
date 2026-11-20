@@ -7,10 +7,14 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { Txt } from './Txt';
 import { haptic } from './haptics';
 import { IconButton } from './kit';
+import { useFrame } from './responsive';
 
 /** `maxWidth` must match the page body's column so the header lines up with the content (default 720 = shared.inner). */
-export function ScreenTop({ title, sub, fallback = '/educator/more', right, maxWidth = 720, padX = 16 }: { title: string; sub?: string; fallback?: string; right?: React.ReactNode; maxWidth?: number; padX?: number }) {
+export function ScreenTop({ title, sub, fallback = '/educator/more', right, maxWidth, padX }: { title: string; sub?: string; fallback?: string; right?: React.ReactNode; maxWidth?: number; padX?: number }) {
   const { c } = useTheme();
+  const frame = useFrame();
+  maxWidth ??= frame.maxWidth;
+  padX ??= frame.padX;
   return (
     <View style={[styles.topOuter, { paddingHorizontal: padX }]}>
       <View style={[styles.top, { maxWidth }]}>

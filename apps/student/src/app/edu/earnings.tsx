@@ -1,7 +1,7 @@
 /** Earnings & statement: direct vs marketplace split, payouts (hold → scheduled → paid), transactions, CSV statement. */
 import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { Cols, Grid, useLayout } from '@/ui/responsive';
+import { Cols, Grid, useLayout, useFrame } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +20,7 @@ type Ch = 'all' | 'tutor_direct' | 'bodhin_marketplace';
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function Earnings() {
+  const frame = useFrame(); // shared educator page frame (same width and side spacing on every section)
   const { isDesktop } = useLayout();
   const { c } = useTheme();
   const { session } = useAuth();
@@ -64,9 +65,9 @@ export default function Earnings() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop padX={isDesktop ? 32 : 16} maxWidth={isDesktop ? 1180 : 720} title="Earnings & payouts" right={<Pressable onPress={() => setHow(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="How payments work" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="information-circle-outline" size={26} color={c.primary} /></Pressable>} />
-        <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingTop: 8, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
-          <View style={[shared.inner, isDesktop && { maxWidth: 1180 }]}>
+        <ScreenTop title="Earnings & payouts" right={<Pressable onPress={() => setHow(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="How payments work" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="information-circle-outline" size={26} color={c.primary} /></Pressable>} />
+        <ScrollView contentContainerStyle={[shared.scroll, { paddingHorizontal: frame.padX }, isDesktop && { paddingTop: 8, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
+          <View style={[shared.inner, { maxWidth: frame.maxWidth }]}>
             <View style={shared.chips}>
               {([['month', 'This month'], ['last', 'Last month'], ['90d', 'Last 90 days']] as const).map(([k, l]) => <Chip key={k} label={l} active={period === k} onPress={() => setPeriod(k)} />)}
             </View>

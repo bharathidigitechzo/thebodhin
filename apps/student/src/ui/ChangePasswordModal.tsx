@@ -75,7 +75,7 @@ export function ChangePasswordModal() {
               label="New Password"
               value={newPassword}
               onChangeText={(v) => { setNewPassword(v); setError(null); }}
-              secureTextEntry
+              secure
               autoCapitalize="none"
               placeholder="At least 6 characters"
             />
@@ -84,7 +84,7 @@ export function ChangePasswordModal() {
               label="Confirm New Password"
               value={confirmPassword}
               onChangeText={(v) => { setConfirmPassword(v); setError(null); }}
-              secureTextEntry
+              secure
               autoCapitalize="none"
               placeholder="Re-type new password"
             />

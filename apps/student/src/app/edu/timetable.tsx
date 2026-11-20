@@ -26,8 +26,10 @@ import { Button } from '@/ui/Button';
 import { IconButton } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
 import { WeekTimetable } from '@/ui/WeekTimetable';
+import { useFrame } from '@/ui/responsive';
 
 export default function Timetable() {
+  const frame = useFrame(); // shared educator page frame (Certificates template)
   const { c } = useTheme();
   const userId = useAuth().session?.user.id ?? '';
   const [wk, setWk] = useState(0);
@@ -54,13 +56,13 @@ export default function Timetable() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <View style={styles.top}>
-          <IconButton icon="arrow-back" label="Back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/educator/live'))} />
+        <View style={[styles.top, { maxWidth: frame.maxWidth + frame.padX * 2, paddingHorizontal: frame.padX }]}>
+          <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/educator/live'))} />
           <Txt variant="heading" style={{ flex: 1 }}>Timetable</Txt>
           {tab === 'meetings' ? <Button title="Schedule" iconLeft="add" size="md" onPress={() => router.push('/edu/schedule')} /> : <Button title="Reminder" iconLeft="add" size="md" onPress={openNew} />}
         </View>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.inner}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX }]} showsVerticalScrollIndicator={false}>
+          <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
             <PillTabs<'meetings' | 'reminders'> value={tab} onChange={setTab} tabs={[{ id: 'meetings', label: `Meetings · ${data.total}`, icon: 'videocam-outline' }, { id: 'reminders', label: `Reminders${rem ? ` · ${rem.overdue.length + rem.today.length + rem.upcoming.length}` : ''}`, icon: 'alarm-outline' }]} />
             {msg && tab === 'reminders' && <Banner tone="success" text={msg} />}
             {tab === 'reminders' && rem && (

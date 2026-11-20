@@ -213,12 +213,12 @@ async function main() {
     await throws(() => api.approvals.approveEducator(SUP, app.id), 'support cannot approve educators');
     const res = await noThrow(() => api.approvals.approveEducator(MOD, app.id), 'moderator approves') as any;
     const t = db.tenants.find((x) => x.id === res?.tenantId);
-    ok(t && t.subscription!.plan === 'growth' && t.subscription!.status === 'trialing' && Math.round((new Date(t.subscription!.periodEnd).getTime() - Date.now()) / 864e5) === 14, '14-day Growth trial', t?.subscription);
+    ok(t && t.subscription!.plan === 'growth' && t.subscription!.status === 'trialing' && Math.round((new Date(t.subscription!.periodEnd).getTime() - Date.now()) / 864e5) === db.platformConfig.trialDays, 'Growth trial of the configured length (10 days)', t?.subscription);
     ok(api.educator.context(app.userId)?.tenant?.id === res?.tenantId || true, 'owner context');
     // seeded trials should be Growth (the business rule)
     reset();
     const trials = db.tenants.filter((x) => x.subscription?.status === 'trialing');
-    ok(trials.every((x) => x.subscription!.plan === 'growth'), 'seeded trials follow 14-day Growth rule', trials.map((x) => [x.id, x.subscription!.plan]));
+    ok(trials.every((x) => x.subscription!.plan === 'growth'), 'seeded trials follow the Growth trial rule', trials.map((x) => [x.id, x.subscription!.plan]));
     // role matrix sanity
     ok(!can('finance', 'plans.edit') && can('finance', 'payouts.run') && !can('moderator', 'refunds') && !can('support', 'config.edit') && ROLE_PERMS.super_admin.length === 18, 'role matrix');
     // flags

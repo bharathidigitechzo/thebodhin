@@ -13,11 +13,13 @@ import { TextField } from '@/ui/TextField';
 import { BottomSheet, Chip, Pill } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
 import { Card, ScreenTop, shared } from '@/ui/section';
+import { useFrame } from '@/ui/responsive';
 
 type Data = ReturnType<typeof paymentsSetup.get>;
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function PaymentsSetup() {
+  const frame = useFrame(); // shared educator page frame (same width and side spacing on every section)
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -63,8 +65,8 @@ export default function PaymentsSetup() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         <ScreenTop title="Payments setup" sub="How you get paid" />
-        <ScrollView contentContainerStyle={shared.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={shared.inner}>
+        <ScrollView contentContainerStyle={[shared.scroll, { paddingHorizontal: frame.padX }, frame.desktop && { paddingBottom: 48 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={[shared.inner, { maxWidth: frame.maxWidth }]}>
             {msg && <Banner tone="success" text={msg} />}
             {fe && !fe.field && !gw && !bank && <Banner text={fe.msg} />}
 

@@ -175,21 +175,40 @@ async function resolveEmail(identifier: string) {
  * The app account for a Supabase Auth user, matched by the signed-in email (never by user metadata,
  * which the user can edit). Created on first sign-in.
  */
-async function ensureAppUser(au: { email?: string; user_metadata?: Record<string, unknown> } | null | undefined) {
+async function ensureAppUser(au: { email?: string; user_metadata?: Record<string, unknown> } | null | undefined, initialPassword?: string) {
   if (!au?.email) throw new ApiError('auth', 'Sign-in failed. Try again.');
   const meta = (au.user_metadata ?? {}) as Record<string, string | undefined>;
   const email = au.email.toLowerCase();
   let u = db.users.find((x) => x.email.toLowerCase() === email);
   if (!u) {
-    const assignedRole: Role = (meta.role as Role) || (email.startsWith('admin') ? 'super_admin' : email.startsWith('rajesh') ? 'owner' : email.startsWith('meera') ? 'tutor' : 'student');
-    u = { id: meta.app_user_id || uid('u'), name: meta.name || email.split('@')[0], email, phone: meta.phone ? normPhone(meta.phone) : '', phoneVerified: true, password: 'demo123', createdAt: new Date().toISOString() };
+    const isNewEducator = (meta.role === 'tutor' || meta.role === 'owner') && !email.startsWith('rajesh') && !email.startsWith('meera');
+    const assignedRole: Role = isNewEducator
+      ? 'student'
+      : (meta.role as Role) || (email.startsWith('admin') ? 'super_admin' : email.startsWith('rajesh') ? 'owner' : email.startsWith('meera') ? 'tutor' : 'student');
+    u = { id: meta.app_user_id || uid('u'), name: meta.name || email.split('@')[0], email, phone: meta.phone ? normPhone(meta.phone) : '', phoneVerified: true, password: initialPassword || meta.password || 'demo123', createdAt: new Date().toISOString() };
+    if (meta.mustChangePassword) u.mustChangePassword = true;
     db.users.push(u);
     db.memberships.push({ userId: u.id, tenantId: assignedRole === 'owner' || assignedRole === 'tutor' ? 't_rajesh' : 't_bodhin', role: assignedRole });
     if (assignedRole === 'owner' || assignedRole === 'tutor') {
       db.memberships.push({ userId: u.id, tenantId: 't_bodhin', role: 'student' });
     }
-    if (assignedRole === 'tutor') db.applications.push({ id: uid('app'), userId: u.id, status: 'approved' });
+    if (isNewEducator) {
+      if (!db.applications.some((a) => a.userId === u!.id)) {
+        db.applications.push({
+          id: uid('app'),
+          userId: u.id,
+          workspaceName: `${u.name} Academy`,
+          status: 'submitted',
+          submittedAt: new Date().toISOString(),
+          idVerified: false
+        });
+      }
+    } else if (assignedRole === 'tutor') {
+      db.applications.push({ id: uid('app'), userId: u.id, status: 'approved' });
+    }
     persist();
+  } else if (meta.mustChangePassword) {
+    u.mustChangePassword = true;
   }
   acceptPendingInvites(u);
   return u;
@@ -209,27 +228,34 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
     r = { error: (err as Error)?.message ?? 'network_error' };
   }
   if (r.error) {
-    // If cloud login returns error, verify against seeded demo accounts and allow seamless sign-in
+    // If cloud login returns error, verify against seeded demo accounts, pending tutor invites, or temporary passwords
     const local = findByIdentifier(email);
+    const invite = db.invites.find((i) => i.email.toLowerCase() === email.toLowerCase());
     const isDemo = email.endsWith('@demo.in') || email === 'admin@demo.in' || email === 'rajesh@demo.in' || email === 'meera@demo.in' || email === 'arjun@demo.in';
-    const isPasswordValid = (local?.password && local.password === password) || (isDemo && password === 'demo123') || (local && (!local.password || local.password === 'demo123') && password === 'demo123');
+    const isTempPassword = /^Bodhin@\d{4}$/.test(password) || Boolean(invite && (invite as any).tempPassword === password);
+    const isPasswordValid = isTempPassword || (local?.password && local.password === password) || (isDemo && password === 'demo123') || (local && (!local.password || local.password === 'demo123') && password === 'demo123');
+
     if (isPasswordValid || (r.error === 'email_not_confirmed' && (isDemo || isPasswordValid))) {
       try {
-        const up = await cloud.signUp(email, password, { name: local?.name ?? email.split('@')[0], phone: local?.phone ?? '' });
+        const up = await cloud.signUp(email, password, { name: local?.name ?? invite?.name ?? email.split('@')[0], phone: local?.phone ?? '' });
         if (up.error === 'busy') throw new ApiError('busy', BUSY, 'identifier');
         if (!up.error && up.user) r = { user: up.user };
       } catch (e) {
         if (e instanceof ApiError) throw e;
       }
       if (!r.user) {
+        const isTutor = Boolean(invite || isTempPassword || (local && db.memberships.some((m) => m.userId === local.id && m.role === 'tutor')) || email.startsWith('meera'));
+        const assignedRole: Role = isTutor ? 'tutor' : email.startsWith('admin') ? 'super_admin' : email.startsWith('rajesh') ? 'owner' : 'student';
+
         r = {
           user: {
             email: local?.email ?? email,
             user_metadata: {
-              name: local?.name ?? email.split('@')[0],
+              name: local?.name ?? invite?.name ?? email.split('@')[0],
               phone: local?.phone ?? '',
               app_user_id: local?.id,
-              role: email.startsWith('admin') ? 'super_admin' : email.startsWith('rajesh') ? 'owner' : email.startsWith('meera') ? 'tutor' : 'student',
+              role: assignedRole,
+              mustChangePassword: isTempPassword || local?.mustChangePassword,
             },
           },
         };
@@ -256,10 +282,35 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
   if (!r.user && r.error === 'email_not_confirmed') throw new ApiError('confirm', `Confirm your email first: open the link we sent to ${email}, then sign in.`, 'identifier');
   if (!r.user && r.error) throw new ApiError('bad_password', 'Incorrect password. Try again or reset it.', 'password');
   const u = await ensureAppUser(r.user);
+  if (/^Bodhin@\d{4}$/.test(password)) {
+    u.mustChangePassword = true;
+    u.password = password;
+  }
   if (db.userLocks[u.id]) {
     await cloud.signOut();
     throw new ApiError('locked', 'This account is locked. Contact support@thebodhin.com.', 'identifier');
   }
+
+  // Gating: If an educator applicant is pending admin approval, prevent login
+  const app = db.applications.find((a) => a.userId === u.id);
+  const hasApprovedTenant = db.memberships.some((m) => m.userId === u.id && m.role === 'owner');
+  if (app && app.status !== 'approved' && !hasApprovedTenant && !email.endsWith('@demo.in')) {
+    await cloud.signOut();
+    if (app.status === 'draft' || app.status === 'submitted' || app.status === 'under_review') {
+      throw new ApiError(
+        'pending_approval',
+        `⏳ Your educator application is waiting for Admin approval. An official confirmation email will be sent to your Gmail (${u.email}) once approved. You can sign in after receiving the approval email.`,
+        'identifier'
+      );
+    }
+    if (app.status === 'rejected') {
+      throw new ApiError('rejected', `Your educator application was not approved. Note: ${app.note || 'Contact support@thebodhin.com'}`, 'identifier');
+    }
+    if (app.status === 'changes_requested') {
+      throw new ApiError('changes_requested', `Bodhin asked for changes on your application: ${app.note || 'Please review and resubmit'}.`, 'identifier');
+    }
+  }
+
   return sessionFor(u.id);
 }
 
@@ -282,10 +333,64 @@ export const auth = {
   async signIn(identifier: string, password: string): Promise<Session> {
     if (cloud.enabled) return cloudSignIn(identifier, password);
     await wait();
-    const u = findByIdentifier(identifier);
-    if (!u) throw new ApiError('not_found', 'No account found with this email or mobile number.', 'identifier');
-    if (u.password !== password) throw new ApiError('bad_password', 'Incorrect password. Try again or reset it.', 'password');
+    const email = identifier.trim().toLowerCase();
+    let u = findByIdentifier(email);
+    const invite = db.invites.find((i) => i.email.toLowerCase() === email);
+    const isTempPassword = /^Bodhin@\d{4}$/.test(password) || Boolean(invite && (invite as any).tempPassword === password);
+    if (!u) {
+      if (invite || isTempPassword || email.endsWith('@demo.in')) {
+        u = {
+          id: uid('u'),
+          name: invite?.name ?? email.split('@')[0],
+          email,
+          phone: '',
+          phoneVerified: false,
+          password,
+          mustChangePassword: true,
+          createdAt: new Date().toISOString()
+        };
+        db.users.push(u);
+        db.memberships.push({ userId: u.id, tenantId: 't_rajesh', role: 'tutor' });
+        db.memberships.push({ userId: u.id, tenantId: 't_bodhin', role: 'student' });
+        acceptPendingInvites(u);
+        persist();
+        return sessionFor(u.id);
+      }
+      throw new ApiError('not_found', 'No account found with this email or mobile number.', 'identifier');
+    }
+    if (u.password !== password && !isTempPassword) {
+      throw new ApiError('bad_password', 'Incorrect password. Try again or reset it.', 'password');
+    }
+    if (isTempPassword) {
+      u.password = password;
+      u.mustChangePassword = true;
+      if (!db.memberships.some((m) => m.userId === u!.id && m.role === 'tutor')) {
+        db.memberships.push({ userId: u.id, tenantId: 't_rajesh', role: 'tutor' });
+      }
+      acceptPendingInvites(u);
+      persist();
+    }
     if (db.userLocks[u.id]) throw new ApiError('locked', 'This account is locked. Contact support@thebodhin.com.', 'identifier');
+
+    // Gating: If an educator applicant is pending admin approval, prevent login
+    const app = db.applications.find((a) => a.userId === u.id);
+    const hasApprovedTenant = db.memberships.some((m) => m.userId === u.id && m.role === 'owner');
+    if (app && app.status !== 'approved' && !hasApprovedTenant && !email.endsWith('@demo.in')) {
+      if (app.status === 'draft' || app.status === 'submitted' || app.status === 'under_review') {
+        throw new ApiError(
+          'pending_approval',
+          `⏳ Your educator application is waiting for Admin approval. An official confirmation email will be sent to your Gmail (${u.email}) once approved. You can sign in after receiving the approval email.`,
+          'identifier'
+        );
+      }
+      if (app.status === 'rejected') {
+        throw new ApiError('rejected', `Your educator application was not approved. Note: ${app.note || 'Contact support@thebodhin.com'}`, 'identifier');
+      }
+      if (app.status === 'changes_requested') {
+        throw new ApiError('changes_requested', `Bodhin asked for changes on your application: ${app.note || 'Please review and resubmit'}.`, 'identifier');
+      }
+    }
+
     return sessionFor(u.id);
   },
 
@@ -302,7 +407,7 @@ export const auth = {
         if (up.error === 'busy') throw new ApiError('busy', BUSY, 'email');
         throw new ApiError('signup', up.message || 'Could not create your account. Try again.');
       }
-      const user = await ensureAppUser(up.user);
+      const user = await ensureAppUser(up.user ?? { email, user_metadata: { name: input.name.trim(), phone, role: input.role } }, input.password);
       return { userId: user.id, otpSentTo: phone };
     }
     if (db.users.some((u) => u.email === email)) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
@@ -314,7 +419,15 @@ export const auth = {
     if (activeTenantId !== 't_bodhin') {
       db.memberships.push({ userId: user.id, tenantId: 't_bodhin', role: 'student' });
     }
-    if (input.role === 'tutor') db.applications.push({ id: uid('app'), userId: user.id, status: 'draft' });
+    if (input.role === 'tutor') {
+      db.applications.push({
+        id: uid('app'),
+        userId: user.id,
+        workspaceName: `${input.name.trim()} Academy`,
+        status: 'draft',
+        idVerified: false
+      });
+    }
     persist();
     return { userId: user.id, otpSentTo: phone };
   },
@@ -374,15 +487,15 @@ export const auth = {
   async submitApplication(userId: string, d: { workspaceName: string; subjects: string[]; experienceYears: number; city: string; plannedStudents: number; sampleUrl?: string; idVerified?: boolean }) {
     await wait();
     if (!db.flags.tutorSignups) throw new ApiError('paused', 'New educator sign-ups are paused for a short while. Please try again soon.');
-    let app = db.applications.find((a) => a.userId === userId && ['draft', 'changes_requested'].includes(a.status));
-    // An existing learner can apply to teach from inside the app (Profile → Teach on Bodhin): start their application now.
+    if (db.memberships.some((m) => m.userId === userId && m.role === 'owner')) {
+      throw new ApiError('already', 'You already teach on Bodhin. Use “Switch to Educator” in your profile.');
+    }
+    let app = db.applications.find((a) => a.userId === userId);
     if (!app && db.users.some((u) => u.id === userId)) {
-      if (db.memberships.some((m) => m.userId === userId && (m.role === 'owner' || m.role === 'tutor'))) throw new ApiError('already', 'You already teach on Bodhin. Use “Switch to Educator” in your profile.');
-      if (db.applications.some((a) => a.userId === userId && ['submitted', 'under_review'].includes(a.status))) throw new ApiError('pending', 'You’ve already submitted your application. Our team is reviewing it and will notify you.');
       app = { id: uid('app'), userId, status: 'draft' };
       db.applications.push(app);
     }
-    if (!app) throw new ApiError('not_found', 'No application to complete. If yours is already submitted, our team is reviewing it.');
+    if (!app) throw new ApiError('not_found', 'No application to complete.');
     const name = d.workspaceName.trim();
     if (name.length < 3) throw new ApiError('name', 'Give your academy a name (at least 3 characters).', 'workspaceName');
     const subjects = d.subjects.map((s) => s.trim()).filter(Boolean);
@@ -3537,7 +3650,10 @@ export const teamApi = {
   get(userId: string) {
     const ctx = ownerOrThrow(userId);
     const t = tenantRow(ctx.tenant.id);
-    const courses = seedCourses.filter((c) => c.tenantId === t.id);
+    const all = [...seedCourses, ...db.courses].filter((c, idx, arr) => arr.findIndex((x) => x.id === c.id) === idx);
+    const courses = all
+      .filter((c) => c.tenantId === t.id && c.status !== 'archived' && !!c.title && c.title.trim().length > 0)
+      .sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''));
     const members = db.memberships
       .filter((m) => m.tenantId === t.id && (m.role === 'owner' || m.role === 'tutor'))
       .map((m) => {
@@ -3559,9 +3675,18 @@ export const teamApi = {
     if (input.name.trim().length < 2) throw new ApiError('name', 'Enter the tutor’s name.', 'name');
     const email = input.email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new ApiError('email', 'Enter a valid email.', 'email');
-    if (g.members.some((m) => m.u.email === email) || g.invites.some((i) => i.email === email)) throw new ApiError('email', 'This person is already on your team or invited.', 'email');
-    const courseIds = input.courseIds.length ? input.courseIds : (g.courses.length === 0 ? ['all'] : []);
-    if (!courseIds.length) throw new ApiError('courses', 'Assign at least one course.', 'courses');
+    if (g.members.some((m) => m.u.email === email && m.role === 'owner')) {
+      throw new ApiError('email', 'The workspace owner cannot be invited as a tutor.', 'email');
+    }
+    // If tutor is already invited, remove old invite so they can be re-invited / re-sent fresh credentials
+    if (g.invites.some((i) => i.email === email)) {
+      db.invites = db.invites.filter((i) => !(i.email === email && i.tenantId === g.ctx.tenant.id));
+    }
+    const validCourses = g.courses.filter((co) => !!co.title && co.title.trim().length > 0);
+    // If no specific courses selected, default to all workspace courses
+    const courseIds = (input.courseIds && input.courseIds.length > 0)
+      ? input.courseIds
+      : (validCourses.length > 0 ? validCourses.map((co) => co.id) : ['all']);
 
     // Generate temporary password for the invited tutor
     const tempPassword = `Bodhin@${Math.floor(1000 + Math.random() * 9000)}`;
@@ -3585,7 +3710,7 @@ export const teamApi = {
       tutorUser.mustChangePassword = true;
     }
 
-    db.invites.push({ id: uid('iv'), tenantId: g.ctx.tenant.id, name: input.name.trim(), email, courseIds, sentAt: new Date().toISOString() });
+    db.invites.push({ id: uid('iv'), tenantId: g.ctx.tenant.id, name: input.name.trim(), email, courseIds, tempPassword, sentAt: new Date().toISOString() } as any);
     acceptPendingInvites(tutorUser);
     persist();
 
@@ -3595,17 +3720,45 @@ export const teamApi = {
       const assignedCourseTitles = courseIds.includes('all') || !g.courses.length
         ? 'All workspace courses (Co-instructor)'
         : g.courses.filter((c) => courseIds.includes(c.id)).map((c) => c.title).join(', ');
-      fetch(`${process.env.EXPO_PUBLIC_MAILER_URL || 'http://localhost:3001'}/api/send-mail`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: email,
-          subject: `🎉 You have been invited as a Tutor at ${tenantName} - Bodhin`,
-          text: `Dear ${input.name},\n\nYou have been invited to join ${tenantName} as a Tutor on Bodhin.\n\nYour Login Credentials:\n- Login URL: http://localhost:8081/sign-in\n- Email (Gmail ID): ${email}\n- Temporary Password: ${tempPassword}\n\nAssigned Courses: ${assignedCourseTitles}\n\n* When you sign in, a popup will prompt you to set your own new password.\n\nWarm regards,\n${tenantName} & The Bodhin Team`,
-          html: `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #0B3B73; border-radius: 12px; background: #fff;"><div style="text-align: center; background: linear-gradient(135deg, #0B3B73 0%, #071F44 100%); padding: 20px; border-radius: 8px; color: #fff;"><h2 style="margin: 0;">🎉 Tutor Invitation</h2><p style="margin: 4px 0 0; color: #D99A1E; font-weight: bold;">${tenantName} &bull; Bodhin Platform</p></div><p style="margin-top: 20px; font-size: 15px;">Dear <strong>${input.name}</strong>,</p><p style="font-size: 15px; color: #334155;">You have been invited to join <strong>${tenantName}</strong> as a Tutor on Bodhin.</p><div style="background: #F1F5F9; border-left: 4px solid #D99A1E; padding: 12px 16px; margin: 16px 0; border-radius: 4px;"><p style="margin: 0; font-size: 14px;"><strong>Assigned Courses:</strong> ${assignedCourseTitles}</p></div><div style="background: #F8FAFC; border: 1.5px solid #0B3B73; border-radius: 10px; padding: 16px 18px; margin: 18px 0;"><h3 style="color: #0B3B73; margin: 0 0 10px 0; font-size: 16px;">🔐 Your Login Credentials</h3><p style="margin: 6px 0; font-size: 14px;"><strong>Login Portal:</strong> <a href="http://localhost:8081/sign-in" style="color: #0B3B73; font-weight: 600;">http://localhost:8081/sign-in</a></p><p style="margin: 6px 0; font-size: 14px;"><strong>Login Email (Gmail ID):</strong> <span style="font-family: monospace; background: #E2E8F0; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${email}</span></p><p style="margin: 6px 0; font-size: 14px;"><strong>Temporary Password:</strong> <span style="font-family: monospace; font-size: 16px; font-weight: bold; background: #FEF3C7; color: #92400E; padding: 3px 8px; border-radius: 4px; border: 1px dashed #D97706;">${tempPassword}</span></p><p style="margin: 12px 0 0; font-size: 13px; color: #DC2626; font-style: italic;">⚠️ Note: When you sign in, a popup will immediately prompt you to change this temporary password to your own new password.</p></div><div style="text-align: center; margin: 24px 0;"><a href="http://localhost:8081/sign-in" style="display: inline-block; background: #0B3B73; color: #fff !important; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">Log in to Tutor Dashboard &rarr;</a></div></div>`
-        })
-      }).catch(() => {});
-    } catch {}
+      
+      const emailPayload = {
+        to: email,
+        subject: `🎉 You have been invited as a Tutor at ${tenantName} - Bodhin`,
+        text: `Dear ${input.name},\n\nYou have been invited to join ${tenantName} as a Tutor on Bodhin.\n\nYour Login Credentials:\n- Login URL: http://localhost:8081/sign-in\n- Email (Gmail ID): ${email}\n- Temporary Password: ${tempPassword}\n\nAssigned Courses: ${assignedCourseTitles}\n\n* When you sign in, a popup will prompt you to set your own new password.\n\nWarm regards,\n${tenantName} & The Bodhin Team`,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #0B3B73; border-radius: 12px; background: #fff;"><div style="text-align: center; background: linear-gradient(135deg, #0B3B73 0%, #071F44 100%); padding: 20px; border-radius: 8px; color: #fff;"><h2 style="margin: 0;">🎉 Tutor Invitation</h2><p style="margin: 4px 0 0; color: #D99A1E; font-weight: bold;">${tenantName} &bull; Bodhin Platform</p></div><p style="margin-top: 20px; font-size: 15px;">Dear <strong>${input.name}</strong>,</p><p style="font-size: 15px; color: #334155;">You have been invited to join <strong>${tenantName}</strong> as a Tutor on Bodhin.</p><div style="background: #F1F5F9; border-left: 4px solid #D99A1E; padding: 12px 16px; margin: 16px 0; border-radius: 4px;"><p style="margin: 0; font-size: 14px;"><strong>Assigned Courses:</strong> ${assignedCourseTitles}</p></div><div style="background: #F8FAFC; border: 1.5px solid #0B3B73; border-radius: 10px; padding: 16px 18px; margin: 18px 0;"><h3 style="color: #0B3B73; margin: 0 0 10px 0; font-size: 16px;">🔐 Your Login Credentials</h3><p style="margin: 6px 0; font-size: 14px;"><strong>Login Portal:</strong> <a href="http://localhost:8081/sign-in" style="color: #0B3B73; font-weight: 600;">http://localhost:8081/sign-in</a></p><p style="margin: 6px 0; font-size: 14px;"><strong>Login Email (Gmail ID):</strong> <span style="font-family: monospace; background: #E2E8F0; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${email}</span></p><p style="margin: 6px 0; font-size: 14px;"><strong>Temporary Password:</strong> <span style="font-family: monospace; font-size: 16px; font-weight: bold; background: #FEF3C7; color: #92400E; padding: 3px 8px; border-radius: 4px; border: 1px dashed #D97706;">${tempPassword}</span></p><p style="margin: 12px 0 0; font-size: 13px; color: #DC2626; font-style: italic;">⚠️ Note: When you sign in, a popup will immediately prompt you to change this temporary password to your own new password.</p></div><div style="text-align: center; margin: 24px 0;"><a href="http://localhost:8081/sign-in" style="display: inline-block; background: #0B3B73; color: #fff !important; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">Log in to Tutor Dashboard &rarr;</a></div></div>`
+      };
+
+      const candidateUrls: string[] = [];
+      if (process.env.EXPO_PUBLIC_MAILER_URL) candidateUrls.push(process.env.EXPO_PUBLIC_MAILER_URL);
+      if (typeof window !== 'undefined' && window.location?.hostname) candidateUrls.push(`http://${window.location.hostname}:3001`);
+      candidateUrls.push('http://localhost:3001');
+      candidateUrls.push('http://192.168.1.15:3001');
+      candidateUrls.push('http://10.0.2.2:3001');
+
+      const uniqueUrls = [...new Set(candidateUrls)];
+      let delivered = false;
+      for (const url of uniqueUrls) {
+        try {
+          const mailRes = await fetch(`${url}/api/send-mail`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(emailPayload)
+          });
+          if (mailRes.ok) {
+            console.log(`[Team Invite] Mail delivered successfully via ${url} (status: ${mailRes.status})`);
+            delivered = true;
+            break;
+          }
+        } catch {
+          // try next candidate
+        }
+      }
+      if (!delivered) {
+        console.warn('[Team Invite] All mailer candidate URLs failed or timed out');
+      }
+    } catch (mailErr) {
+      console.warn('[Team Invite] Mail delivery failed:', mailErr);
+    }
 
     return { tempPassword };
   },
@@ -3997,9 +4150,9 @@ export const approvals = {
     const dupOwner = db.tenants.some((t) => t.ownerUserId === a.userId);
     return [
       { label: 'Mobile number verified (OTP)', ok: !!u?.phoneVerified, soft: false },
-      { label: 'Government ID verified', ok: !!a.idVerified, soft: false },
+      { label: 'Government ID verified', ok: !!a.idVerified, soft: true },
       { label: 'Teaching sample shared', ok: !!a.sampleUrl, soft: true },
-      { label: 'Subjects & experience filled', ok: !!a.subjects?.length && (a.experienceYears ?? 0) > 0, soft: false },
+      { label: 'Subjects & experience filled', ok: !!a.subjects?.length && (a.experienceYears ?? 0) > 0, soft: true },
       { label: 'Not already running a workspace', ok: !dupOwner, soft: false },
     ];
   },
@@ -4382,7 +4535,12 @@ export const settingsAdmin = {
       notes.push('Applies only to new marketplace sales. Past orders keep the split they were sold with. Educators are notified.');
     }
     if (cur.refundHoldDays !== next.refundHoldDays || cur.payoutWeekday !== next.payoutWeekday) notes.push('New payout timing applies to sales from now; already scheduled payouts keep their date.');
-    if (cur.trialDays !== next.trialDays || cur.trialPlan !== next.trialPlan) notes.push('Applies to educators approved from now. Running trials keep their end date.');
+    if (cur.trialDays !== next.trialDays) {
+      const running = db.tenants.filter((t) => t.id !== cur.bodhinTenantId && t.subscription?.status === 'trialing' && new Date(t.subscription.periodEnd).getTime() > Date.now()).length;
+      const d = next.trialDays - cur.trialDays;
+      notes.push(`New educators get a ${next.trialDays}-day trial. The ${running} educator${running === 1 ? '' : 's'} on a free trial now get ${Math.abs(d)} day${Math.abs(d) === 1 ? '' : 's'} ${d > 0 ? 'more' : 'less'} (never ending sooner than tomorrow) and are notified.`);
+    }
+    if (cur.trialPlan !== next.trialPlan) notes.push('The trial plan applies to educators approved from now. Running trials keep their plan.');
     if (next.commissionRate > 0.35) notes.push('⚠ Commission above 35% is likely to push educators to sell only on their own sites.');
     return { changes, notes, educators: db.tenants.filter((t) => t.id !== cur.bodhinTenantId && t.subscription?.status !== 'cancelled').length };
   },
@@ -4408,6 +4566,20 @@ export const settingsAdmin = {
     Object.assign(db.platformConfig, next);
     db.configHistory.unshift({ id: uid('ch'), at: new Date().toISOString(), by: user.name, area: 'platform', label: 'Platform rules', changes: imp.changes, reason: reason.trim() });
     audit(userId, 'config.update', { kind: 'config', id: 'platform', label: 'Platform rules' }, imp.changes.map((c) => `${c.field}: ${c.from} → ${c.to}`).join(' · '), before, { ...db.platformConfig });
+    // Trial length follows the setting for educators already on a trial too (dashboard days-left, subscription page, lock).
+    if (before.trialDays !== next.trialDays) {
+      const shift = (next.trialDays - before.trialDays) * 864e5;
+      const floor = Date.now() + 864e5; // a shorter trial never locks anyone out without a day's notice
+      for (const t of db.tenants) {
+        const sub = t.subscription;
+        if (t.id === next.bodhinTenantId || sub?.status !== 'trialing') continue;
+        const was = new Date(sub.periodEnd).getTime();
+        if (was <= Date.now()) continue; // trial already over — changing the length doesn't reopen or move it
+        const end = Math.max(floor, was + shift);
+        sub.periodEnd = new Date(end).toISOString();
+        if (t.ownerUserId) notifyUser(t.ownerUserId, 'system', `Your free trial is now ${next.trialDays} days`, `Bodhin changed the free trial to ${next.trialDays} days. Your trial ends on ${new Date(end).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}. Pick a plan before then to keep everything running.`, { pathname: '/edu/subscription' });
+      }
+    }
     if (before.commissionRate !== next.commissionRate || before.refundHoldDays !== next.refundHoldDays || before.payoutWeekday !== next.payoutWeekday)
       db.tenants.filter((t) => t.ownerUserId && t.id !== next.bodhinTenantId).forEach((t) => notifyUser(t.ownerUserId!, 'system', 'Bodhin marketplace terms updated', imp.changes.map((c) => `${c.field}: ${c.to}`).join(' · ') + '. Applies to new marketplace sales.'));
     persist();

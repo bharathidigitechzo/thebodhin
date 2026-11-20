@@ -13,10 +13,12 @@ import { layout } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { Chip, IconButton, Pill, Skeleton } from '@/ui/kit';
+import { useFrame } from '@/ui/responsive';
 
 type Data = Awaited<ReturnType<typeof assessAdmin.list>>;
 
 export default function AssessHub() {
+  const frame = useFrame(); // shared educator page frame (Certificates template)
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -33,8 +35,8 @@ export default function AssessHub() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <View style={styles.top}>
-          <View style={styles.topInner}>
+        <View style={[styles.top, { paddingHorizontal: frame.padX }]}>
+          <View style={[styles.topInner, { maxWidth: frame.maxWidth }]}>
             <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/educator/more'))} />
             <Txt variant="heading" style={{ flex: 1 }} numberOfLines={1}>Quizzes & assignments</Txt>
             <Button
@@ -45,8 +47,8 @@ export default function AssessHub() {
             />
           </View>
         </View>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.inner}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX }]} showsVerticalScrollIndicator={false}>
+          <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
             {!data ? (
               <View style={{ gap: 10 }}><Skeleton h={64} r={16} /><Skeleton h={80} /><Skeleton h={80} /></View>
             ) : (

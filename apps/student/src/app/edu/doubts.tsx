@@ -11,6 +11,7 @@ import { layout } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { Avatar, BottomSheet, Chip, IconButton, Pill, Skeleton } from '@/ui/kit';
+import { useFrame } from '@/ui/responsive';
 
 type Data = Awaited<ReturnType<typeof doubts.list>>;
 type Row = Data['rows'][number];
@@ -18,6 +19,7 @@ const age = (h: number) => (h < 1 ? 'just now' : h < 24 ? `${Math.round(h)} h ag
 const TEMPLATES = ['Great question! ', 'This is covered in the next lesson — ', 'We’ll go through this in Saturday’s live class. ', 'Please check the resources tab of this lesson. '];
 
 export default function DoubtsInbox() {
+  const frame = useFrame(); // shared educator page frame (Certificates template)
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -52,12 +54,12 @@ export default function DoubtsInbox() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <View style={styles.top}>
+        <View style={[styles.top, { maxWidth: frame.maxWidth + frame.padX * 2, paddingHorizontal: frame.padX }]}>
           <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/educator/home'))} />
           <Txt variant="heading" style={{ flex: 1 }}>Student doubts</Txt>
         </View>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.inner}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX }]} showsVerticalScrollIndicator={false}>
+          <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Chip label={`Waiting (${data?.counts.open ?? '…'})`} active={filter === 'open'} onPress={() => setFilter('open')} />
               <Chip label={`Answered (${data?.counts.answered ?? '…'})`} active={filter === 'answered'} onPress={() => setFilter('answered')} />

@@ -12,10 +12,11 @@ import { Button } from '@/ui/Button';
 import { BottomSheet, Pill } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
 import { Card, KV, fmtDay, inr } from '@/ui/section';
+import { PillTabs } from '@/ui/pickers';
+import { Page } from '@/ui/grow';
 import { ago, initials, lakh } from '@/ui/admin';
 
 type Tab = 'payouts' | 'refunds' | 'billing' | 'reports';
-const TABS: [Tab, string][] = [['payouts', 'Payouts'], ['refunds', 'Refunds'], ['billing', 'Billing'], ['reports', 'Reports']];
 
 export default function Money() {
   const p = useLocalSearchParams<{ tab?: Tab }>();
@@ -29,29 +30,51 @@ export default function Money() {
   useFocusEffect(useCallback(() => setRev((r) => r + 1), []));
   const done = (m: string) => { setMsg(m); setRev((r) => r + 1); setTimeout(() => setMsg(null), 3500); };
   return (
-    <View style={{ flex: 1, backgroundColor: c.ivory }}>
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        <View style={styles.head}><Txt variant="title">Money</Txt></View>
-        <View style={styles.tabsWrap}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} style={{ flex: 1 }}>
-            {TABS.map(([k, l]) => (
-              <Pressable key={k} onPress={() => setTab(k)} style={[styles.tab, { backgroundColor: tab === k ? c.primary : c.surface, borderColor: tab === k ? c.primary : c.border }]} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
-                <Txt variant="label" color={tab === k ? '#fff' : c.ink}>{l}</Txt>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={styles.inner}>
-            {msg && <Banner tone="success" text={msg} />}
-            {tab === 'payouts' && <Payouts key={rev} userId={userId} done={done} />}
-            {tab === 'refunds' && <Refunds key={rev} userId={userId} done={done} />}
-            {tab === 'billing' && <Billing key={rev} userId={userId} done={done} />}
-            {tab === 'reports' && <Reports key={rev} userId={userId} />}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </View>
+    <Page title="Money" sub="Payouts, refunds, subscription billing & reports" fallback="/admin/more" wide>
+      <PillTabs<Tab>
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'payouts', label: 'Payouts', icon: 'cash-outline' },
+          { id: 'refunds', label: 'Refunds', icon: 'receipt-outline' },
+          { id: 'billing', label: 'Billing', icon: 'card-outline' },
+          { id: 'reports', label: 'Reports', icon: 'stats-chart-outline' },
+        ]}
+      />
+      {msg && <Banner tone="success" text={msg} />}
+      {tab === 'payouts' && (
+        <>
+          <Txt variant="caption" color={c.muted}>
+            Weekly educator payouts via RazorpayX. Marketplace sales older than 7 days minus 20% platform commission and 2% gateway fee.
+          </Txt>
+          <Payouts key={rev} userId={userId} done={done} />
+        </>
+      )}
+      {tab === 'refunds' && (
+        <>
+          <Txt variant="caption" color={c.muted}>
+            Review and decide student refund requests within the 7-day guarantee window.
+          </Txt>
+          <Refunds key={rev} userId={userId} done={done} />
+        </>
+      )}
+      {tab === 'billing' && (
+        <>
+          <Txt variant="caption" color={c.muted}>
+            Educator subscription MRR, past-due collections, and trial status tracking.
+          </Txt>
+          <Billing key={rev} userId={userId} done={done} />
+        </>
+      )}
+      {tab === 'reports' && (
+        <>
+          <Txt variant="caption" color={c.muted}>
+            Financial overview, GMV sales trends, and platform revenue mix.
+          </Txt>
+          <Reports key={rev} userId={userId} />
+        </>
+      )}
+    </Page>
   );
 }
 

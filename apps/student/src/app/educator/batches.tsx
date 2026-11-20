@@ -1,7 +1,7 @@
 /** Educator › Batches tab: two segments — Batches (cohorts) and Students (workspace-wide). */
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
-import { useLayout } from '@/ui/responsive';
+import { useFrame } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,8 +11,10 @@ import { slotLabel } from '@/core/batch';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { layout, radius } from '@/theme/tokens';
-import { TwoTone, Txt } from '@/ui/Txt';
-import { AppHeader, Avatar, BottomSheet, Chip, Pill, ProgressBar, Skeleton, useAsync } from '@/ui/kit';
+import { Txt } from '@/ui/Txt';
+import { Button } from '@/ui/Button';
+import { ScreenTop } from '@/ui/section';
+import { Avatar, BottomSheet, Chip, Pill, ProgressBar, Skeleton, useAsync } from '@/ui/kit';
 import { CourseArt } from '@/ui/course';
 
 type Seg = 'batches' | 'students';
@@ -20,7 +22,6 @@ const STATUS_TONE = { active: 'success', upcoming: 'info', completed: 'neutral' 
 const P_TONE = { active: ['Active', 'success'], completed: ['Completed', 'info'], inactive: ['Inactive', 'live'], pending: ['Awaiting approval', 'warning'], on_hold: ['On hold', 'neutral'] } as const;
 
 export default function BatchesTab() {
-  const { isDesktop } = useLayout();
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -31,13 +32,19 @@ export default function BatchesTab() {
   const [invite, setInvite] = useState(false);
   const { width } = useWindowDimensions();
   const wide = width >= 900;
+  const frame = useFrame(); // shared educator page frame (Certificates template)
+  const primary = () => (seg === 'batches' ? (ctx?.ent.has('batches') ? router.push('/edu/batch-new') : router.push({ pathname: '/edu/subscription', params: { reason: 'Batches are available from the Creator plan. Upgrade to create batches.' } })) : setInvite(true));
 
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        <View style={[styles.head, wide && { maxWidth: 1080 }]}>
-          <AppHeader profileHref="/educator/more" action={owner ? { title: seg === 'batches' ? 'New batch' : 'Invite students', icon: seg === 'batches' ? 'add' : 'person-add', onPress: () => (seg === 'batches' ? (ctx?.ent.has('batches') ? router.push('/edu/batch-new') : router.push({ pathname: '/edu/subscription', params: { reason: 'Batches are available from the Creator plan. Upgrade to create batches.' } })) : setInvite(true)) } : undefined} />
-          <TwoTone lead={seg === 'batches' ? 'Batches &' : 'Your'} accent={seg === 'batches' ? 'Cohorts' : 'Students'} variant="title" />
+        <ScreenTop
+          title={seg === 'batches' ? 'Batches & cohorts' : 'Your students'}
+          sub={seg === 'batches' ? 'Groups of students with a start date and weekly classes' : 'Everyone learning in your academy'}
+          fallback="/educator/home"
+          right={owner ? <Button title={seg === 'batches' ? 'New batch' : 'Invite students'} iconLeft={seg === 'batches' ? 'add' : 'person-add'} size="md" onPress={primary} /> : undefined}
+        />
+        <View style={[styles.head, { paddingHorizontal: frame.padX, maxWidth: frame.maxWidth + frame.padX * 2 }]}>
           <View style={[styles.seg, { backgroundColor: c.surfaceMuted }]} accessibilityRole="tablist">
             {(['batches', 'students'] as const).map((s) => (
               <Pressable key={s} onPress={() => setSeg(s)} accessibilityRole="tab" accessibilityState={{ selected: seg === s }} style={[styles.segBtn, seg === s && { backgroundColor: c.surface, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 }]}>
@@ -48,16 +55,6 @@ export default function BatchesTab() {
         </View>
         {seg === 'batches' ? <BatchList userId={userId} wide={wide} /> : <StudentList userId={userId} wide={wide} />}
 
-        {owner && !isDesktop && (
-          <Pressable
-            onPress={() => (seg === 'batches' ? (ctx?.ent.has('batches') ? router.push('/edu/batch-new') : router.push({ pathname: '/edu/subscription', params: { reason: 'Batches are available from the Creator plan. Upgrade to create batches.' } })) : setInvite(true))}
-            style={[styles.fab, { backgroundColor: c.primary }]}
-            accessibilityRole="button"
-          >
-            <Ionicons name={seg === 'batches' ? 'add' : 'person-add'} size={24} color="#fff" />
-            <Txt variant="bodyStrong" color="#fff">{seg === 'batches' ? 'New batch' : 'Invite students'}</Txt>
-          </Pressable>
-        )}
       </SafeAreaView>
       <InviteSheet open={invite} onClose={() => setInvite(false)} userId={userId} />
     </View>
@@ -66,6 +63,7 @@ export default function BatchesTab() {
 
 function BatchList({ userId, wide }: { userId: string; wide: boolean }) {
   const { c } = useTheme();
+  const frame = useFrame();
   const { data, reload } = useAsync(() => batchesApi.list(userId), [userId]);
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   const [filter, setFilter] = useState<'all' | 'active' | 'upcoming' | 'completed'>('all');
@@ -74,8 +72,8 @@ function BatchList({ userId, wide }: { userId: string; wide: boolean }) {
   const avg = data?.length ? Math.round(data.reduce((s, r) => s + r.progress, 0) / data.length) : 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false}>
-      <View style={[styles.inner, wide && { maxWidth: 1080 }]}>
+    <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX }]} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false}>
+      <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
         <View style={[styles.stats, { backgroundColor: c.surface, borderColor: c.border }]}>
           {([['albums-outline', String(data?.length ?? '–'), 'Batches', c.primary], ['people-outline', String(total), 'Students', c.success], ['trending-up-outline', `${avg}%`, 'Avg progress', '#7C3AED'], ['radio-outline', String((data ?? []).filter((r) => r.status === 'active').length), 'Running', c.accent]] as const).map(([i, v, l, col]) => (
             <View key={l} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
@@ -137,6 +135,7 @@ function BatchList({ userId, wide }: { userId: string; wide: boolean }) {
 
 function StudentList({ userId, wide }: { userId: string; wide: boolean }) {
   const { c } = useTheme();
+  const frame = useFrame();
   const { data, reload } = useAsync(() => people.list(userId), [userId]);
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   const ctx = educator.context(userId);
@@ -149,8 +148,8 @@ function StudentList({ userId, wide }: { userId: string; wide: boolean }) {
   const count = (f: typeof filter) => (data ?? []).filter((r) => f === 'all' || r.status === f).length;
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      <View style={[styles.inner, wide && { maxWidth: 1080 }]}>
+    <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX }]} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
         <View style={[styles.stats, { backgroundColor: c.surface, borderColor: c.border }]}>
           {([['people-outline', count('all'), 'Students', c.primary], ['school-outline', count('active'), 'Active', c.success], ['ribbon-outline', count('completed'), 'Completed', c.info], ['person-add-outline', (data ?? []).filter((r) => r.isNew).length, 'New (7 d)', c.accent]] as const).map(([i, v, l, col]) => (
             <View key={l} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
@@ -203,10 +202,10 @@ function StudentList({ userId, wide }: { userId: string; wide: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  head: { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center', paddingHorizontal: 20, gap: 10, paddingBottom: 10 },
+  head: { width: '100%', alignSelf: 'center', gap: 10, paddingBottom: 10 },
   seg: { flexDirection: 'row', padding: 4, borderRadius: radius.pill },
   segBtn: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill },
-  scroll: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 110 },
+  scroll: { alignItems: 'center', paddingBottom: 48 },
   inner: { width: '100%', maxWidth: layout.contentMaxWidth, gap: 12 },
   stats: { flexDirection: 'row', paddingVertical: 14, borderRadius: radius.lg, borderWidth: 1 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

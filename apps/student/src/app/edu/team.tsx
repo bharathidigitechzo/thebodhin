@@ -1,11 +1,11 @@
 /** Team & tutors: seats vs plan, members with assigned courses, invite (seat-limited), edit access, remove. */
 import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Cols, Grid, useLayout } from '@/ui/responsive';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Cols, Grid, useLayout, useFrame } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ApiError, teamApi } from '@/api/client';
+import { ApiError, courseAdmin, teamApi } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Txt } from '@/ui/Txt';
@@ -19,6 +19,7 @@ type Data = ReturnType<typeof teamApi.get>;
 type Member = Data['members'][number];
 
 export default function Team() {
+  const frame = useFrame(); // shared educator page frame (same width and side spacing on every section)
   const { isDesktop } = useLayout();
   const { c } = useTheme();
   const { session } = useAuth();
@@ -32,11 +33,36 @@ export default function Team() {
   const [fe, setFe] = useState<{ field?: string; msg: string } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showAddCourse, setShowAddCourse] = useState(false);
+  const [newCourseName, setNewCourseName] = useState('');
+  const [addingCourse, setAddingCourse] = useState(false);
   const load = useCallback(() => { try { setD(teamApi.get(userId)); } catch (e) { setFe({ msg: e instanceof ApiError ? e.message : 'Not available' }); } }, [userId]);
   useFocusEffect(load);
   if (!d) return <SafeAreaView style={{ flex: 1, backgroundColor: c.ivory, padding: 20 }}>{fe && <Banner text={fe.msg} />}</SafeAreaView>;
   const full = d.seats.limit != null && d.seats.used >= d.seats.limit;
   const title = (ids: string[]) => (ids.length === d.courses.length ? 'All courses' : ids.map((id) => d.courses.find((x) => x.id === id)?.title).filter(Boolean).join(', ') || 'No courses');
+
+  const handleAddNewCourse = () => {
+    const trimmed = newCourseName.trim();
+    if (!trimmed) return;
+    setAddingCourse(true);
+    try {
+      const courseId = courseAdmin.create(userId);
+      courseAdmin.update(userId, courseId, { title: trimmed });
+      const updatedData = teamApi.get(userId);
+      setD(updatedData);
+      setF((prev) => ({
+        ...prev,
+        courseIds: [...prev.courseIds, courseId]
+      }));
+      setNewCourseName('');
+      setShowAddCourse(false);
+    } catch (e: any) {
+      setFe({ field: 'courses', msg: e?.message || 'Could not create course.' });
+    } finally {
+      setAddingCourse(false);
+    }
+  };
 
   const invite = async () => {
     setBusy(true);
@@ -56,9 +82,9 @@ export default function Team() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <ScreenTop padX={isDesktop ? 32 : 16} maxWidth={isDesktop ? 1000 : 720} title="Team & tutors" sub={d.ctx.tenant.branding.displayName} />
-        <ScrollView contentContainerStyle={[shared.scroll, isDesktop && { paddingHorizontal: 32, paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
-          <View style={[shared.inner, isDesktop && { maxWidth: 1000 }]}>
+        <ScreenTop title="Team & tutors" sub={d.ctx.tenant.branding.displayName} />
+        <ScrollView contentContainerStyle={[shared.scroll, { paddingHorizontal: frame.padX }, isDesktop && { paddingBottom: 48 }]} showsVerticalScrollIndicator={false}>
+          <View style={[shared.inner, { maxWidth: frame.maxWidth }]}>
             {msg && <Banner tone="success" text={msg} />}
             {!d.multiTutor && <Banner tone="info" text="Your plan includes 1 tutor (you). Upgrade to Growth to add tutors." />}
             <Card title="Tutor seats">
@@ -114,43 +140,115 @@ export default function Team() {
           </View>
         </ScrollView>
         <View style={[shared.footer, { borderTopColor: c.border, backgroundColor: c.surface }]}>
-          <Button title="Invite a tutor" iconLeft="person-add" disabled={!d.multiTutor || full} onPress={() => { setInv(true); setFe(null); setF({ name: '', email: '', courseIds: [] }); }} style={{ width: '100%', maxWidth: 720 }} />
+          <Button
+            title="Invite a tutor"
+            iconLeft="person-add"
+            disabled={!d.multiTutor || full}
+            onPress={() => {
+              const allCourseIds = d.courses.filter((co) => !!co.title && co.title.trim().length > 0).map((co) => co.id);
+              setInv(true);
+              setFe(null);
+              setF({ name: '', email: '', courseIds: allCourseIds });
+            }}
+            style={{ width: '100%', maxWidth: frame.maxWidth }}
+          />
         </View>
       </SafeAreaView>
 
-      <BottomSheet open={inv} onClose={() => setInv(false)} title="Invite a tutor" footer={<Button title="Send invite" size="md" loading={busy} style={{ flex: 1 }} onPress={invite} />}>
-        <View style={{ gap: 12 }}>
+      <BottomSheet
+        open={inv}
+        onClose={() => setInv(false)}
+        title="Invite a tutor"
+        footer={<Button title="Send invite" size="md" loading={busy} style={{ flex: 1 }} onPress={invite} />}
+      >
+        <View style={{ gap: 14 }}>
+          {fe && <Banner tone="danger" text={fe.msg} />}
           <TextField label="Name" value={f.name} onChangeText={(v) => setF({ ...f, name: v })} error={fe?.field === 'name' ? fe.msg : undefined} placeholder="e.g. Bharathi P" />
           <TextField label="Email" value={f.email} onChangeText={(v) => setF({ ...f, email: v })} keyboardType="email-address" autoCapitalize="none" error={fe?.field === 'email' ? fe.msg : undefined} placeholder="e.g. bharathidigitechzo@gmail.com" />
-          <Txt variant="label">Courses they’ll teach</Txt>
-          {d.courses.length === 0 ? (
-            <View style={{ backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, gap: 6, borderWidth: 1, borderColor: c.border }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="sparkles" size={18} color={c.primary} />
-                <Txt variant="bodyStrong">All workspace courses (Co-instructor)</Txt>
+          
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Txt variant="label">Courses they’ll teach</Txt>
+              {!showAddCourse && (
+                <Pressable
+                  onPress={() => setShowAddCourse(true)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 3, paddingHorizontal: 8, borderRadius: 6, backgroundColor: c.surfaceMuted, borderWidth: 1, borderColor: c.border }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add new course"
+                >
+                  <Ionicons name="add-circle" size={16} color={c.primary} />
+                  <Txt variant="label" color={c.primary} style={{ fontWeight: '600' }}>+ Add course</Txt>
+                </Pressable>
+              )}
+            </View>
+
+            {showAddCourse && (
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', padding: 8, borderRadius: 10, backgroundColor: c.surfaceMuted, borderWidth: 1.5, borderColor: c.primary }}>
+                <TextInput
+                  value={newCourseName}
+                  onChangeText={setNewCourseName}
+                  placeholder="Enter new course title..."
+                  placeholderTextColor={c.muted}
+                  autoFocus
+                  style={{
+                    flex: 1,
+                    fontSize: 14,
+                    color: c.ink,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    backgroundColor: c.surface,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: c.border
+                  }}
+                  onSubmitEditing={handleAddNewCourse}
+                />
+                <Button
+                  title="Add"
+                  loading={addingCourse}
+                  onPress={handleAddNewCourse}
+                  disabled={!newCourseName.trim()}
+                />
+                <Pressable onPress={() => { setShowAddCourse(false); setNewCourseName(''); }} style={{ padding: 4 }}>
+                  <Ionicons name="close-circle" size={20} color={c.muted} />
+                </Pressable>
               </View>
-              <Txt variant="caption" color={c.inkSoft}>
-                You haven’t created specific courses in this workspace yet. When you invite this tutor, they will automatically be granted teaching access to all courses created in this academy.
-              </Txt>
-            </View>
-          ) : (
-            <View style={{ gap: 8 }}>
-              <Checkbox
-                label="Select all courses"
-                checked={d.courses.length > 0 && f.courseIds.length === d.courses.length}
-                onChange={(v) => setF({ ...f, courseIds: v ? d.courses.map((co) => co.id) : [] })}
-              >
-                <Txt variant="bodyStrong">Select all courses ({d.courses.length})</Txt>
-              </Checkbox>
-              <View style={{ height: 1, backgroundColor: c.border, marginVertical: 2 }} />
-              {d.courses.map((co) => (
-                <Checkbox key={co.id} label={co.title} checked={f.courseIds.includes(co.id)} onChange={(v) => setF({ ...f, courseIds: v ? [...f.courseIds, co.id] : f.courseIds.filter((x) => x !== co.id) })}>
-                  <Txt variant="label" style={{ flex: 1 }}>{co.title}</Txt>
-                </Checkbox>
-              ))}
-            </View>
-          )}
-          {fe && (fe.field === 'courses' || !fe.field) && <Banner text={fe.msg} />}
+            )}
+
+            {d.courses.filter((co) => !!co.title && co.title.trim().length > 0).length === 0 ? (
+              <View style={{ backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, gap: 6, borderWidth: 1, borderColor: c.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="sparkles" size={18} color={c.primary} />
+                  <Txt variant="bodyStrong">All workspace courses (Co-instructor)</Txt>
+                </View>
+                <Txt variant="caption" color={c.inkSoft}>
+                  You haven’t created specific courses in this workspace yet. When you invite this tutor, they will automatically be granted teaching access to all courses created in this academy.
+                </Txt>
+              </View>
+            ) : (
+              <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.surfaceMuted, overflow: 'hidden' }}>
+                <View style={{ paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.surface }}>
+                  <Checkbox
+                    label="Select all courses"
+                    checked={d.courses.filter((co) => !!co.title && co.title.trim().length > 0).length > 0 && f.courseIds.length === d.courses.filter((co) => !!co.title && co.title.trim().length > 0).length}
+                    onChange={(v) => setF({ ...f, courseIds: v ? d.courses.filter((co) => !!co.title && co.title.trim().length > 0).map((co) => co.id) : [] })}
+                  >
+                    <Txt variant="bodyStrong">Select all courses ({d.courses.filter((co) => !!co.title && co.title.trim().length > 0).length})</Txt>
+                  </Checkbox>
+                </View>
+                <ScrollView nestedScrollEnabled style={{ maxHeight: 180 }} contentContainerStyle={{ padding: 12, gap: 8 }} showsVerticalScrollIndicator={true}>
+                  {d.courses
+                    .filter((co) => !!co.title && co.title.trim().length > 0)
+                    .map((co) => (
+                      <Checkbox key={co.id} label={co.title} checked={f.courseIds.includes(co.id)} onChange={(v) => setF({ ...f, courseIds: v ? [...f.courseIds, co.id] : f.courseIds.filter((x) => x !== co.id) })}>
+                        <Txt variant="body" style={{ flex: 1 }}>{co.title.trim()}</Txt>
+                      </Checkbox>
+                    ))}
+                </ScrollView>
+              </View>
+            )}
+            {fe?.field === 'courses' && <Txt variant="caption" color={c.danger}>{fe.msg}</Txt>}
+          </View>
         </View>
       </BottomSheet>
 
@@ -158,12 +256,16 @@ export default function Team() {
         <Button title="Remove" size="md" variant="outline" style={{ flex: 1 }} onPress={() => { setRm(edit); setEdit(null); }} />
         <Button title="Save" size="md" style={{ flex: 1 }} onPress={() => { teamApi.setCourses(userId, edit!.u.id, editIds); setEdit(null); setMsg('Access updated.'); load(); }} />
       </>}>
-        <View style={{ gap: 8 }}>
-          {d.courses.map((co) => (
-            <Checkbox key={co.id} label={co.title} checked={editIds.includes(co.id)} onChange={(v) => setEditIds((x) => (v ? [...x, co.id] : x.filter((y) => y !== co.id)))}>
-              <Txt variant="label" style={{ flex: 1 }}>{co.title}</Txt>
-            </Checkbox>
-          ))}
+        <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.surfaceMuted, overflow: 'hidden' }}>
+          <ScrollView nestedScrollEnabled style={{ maxHeight: 240 }} contentContainerStyle={{ padding: 12, gap: 8 }} showsVerticalScrollIndicator={true}>
+            {d.courses
+              .filter((co) => !!co.title && co.title.trim().length > 0)
+              .map((co) => (
+                <Checkbox key={co.id} label={co.title} checked={editIds.includes(co.id)} onChange={(v) => setEditIds((x) => (v ? [...x, co.id] : x.filter((y) => y !== co.id)))}>
+                  <Txt variant="body" style={{ flex: 1 }}>{co.title.trim()}</Txt>
+                </Checkbox>
+              ))}
+          </ScrollView>
         </View>
       </BottomSheet>
 

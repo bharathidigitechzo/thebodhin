@@ -279,10 +279,12 @@ export function BottomSheet({ open, onClose, title, children, footer }: { open: 
   const dialog = width >= 1024; // desktop: centred dialog instead of a bottom sheet
   const y = useRef(new Animated.Value(height)).current;
   const [mounted, setMounted] = useState(open);
+  const scrollRef = useRef<any>(null);
 
   useEffect(() => {
     if (open) {
       setMounted(true);
+      setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: false }), 50);
       Animated.spring(y, { toValue: 0, useNativeDriver: true, damping: 22, stiffness: 220 }).start();
     } else if (mounted) {
       Animated.timing(y, { toValue: height, duration: 200, useNativeDriver: true }).start(() => setMounted(false));
@@ -313,7 +315,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: { open: 
             </Pressable>
           </View>
         </View>
-        <ScrollView style={{ flexShrink: 1, maxHeight: height * 0.62 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 16, gap: 14 }} showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollRef} style={{ flexShrink: 1, maxHeight: height * 0.62 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 16, gap: 14 }} showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
         {footer && <View style={[styles.sheetFooter, { borderTopColor: c.border }]}>{footer}</View>}

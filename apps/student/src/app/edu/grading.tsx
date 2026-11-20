@@ -11,6 +11,7 @@ import { layout } from '@/theme/tokens';
 import { Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 import { Avatar, Chip, IconButton, Pill, Skeleton } from '@/ui/kit';
+import { useFrame } from '@/ui/responsive';
 
 type Data = Awaited<ReturnType<typeof grading.queue>>;
 const ago = (iso?: string) => {
@@ -20,6 +21,7 @@ const ago = (iso?: string) => {
 };
 
 export default function GradingQueue() {
+  const frame = useFrame(); // shared educator page frame (Certificates template)
   const p = useLocalSearchParams<{ assessmentId?: string }>();
   const { c } = useTheme();
   const { session } = useAuth();
@@ -32,12 +34,12 @@ export default function GradingQueue() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <View style={styles.top}>
+        <View style={[styles.top, { maxWidth: frame.maxWidth + frame.padX * 2, paddingHorizontal: frame.padX }]}>
           <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/educator/home'))} />
           <Txt variant="heading" style={{ flex: 1 }}>Grade assignments</Txt>
         </View>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.inner}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX }]} showsVerticalScrollIndicator={false}>
+          <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               <Chip label={`To grade (${data?.counts.to_grade ?? '…'})`} active={filter === 'to_grade'} onPress={() => setFilter('to_grade')} />
               <Chip label={`Graded (${data?.counts.graded ?? '…'})`} active={filter === 'graded'} onPress={() => setFilter('graded')} />

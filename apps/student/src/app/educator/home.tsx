@@ -5,7 +5,7 @@
  */
 import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { ModuleGrid, useLayout } from '@/ui/responsive';
+import { useFrame, useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
@@ -30,6 +30,7 @@ const ago = (iso: string) => {
 
 export default function EducatorHome() {
   const { isDesktop } = useLayout();
+  const frame = useFrame(); // same width and side spacing as every educator section
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -42,8 +43,8 @@ export default function EducatorHome() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false}>
-          <View style={[styles.inner, twoCol && { maxWidth: 1080 }]}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: frame.padX, paddingBottom: isDesktop ? 48 : 110 }]} refreshControl={<RefreshControl refreshing={false} onRefresh={() => { reload(); }} />} showsVerticalScrollIndicator={false}>
+          <View style={[styles.inner, { maxWidth: frame.maxWidth }]}>
             <AppHeader profileHref="/educator/more" action={{ title: 'Create', onPress: () => setCreate(true) }} />
             {error ? (
               <ErrorState text={error} onRetry={reload} />
@@ -55,7 +56,6 @@ export default function EducatorHome() {
               </View>
             ) : (
               <>
-                {!isDesktop && <View style={{ marginTop: 12 }}><ModuleGrid area="educator" title="Your modules" compact /></View>}
                 <Body data={data} twoCol={twoCol} />
               </>
             )}
@@ -109,12 +109,13 @@ function Body({ data, twoCol }: { data: Data; twoCol: boolean }) {
   const worst = ctx.usage.worst;
 
   const firstSteps = owner ? [
-    { done: ctx.tenant.payments?.directGatewayStatus === 'active', icon: 'card', t: 'Connect your payment gateway', s: 'Students on your site pay you directly', go: () => router.push('/edu/payments-setup') },
-    { done: kpis.liveCourses > 0 || educator.courses(session?.user.id ?? '').length > 0, icon: 'layers', t: 'Create your first course', s: 'Recorded, live or hybrid', go: () => router.push({ pathname: '/edu/course/[id]', params: { id: courseAdmin.create(session?.user.id ?? '') } }) },
-    { done: ctx.tenant.branding.primary !== '#0B3B73', icon: 'color-palette', t: 'Add your brand', s: `Colours, logo · ${ctx.host}`, go: () => router.push('/edu/workspace') },
-    { done: kpis.students > 0, icon: 'person-add', t: 'Invite your students', s: 'Share a link or upload a list', go: () => router.navigate({ pathname: '/educator/batches', params: { seg: 'students' } }) },
+    { done: ctx.tenant.payments?.directGatewayStatus === 'active', icon: 'card', t: 'Connect your payment gateway', s: 'Students on your site pay you directly (Razorpay / Stripe)', go: () => router.push('/edu/payments-setup') },
+    { done: kpis.liveCourses > 0 || educator.courses(session?.user.id ?? '').length > 0, icon: 'layers', t: 'Create your first course', s: 'Recorded video, live classes or hybrid cohorts', go: () => router.push({ pathname: '/edu/course/[id]', params: { id: courseAdmin.create(session?.user.id ?? '') } }) },
+    { done: ctx.tenant.branding.primary !== '#0B3B73', icon: 'color-palette', t: 'Add your academy branding', s: `Custom colours, logo & banner · ${ctx.host}`, go: () => router.push('/edu/workspace') },
+    { done: kpis.students > 0, icon: 'person-add', t: 'Invite your students & tutors', s: 'Share public link, batch code or add faculty', go: () => router.navigate({ pathname: '/educator/batches', params: { seg: 'students' } }) },
   ] as const : [];
   const stepsLeft = firstSteps.filter((x) => !x.done).length;
+  const progressPct = Math.round(((firstSteps.length - stepsLeft) / (firstSteps.length || 1)) * 100);
 
   const left = (
     <>
@@ -124,32 +125,59 @@ function Body({ data, twoCol }: { data: Data; twoCol: boolean }) {
           <Txt variant="caption" color={c.inkSoft}>New sales and enrolments are paused. Your students keep access. Check notifications or contact support@thebodhin.com.</Txt>
         </View>
       )}
+
+      {/* Onboarding checklist */}
       {stepsLeft > 0 && kpis.students === 0 && (
-        <View style={[styles.steps, { backgroundColor: c.surface, borderColor: c.primary }]}>
-          <Txt variant="heading">Get your academy live</Txt>
-          <Txt variant="caption" color={c.muted}>{firstSteps.length - stepsLeft} of {firstSteps.length} done</Txt>
+        <View style={[styles.steps, { backgroundColor: c.surface, borderColor: c.border, marginTop: 12 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View>
+              <Txt variant="heading">Get your academy live</Txt>
+              <Txt variant="caption" color={c.muted}>{firstSteps.length - stepsLeft} of {firstSteps.length} completed</Txt>
+            </View>
+            <Pill text={`${progressPct}% ready`} tone={progressPct >= 50 ? 'success' : 'info'} />
+          </View>
+
+          {/* Progress bar */}
+          <View style={[styles.progressTrack, { backgroundColor: c.surfaceMuted }]}>
+            <View style={[styles.progressFill, { width: `${Math.max(progressPct, 5)}%`, backgroundColor: c.primary }]} />
+          </View>
+
           {firstSteps.map((x) => (
-            <Pressable key={x.t} onPress={x.go} disabled={x.done} style={styles.step} accessibilityRole="button" accessibilityLabel={x.t}>
-              <Ionicons name={x.done ? 'checkmark-circle' : (`${x.icon}-outline` as keyof typeof Ionicons.glyphMap)} size={24} color={x.done ? c.success : c.primary} />
+            <Pressable key={x.t} onPress={x.go} disabled={x.done} style={[styles.step, { borderBottomWidth: 1, borderBottomColor: c.border }]} accessibilityRole="button" accessibilityLabel={x.t}>
+              <View style={[styles.stepIconWrap, { backgroundColor: x.done ? '#E6F4EA' : c.primarySoft }]}>
+                <Ionicons name={x.done ? 'checkmark-circle' : (`${x.icon}` as keyof typeof Ionicons.glyphMap)} size={22} color={x.done ? c.success : c.primary} />
+              </View>
               <View style={{ flex: 1 }}>
                 <Txt variant="bodyStrong" style={x.done ? { textDecorationLine: 'line-through', color: c.muted } : undefined}>{x.t}</Txt>
                 <Txt variant="caption" color={c.muted}>{x.s}</Txt>
               </View>
-              {!x.done && <Ionicons name="chevron-forward" size={18} color={c.muted} />}
+              {x.done ? (
+                <Pill text="Done" tone="success" />
+              ) : (
+                <View style={[styles.startPill, { backgroundColor: c.surfaceMuted }]}>
+                  <Txt variant="caption" color={c.primary} style={{ fontWeight: '700' }}>Start →</Txt>
+                </View>
+              )}
             </Pressable>
           ))}
         </View>
       )}
+
       {next && <LiveCard next={next} />}
-      <View style={styles.kpis}>
-        <Kpi icon="people" tint="#E9F0FD" color={c.info} value={kpis.students.toLocaleString('en-IN')} label={owner ? 'Active students' : 'My students'} delta={owner ? `+${kpis.studentsDelta}%` : undefined} onPress={() => router.navigate('/educator/batches')} />
-        <Kpi icon="layers" tint="#FDF3E1" color={c.warning} value={String(kpis.liveCourses)} label="Live courses" onPress={() => router.navigate('/educator/courses')} />
-        <Kpi icon="radio" tint="#E8F6EC" color={c.success} value={String(kpis.sessionsThisMonth)} label="Classes held" onPress={() => router.navigate('/educator/live')} />
-        {earnings ? (
-          <Kpi icon="wallet" tint="#F1ECFC" color="#7C3AED" value={inr(earnings.net)} label="Net this month" delta={`${earnings.deltaPct >= 0 ? '+' : ''}${earnings.deltaPct}%`} onPress={() => router.push('/edu/earnings')} />
-        ) : (
-          <Kpi icon="document-text" tint="#F1ECFC" color="#7C3AED" value={String(attention.find((a) => a.key === 'grade')?.count ?? 0)} label="To grade" onPress={() => router.push('/edu/grading')} />
-        )}
+
+      {/* Primary KPIs */}
+      <View style={{ marginTop: 14 }}>
+        <SectionHeader title="Academy Overview" />
+        <View style={styles.kpis}>
+          <Kpi icon="people" tint="#E9F0FD" color={c.info} value={kpis.students.toLocaleString('en-IN')} label={owner ? 'Active students' : 'My students'} delta={owner ? `+${kpis.studentsDelta}%` : undefined} onPress={() => router.navigate('/educator/batches')} />
+          <Kpi icon="layers" tint="#FDF3E1" color={c.warning} value={String(kpis.liveCourses)} label="Live courses" onPress={() => router.navigate('/educator/courses')} />
+          <Kpi icon="radio" tint="#E8F6EC" color={c.success} value={String(kpis.sessionsThisMonth)} label="Classes held" onPress={() => router.navigate('/educator/live')} />
+          {earnings ? (
+            <Kpi icon="wallet" tint="#F1ECFC" color="#7C3AED" value={inr(earnings.net)} label="Net this month" delta={`${earnings.deltaPct >= 0 ? '+' : ''}${earnings.deltaPct}%`} onPress={() => router.push('/edu/earnings')} />
+          ) : (
+            <Kpi icon="document-text" tint="#F1ECFC" color="#7C3AED" value={String(attention.find((a) => a.key === 'grade')?.count ?? 0)} label="To grade" onPress={() => router.push('/edu/grading')} />
+          )}
+        </View>
       </View>
 
       {attention.length > 0 && (
@@ -171,30 +199,61 @@ function Body({ data, twoCol }: { data: Data; twoCol: boolean }) {
           </View>
         </>
       )}
+
+      {/* Growth Guidance for Educators — in the left column so both columns end at a similar height */}
+      <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, marginTop: 14 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name="sparkles" size={18} color="#D97706" />
+          <Txt variant="bodyStrong">Tips to get your first 50 students</Txt>
+        </View>
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+            <Txt variant="caption" color={c.primary} style={{ fontWeight: '700' }}>1.</Txt>
+            <Txt variant="caption" color={c.inkSoft} style={{ flex: 1 }}>Share your academy link directly on WhatsApp, LinkedIn and student groups.</Txt>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+            <Txt variant="caption" color={c.primary} style={{ fontWeight: '700' }}>2.</Txt>
+            <Txt variant="caption" color={c.inkSoft} style={{ flex: 1 }}>Host a free live introduction masterclass to build audience trust.</Txt>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+            <Txt variant="caption" color={c.primary} style={{ fontWeight: '700' }}>3.</Txt>
+            <Txt variant="caption" color={c.inkSoft} style={{ flex: 1 }}>Publish at least one bite-sized recorded preview lesson.</Txt>
+          </View>
+        </View>
+      </View>
+
     </>
   );
 
   const right = (
     <>
       {earnings && <EarningsCard e={earnings} />}
+
       <SectionHeader title="Course completion" />
       <Completion data={completion} />
+
       <SectionHeader title="Recent activity" />
       <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, padding: 0 }]}>
-        {activity.map((a, i) => {
-          const icon = { enroll: 'school', live: 'radio', submission: 'document-text', certificate: 'ribbon', review: 'star', payout: 'cash' }[a.kind] as keyof typeof Ionicons.glyphMap;
-          return (
-            <Pressable key={a.id} disabled={!a.link} onPress={() => a.link && router.push(a.link as any)} style={[styles.act, i > 0 && { borderTopWidth: 1, borderTopColor: c.border }]} accessibilityRole={a.link ? 'button' : undefined}>
-              <View style={[styles.actIcon, { backgroundColor: c.primarySoft }]}>
-                <Ionicons name={icon} size={16} color={c.primary} />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Txt variant="label" style={{ fontWeight: '500' }}>{a.text}</Txt>
-                <Txt variant="caption" color={c.muted}>{ago(a.at)}</Txt>
-              </View>
-            </Pressable>
-          );
-        })}
+        {activity.length === 0 ? (
+          <View style={{ padding: 18, alignItems: 'center' }}>
+            <Txt variant="caption" color={c.muted}>No activity yet. Once students enrol, updates will appear here.</Txt>
+          </View>
+        ) : (
+          activity.map((a, i) => {
+            const icon = { enroll: 'school', live: 'radio', submission: 'document-text', certificate: 'ribbon', review: 'star', payout: 'cash' }[a.kind] as keyof typeof Ionicons.glyphMap;
+            return (
+              <Pressable key={a.id} disabled={!a.link} onPress={() => a.link && router.push(a.link as any)} style={[styles.act, i > 0 && { borderTopWidth: 1, borderTopColor: c.border }]} accessibilityRole={a.link ? 'button' : undefined}>
+                <View style={[styles.actIcon, { backgroundColor: c.primarySoft }]}>
+                  <Ionicons name={icon} size={16} color={c.primary} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Txt variant="label" style={{ fontWeight: '500' }}>{a.text}</Txt>
+                  <Txt variant="caption" color={c.muted}>{ago(a.at)}</Txt>
+                </View>
+              </Pressable>
+            );
+          })
+        )}
       </View>
     </>
   );
@@ -204,41 +263,262 @@ function Body({ data, twoCol }: { data: Data; twoCol: boolean }) {
       {/* workspace + greeting */}
       <Pressable onPress={() => owner && router.push('/edu/workspace')} style={[styles.ws, { backgroundColor: c.surface, borderColor: c.border }]} accessibilityRole="button" accessibilityLabel={`Workspace ${ctx.tenant.branding.displayName}`}>
         <View style={[styles.wsLogo, { backgroundColor: ctx.tenant.branding.primary }]}>
-          <Txt variant="label" color="#fff">{ctx.tenant.branding.displayName.split(' ').map((w) => w[0]).slice(0, 2).join('')}</Txt>
+          <Txt variant="label" color="#fff" style={{ fontWeight: '700' }}>{ctx.tenant.branding.displayName.split(' ').map((w) => w[0]).slice(0, 2).join('')}</Txt>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Txt variant="bodyStrong" numberOfLines={1}>{ctx.tenant.branding.displayName}</Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Txt variant="bodyStrong" numberOfLines={1}>{ctx.tenant.branding.displayName}</Txt>
+            <Ionicons name="checkmark-circle" size={16} color={c.primary} />
+          </View>
           <Txt variant="caption" color={c.muted} numberOfLines={1}>{ctx.host}</Txt>
         </View>
-        <Pill text={owner ? `${ctx.ent.plan.name} plan` : 'Tutor'} tone={owner ? 'gold' : 'info'} />
+        <Pill text={owner ? (ctx.trialDaysLeft != null ? 'Growth Plan • Free Trial' : `${ctx.ent.plan.name} plan`) : 'Tutor'} tone={owner ? 'gold' : 'info'} />
       </Pressable>
+
       <View style={{ marginTop: 14, marginBottom: 4 }}>
         <Txt variant="label" color={c.muted}>{greeting()}</Txt>
         <Txt variant="title" color={c.primaryDeep}>Welcome back, {data.firstName} 👋</Txt>
       </View>
 
+      {/* Prominent Growth Plan Free Trial Card */}
       {ctx.trialDaysLeft != null && owner && (
-        <Pressable onPress={() => router.push('/edu/subscription')} style={[styles.banner, { backgroundColor: c.infoBg, borderColor: c.info }]} accessibilityRole="button">
-          <Ionicons name="gift-outline" size={22} color={c.info} />
-          <Txt variant="label" style={{ flex: 1 }}>{ctx.trialDaysLeft} days left in your free {ctx.ent.plan.name} trial. Pick a plan to keep everything running.</Txt>
-          <Ionicons name="chevron-forward" size={18} color={c.info} />
-        </Pressable>
+        <View style={[styles.growthTrialHero, { backgroundColor: c.surface, borderColor: '#D97706' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <View style={[styles.rocketBadge, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="rocket" size={22} color="#D97706" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Txt variant="bodyStrong" style={{ fontSize: 16 }}>Growth Plan • Free Trial Active</Txt>
+                  <Pill text={`${ctx.trialDaysLeft} days remaining`} tone="gold" />
+                </View>
+                <Txt variant="caption" color={c.muted} style={{ marginTop: 2 }}>
+                  Full premium features unlocked: multi-tutors, assessments, 500 students & custom academy site.
+                </Txt>
+              </View>
+            </View>
+
+            <Button
+              title="Explore Perks"
+              size="md"
+              variant="outline"
+              onPress={() => router.push('/edu/subscription')}
+            />
+          </View>
+
+          {/* Unlocked Perks Chips */}
+          <View style={styles.perksRow}>
+            <View style={[styles.perkChip, { backgroundColor: c.surfaceMuted }]}>
+              <Ionicons name="people-outline" size={14} color={c.primary} />
+              <Txt variant="caption" style={{ fontWeight: '600' }}>500 Students</Txt>
+            </View>
+            <View style={[styles.perkChip, { backgroundColor: c.surfaceMuted }]}>
+              <Ionicons name="videocam-outline" size={14} color={c.primary} />
+              <Txt variant="caption" style={{ fontWeight: '600' }}>100h Live Classes</Txt>
+            </View>
+            <View style={[styles.perkChip, { backgroundColor: c.surfaceMuted }]}>
+              <Ionicons name="cloud-outline" size={14} color={c.primary} />
+              <Txt variant="caption" style={{ fontWeight: '600' }}>50 GB Storage</Txt>
+            </View>
+            <View style={[styles.perkChip, { backgroundColor: c.surfaceMuted }]}>
+              <Ionicons name="person-add-outline" size={14} color={c.primary} />
+              <Txt variant="caption" style={{ fontWeight: '600' }}>5 Tutor Seats</Txt>
+            </View>
+            <View style={[styles.perkChip, { backgroundColor: c.surfaceMuted }]}>
+              <Ionicons name="shield-checkmark-outline" size={14} color={c.success} />
+              <Txt variant="caption" style={{ fontWeight: '600', color: c.success }}>0% Direct Sales Fee</Txt>
+            </View>
+          </View>
+        </View>
       )}
 
       {worst && owner && <UsageBanner row={worst} />}
 
+      {/* Paired Equal Row: Quick Actions & Public Storefront */}
+      <View style={[styles.pairRow, twoCol && { flexDirection: 'row', alignItems: 'stretch' }]}>
+        {/* Left: Quick Actions Card */}
+        <View style={[styles.pairCol, twoCol && { flex: 1.15 }]}>
+          <View style={[styles.card, { flex: 1, backgroundColor: c.surface, borderColor: c.border, justifyContent: 'space-between', padding: 18 }]}>
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={[styles.quickHeaderIcon, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="flash" size={20} color="#2563EB" />
+                  </View>
+                  <View>
+                    <Txt variant="bodyStrong" style={{ fontSize: 16 }}>Quick Actions</Txt>
+                    <Txt variant="caption" color={c.muted}>One-tap creator shortcuts</Txt>
+                  </View>
+                </View>
+                <Pill text="6 Shortcuts" tone="info" />
+              </View>
+
+              <View style={styles.quickGrid}>
+                <QuickActionItem
+                  icon="add-circle"
+                  color="#2563EB"
+                  bg="#EFF6FF"
+                  label="Create Course"
+                  desc="Add lessons & video"
+                  onPress={() => router.push('/edu/new-course')}
+                />
+                <QuickActionItem
+                  icon="videocam"
+                  color="#059669"
+                  bg="#ECFDF5"
+                  label="Schedule Class"
+                  desc="Live batch session"
+                  onPress={() => router.push('/edu/schedule')}
+                />
+                <QuickActionItem
+                  icon="people"
+                  color="#D97706"
+                  bg="#FFFBEB"
+                  label="Invite Tutors"
+                  desc="Assign to courses"
+                  onPress={() => router.push('/edu/team')}
+                />
+                <QuickActionItem
+                  icon="calendar"
+                  color="#7C3AED"
+                  bg="#F5F3FF"
+                  label="New Batch"
+                  desc="Group students"
+                  onPress={() => router.push('/edu/batch-new')}
+                />
+                <QuickActionItem
+                  icon="card"
+                  color="#0891B2"
+                  bg="#ECFEFF"
+                  label="Payments"
+                  desc="Setup direct gateway"
+                  onPress={() => router.push('/edu/payments-setup')}
+                />
+                <QuickActionItem
+                  icon="color-palette"
+                  color="#EA580C"
+                  bg="#FFF7ED"
+                  label="Branding"
+                  desc="Logo & colors"
+                  onPress={() => router.push('/edu/workspace')}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Right: Public Academy Storefront Card */}
+        <View style={[styles.pairCol, twoCol && { flex: 1 }]}>
+          <View style={[styles.card, { flex: 1, backgroundColor: c.surface, borderColor: c.border, justifyContent: 'space-between', padding: 18 }]}>
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <View style={[styles.quickHeaderIcon, { backgroundColor: '#E0E7FF' }]}>
+                    <Ionicons name="globe-outline" size={20} color="#4338CA" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Txt variant="bodyStrong" style={{ fontSize: 16 }} numberOfLines={1}>Public Storefront</Txt>
+                    <Txt variant="caption" color={c.muted} numberOfLines={1}>{ctx.host}</Txt>
+                  </View>
+                </View>
+                <Pill text="Live" tone="success" />
+              </View>
+
+              <View style={[styles.domainBox, { backgroundColor: c.surfaceMuted, borderColor: c.border }]}>
+                <Ionicons name="link-outline" size={16} color={c.primary} />
+                <Txt variant="caption" color={c.primary} style={{ fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                  http://{ctx.host}
+                </Txt>
+              </View>
+
+              <Txt variant="caption" color={c.inkSoft} style={{ marginTop: 10, lineHeight: 18 }}>
+                Your dedicated academy storefront where students can discover, enroll, and pay directly into your account with 0% platform commission.
+              </Txt>
+
+              <View style={{ gap: 8, marginTop: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                  <Txt variant="caption" color={c.ink} style={{ fontWeight: '500' }}>Direct Razorpay / Stripe payouts to your account</Txt>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                  <Txt variant="caption" color={c.ink} style={{ fontWeight: '500' }}>Branded student portal · Instant enrolments</Txt>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                  <Txt variant="caption" color={c.ink} style={{ fontWeight: '500' }}>Mobile-ready responsive catalog & checkout</Txt>
+                </View>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              <Button
+                title="Preview Website ↗"
+                size="md"
+                style={{ flex: 1.2 }}
+                onPress={() => router.push(`/site/${ctx.tenant.slug}` as any)}
+              />
+              <Button
+                title="Edit Branding"
+                size="md"
+                variant="outline"
+                style={{ flex: 1 }}
+                onPress={() => router.push('/edu/workspace')}
+              />
+            </View>
+          </View>
+        </View>
+      </View>
+
       {twoCol ? (
-        <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
+        <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start', marginTop: 14 }}>
           <View style={{ flex: 1.15, minWidth: 0 }}>{left}</View>
           <View style={{ flex: 1, minWidth: 0 }}>{right}</View>
         </View>
       ) : (
-        <>
+        <View style={{ marginTop: 14 }}>
           {left}
           {right}
-        </>
+        </View>
       )}
     </>
+  );
+}
+
+function QuickActionItem({
+  icon,
+  color,
+  bg,
+  label,
+  desc,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  bg: string;
+  label: string;
+  desc: string;
+  onPress: () => void;
+}) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.quickActionTile,
+        { backgroundColor: c.surface, borderColor: c.border },
+        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={[styles.quickActionIconWrap, { backgroundColor: bg }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <Txt variant="bodyStrong" style={{ fontSize: 13, marginTop: 4 }} numberOfLines={1}>{label}</Txt>
+      <Txt variant="caption" color={c.muted} style={{ fontSize: 11 }} numberOfLines={1}>{desc}</Txt>
+    </Pressable>
   );
 }
 
@@ -429,4 +709,127 @@ const styles = StyleSheet.create({
   fab: { position: 'absolute', right: 20, bottom: 16, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, height: 56, borderRadius: 28, shadowColor: '#0B2A55', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
   createRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.lg, borderWidth: 1, minHeight: 66 },
   createIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  growthTrialHero: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 16,
+    gap: 14,
+    marginTop: 12,
+    shadowColor: '#D97706',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  rocketBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  perksRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
+  },
+  perkChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  pairRow: {
+    gap: 20,
+    marginTop: 14,
+  },
+  pairCol: {
+    minWidth: 0,
+  },
+  domainBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  quickHeaderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionsContainer: {
+    marginTop: 12,
+    gap: 10,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  quickActionTile: {
+    flexBasis: '31%',
+    flexGrow: 1,
+    minWidth: 100,
+    padding: 12,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    alignItems: 'flex-start',
+    gap: 2,
+  },
+  quickActionIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    width: '100%',
+    marginVertical: 4,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  stepIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  storefrontCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: 16,
+    gap: 10,
+    marginBottom: 14,
+  },
+  storefrontIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

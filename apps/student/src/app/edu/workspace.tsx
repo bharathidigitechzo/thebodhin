@@ -13,12 +13,14 @@ import { TextField } from '@/ui/TextField';
 import { BottomSheet, Pill } from '@/ui/kit';
 import { Banner } from '@/ui/misc';
 import { Card, ScreenTop, ToggleRow, fmtDay, shared } from '@/ui/section';
+import { useFrame } from '@/ui/responsive';
 
 const PRIMARY = ['#0B3B73', '#0F6E5A', '#6D28D9', '#B91C1C', '#0E7490', '#1F2937', '#9D174D', '#14532D'];
 const ACCENT = ['#D99A1E', '#E8833A', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#EAB308', '#F97316'];
 type Data = ReturnType<typeof workspaceApi.get>;
 
 export default function Workspace() {
+  const frame = useFrame(); // shared educator page frame (same width and side spacing on every section)
   const { c } = useTheme();
   const { session } = useAuth();
   const userId = session?.user.id ?? '';
@@ -68,8 +70,8 @@ export default function Workspace() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         <ScreenTop title="Branding & domain" sub={t.customDomain ?? `${t.slug}.thebodhin.com`} />
-        <ScrollView contentContainerStyle={shared.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={shared.inner}>
+        <ScrollView contentContainerStyle={[shared.scroll, { paddingHorizontal: frame.padX }, frame.desktop && { paddingBottom: 48 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={[shared.inner, { maxWidth: frame.maxWidth }]}>
             {msg && <Banner tone="success" text={msg} />}
             {fe && !fe.field && <Banner text={fe.msg} />}
 

@@ -50,7 +50,7 @@ export default function ApplicationStatus() {
       <View style={styles.head}>
         <TwoTone lead="Thanks," accent={session?.user.name.split(' ')[0] ?? 'there'} variant="title" center />
         <Txt center color={c.inkSoft}>
-          Your educator application is in. We'll notify you by SMS and email when your workspace is ready.
+          Your educator application for {app?.workspaceName || 'your academy'} is under review. Once approved by Admin, an official approval email will be sent to your Gmail ({session?.user?.email}) so you can log in to your Educator Dashboard.
         </Txt>
       </View>
       {app?.note && (app.status === 'changes_requested' || app.status === 'rejected') && <Banner tone={app.status === 'rejected' ? 'danger' : 'info'} text={`${app.status === 'rejected' ? 'Not approved' : 'Bodhin asked for changes'}: ${app.note}`} />}
