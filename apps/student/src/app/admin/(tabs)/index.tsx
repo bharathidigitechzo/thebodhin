@@ -12,7 +12,8 @@ import { ROLE_LABEL, can } from '@/core/admin';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
 import { Txt } from '@/ui/Txt';
-import { Avatar, Pill, Skeleton } from '@/ui/kit';
+import { Avatar, BottomSheet, Pill, Skeleton } from '@/ui/kit';
+import { useLayout } from '@/ui/responsive';
 import { PeekSheet, SearchBar, ago, greeting, lakh, type PeekTarget } from '@/ui/admin';
 import { Card } from '@/ui/section';
 
@@ -25,11 +26,13 @@ export default function CommandCenter() {
   const userId = session?.user.id ?? '';
   const me = admin.me(userId);
   const { width } = useWindowDimensions();
+  const { isDesktop } = useLayout();
   const wide = width >= 1100;
   const [d, setD] = useState<Data | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [peek, setPeek] = useState<PeekTarget>(null);
   const [allAlerts, setAllAlerts] = useState(false);
+  const [create, setCreate] = useState(false);
   const load = useCallback(() => admin.overview(userId).then(setD), [userId]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const role = me?.role;
@@ -126,8 +129,41 @@ export default function CommandCenter() {
             )}
           </View>
         </ScrollView>
+
+        {/* Thumb-zone create button for mobile admin */}
+        {!isDesktop && (
+          <Pressable onPress={() => setCreate(true)} style={[styles.fab, { backgroundColor: c.primary }]} accessibilityRole="button" accessibilityLabel="Create">
+            <Ionicons name="add" size={26} color="#fff" />
+            <Txt variant="bodyStrong" color="#fff">Create</Txt>
+          </Pressable>
+        )}
       </SafeAreaView>
       <PeekSheet userId={userId} target={peek} onClose={() => setPeek(null)} />
+
+      <BottomSheet open={create} onClose={() => setCreate(false)} title="Create">
+        <View style={{ gap: 8 }}>
+          {(
+            [
+              ['layers', 'Create Bodhin course', 'Recorded, live or hybrid course for Bodhin store', () => router.push('/edu/new-course')],
+              ['help-circle', 'Quiz or assignment', 'Test learners or collect submissions', () => router.push('/edu/assess/new')],
+              ['radio', 'Schedule live class', 'Schedule a live class for Bodhin courses', () => router.push('/admin/classes')],
+              ['megaphone', 'Broadcast message', 'Send email & push notification to educators or students', () => router.push('/admin/broadcast')],
+              ['code-slash', 'Playground challenge', 'Add coding or SQL practice challenge', () => router.push('/admin/playground')],
+            ] as const
+          ).map(([icon, t, sub, fn]) => (
+            <Pressable key={t} onPress={() => { setCreate(false); fn(); }} style={[styles.createRow, { borderColor: c.border }]} accessibilityRole="button">
+              <View style={[styles.createIcon, { backgroundColor: c.primarySoft }]}>
+                <Ionicons name={icon} size={22} color={c.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Txt variant="bodyStrong">{t}</Txt>
+                <Txt variant="caption" color={c.muted}>{sub}</Txt>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={c.muted} />
+            </Pressable>
+          ))}
+        </View>
+      </BottomSheet>
     </View>
   );
 }
@@ -239,7 +275,7 @@ function Rule({ v, l }: { v: string; l: string }) {
 }
 
 const styles = StyleSheet.create({
-  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 30 },
+  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 90 },
   inner: { width: '100%', maxWidth: 720, gap: 12 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 8 },
   hero: { borderRadius: 22, padding: 18, gap: 6, backgroundColor: '#071F44' },
@@ -257,4 +293,7 @@ const styles = StyleSheet.create({
   act: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   rules: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   rule: { flexGrow: 1, flexBasis: '30%', minWidth: 120, borderRadius: 12, padding: 10 },
+  fab: { position: 'absolute', right: 20, bottom: 16, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, height: 56, borderRadius: 28, shadowColor: '#071F44', shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  createRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, borderWidth: 1, minHeight: 66 },
+  createIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
 });
