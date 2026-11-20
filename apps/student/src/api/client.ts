@@ -3537,7 +3537,10 @@ export const teamApi = {
   get(userId: string) {
     const ctx = ownerOrThrow(userId);
     const t = tenantRow(ctx.tenant.id);
-    const courses = seedCourses.filter((c) => c.tenantId === t.id);
+    const all = [...seedCourses, ...db.courses].filter((c, idx, arr) => arr.findIndex((x) => x.id === c.id) === idx);
+    const courses = all
+      .filter((c) => c.tenantId === t.id && c.status !== 'archived' && !!c.title && c.title.trim().length > 0)
+      .sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''));
     const members = db.memberships
       .filter((m) => m.tenantId === t.id && (m.role === 'owner' || m.role === 'tutor'))
       .map((m) => {
