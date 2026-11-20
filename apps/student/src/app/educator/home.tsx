@@ -5,7 +5,7 @@
  */
 import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { ModuleGrid, useLayout } from '@/ui/responsive';
+import { useLayout } from '@/ui/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
@@ -55,7 +55,6 @@ export default function EducatorHome() {
               </View>
             ) : (
               <>
-                {!isDesktop && <View style={{ marginTop: 12 }}><ModuleGrid area="educator" title="Your modules" compact /></View>}
                 <Body data={data} twoCol={twoCol} />
               </>
             )}
