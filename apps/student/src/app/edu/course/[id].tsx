@@ -305,7 +305,7 @@ export default function CourseBuilder() {
           <View style={{ gap: 14 }}>
             <VideoPreview
               name={previewLesson.title}
-              uri={previewLesson.uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+              uri={previewLesson.uri || 'https://vjs.zencdn.net/v/oceans.mp4'}
               sizeMb={previewLesson.sizeMb}
             />
             <View style={{ gap: 4 }}>

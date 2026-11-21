@@ -55,7 +55,8 @@
         {
           "asyncRoutes": false
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": false

@@ -2,10 +2,11 @@
  * Video surface with thumb-friendly controls.
  * Supports real HTML5 video playback, YouTube embeds, and sample fallback video.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { GestureResponderEvent, LayoutChangeEvent, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import type { Course, Lesson } from '@/core/catalog';
 import { getMediaFile, saveMediaFile } from './mediaStore';
 import { Txt } from './Txt';
@@ -38,7 +39,124 @@ function getYouTubeEmbedUrl(url?: string): string | null {
   return match && match[2].length === 11 ? `https://www.youtube.com/embed/${match[2]}?autoplay=1&enablejsapi=1` : null;
 }
 
-const DEFAULT_SAMPLE_VIDEO = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+const DEFAULT_SAMPLE_VIDEO = 'https://vjs.zencdn.net/v/oceans.mp4';
+
+interface NativeVideoHandle {
+  seek: (t: number) => void;
+  play: () => void;
+  pause: () => void;
+}
+
+interface NativeVideoPlayerProps {
+  source: string;
+  playing: boolean;
+  speed: number;
+  startAt: number;
+  onTimeUpdate: (t: number) => void;
+  onDurationChange: (d: number) => void;
+  onEnded: () => void;
+  onError: () => void;
+}
+
+/** Native video player backed by expo-video for Android APK and iOS. */
+const NativeVideoPlayer = forwardRef<NativeVideoHandle, NativeVideoPlayerProps>(function NativeVideoPlayer(
+  { source, playing, speed, startAt, onTimeUpdate, onDurationChange, onEnded, onError },
+  ref
+) {
+  const player = useVideoPlayer(source, (p) => {
+    p.loop = false;
+    p.playbackRate = speed;
+    p.timeUpdateEventInterval = 0.25;
+    if (startAt > 0) {
+      p.currentTime = startAt;
+    }
+  });
+
+  useImperativeHandle(ref, () => ({
+    seek: (target: number) => {
+      try {
+        player.currentTime = target;
+      } catch {
+        /* ignore */
+      }
+    },
+    play: () => {
+      try {
+        player.play();
+      } catch {
+        /* ignore */
+      }
+    },
+    pause: () => {
+      try {
+        player.pause();
+      } catch {
+        /* ignore */
+      }
+    },
+  }));
+
+  // Sync play / pause
+  useEffect(() => {
+    try {
+      if (playing) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [playing, player]);
+
+  // Sync playback rate
+  useEffect(() => {
+    try {
+      player.playbackRate = speed;
+    } catch {
+      /* ignore */
+    }
+  }, [speed, player]);
+
+  // Subscribe to playback events
+  useEffect(() => {
+    const timeSub = player.addListener('timeUpdate', (event) => {
+      if (typeof event.currentTime === 'number') {
+        onTimeUpdate(event.currentTime);
+      }
+    });
+
+    const statusSub = player.addListener('statusChange', (status) => {
+      if (status.status === 'readyToPlay' && player.duration > 0) {
+        onDurationChange(player.duration);
+      }
+      if (status.status === 'error') {
+        onError();
+      }
+    });
+
+    const playToEndSub = player.addListener('playToEnd', () => {
+      onEnded();
+    });
+
+    return () => {
+      timeSub.remove();
+      statusSub.remove();
+      playToEndSub.remove();
+    };
+  }, [player, onTimeUpdate, onDurationChange, onEnded, onError]);
+
+  return (
+    <VideoView
+      style={StyleSheet.absoluteFill}
+      player={player}
+      allowsFullscreen={false}
+      showsTimecodes={false}
+      nativeControls={false}
+      contentFit="contain"
+    />
+  );
+});
 
 export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen, onTime, onEnded, onSpeed, onQuality, onFullscreen }: Props) {
   const [realDuration, setRealDuration] = useState<number | null>(null);
@@ -54,6 +172,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const width = useRef(1);
   const videoElRef = useRef<HTMLVideoElement | null>(null);
+  const nativePlayerRef = useRef<NativeVideoHandle | null>(null);
   const barRef = useRef<any>(null); // the bar's DOM node on web (for mouse-accurate seeking)
 
   const rawUrl = lesson.videoUrl || (lesson as any).videoUri || course.intro?.uri;
@@ -61,7 +180,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
 
   const videoSource = resolvedMediaUrl || rawUrl || DEFAULT_SAMPLE_VIDEO;
   const isWeb = Platform.OS === 'web';
-  const hasRealVideo = isWeb && !ytEmbed && !hasVideoError;
+  const hasRealVideo = !hasVideoError;
 
   // Resolve persistent media from IndexedDB if uploaded previously
   useEffect(() => {
@@ -90,36 +209,46 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
       ];
       for (const k of keys) {
         if (!k) continue;
-        const blob = await getMediaFile(k);
-        if (blob && active) {
-          localBlobUrl = URL.createObjectURL(blob);
-          setResolvedMediaUrl(localBlobUrl);
-          return;
+        try {
+          const blob = await getMediaFile(k);
+          if (blob && active) {
+            localBlobUrl = URL.createObjectURL(blob);
+            setResolvedMediaUrl(localBlobUrl);
+            return;
+          }
+        } catch {
+          // ignore IndexedDB lookup errors
         }
       }
 
       // 4. If rawUrl is a live blob in the current browser session, cache it and use it
       if (rawUrl && rawUrl.startsWith('blob:')) {
-        try {
-          const res = await fetch(rawUrl);
-          if (res.ok) {
-            const blob = await res.blob();
-            if (active) {
-              localBlobUrl = URL.createObjectURL(blob);
-              setResolvedMediaUrl(localBlobUrl);
+        const isForeignLocalBlob =
+          typeof window !== 'undefined' &&
+          window.location.hostname !== 'localhost' &&
+          rawUrl.includes('localhost');
+        if (!isForeignLocalBlob) {
+          try {
+            const res = await fetch(rawUrl);
+            if (res.ok) {
+              const blob = await res.blob();
+              if (active) {
+                localBlobUrl = URL.createObjectURL(blob);
+                setResolvedMediaUrl(localBlobUrl);
+              }
+              saveMediaFile(lesson.id, blob);
+              saveMediaFile(`${course.id}_${lesson.id}`, blob);
+              if (lesson.title) saveMediaFile(lesson.title, blob);
+              return;
             }
-            saveMediaFile(lesson.id, blob);
-            saveMediaFile(`${course.id}_${lesson.id}`, blob);
-            if (lesson.title) saveMediaFile(lesson.title, blob);
-            return;
+          } catch {
+            // Dead blob URL
           }
-        } catch {
-          // Dead blob URL
         }
       }
 
       if (active) {
-        if (rawUrl && !rawUrl.startsWith('blob:')) {
+        if (rawUrl && !rawUrl.startsWith('blob:') && !rawUrl.includes('commondatastorage.googleapis.com')) {
           setResolvedMediaUrl(rawUrl);
         } else {
           setResolvedMediaUrl(DEFAULT_SAMPLE_VIDEO);
@@ -143,15 +272,18 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
     setPlaying(false);
     setChrome(true);
     setHasVideoError(false);
-    if (videoElRef.current) {
+    if (isWeb && videoElRef.current) {
       videoElRef.current.currentTime = startAt;
       videoElRef.current.pause();
+    } else if (!isWeb && nativePlayerRef.current) {
+      nativePlayerRef.current.seek(startAt);
+      nativePlayerRef.current.pause();
     }
   }, [lesson.id, rawUrl, resolvedMediaUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // sync playback rate
   useEffect(() => {
-    if (videoElRef.current) {
+    if (isWeb && videoElRef.current) {
       videoElRef.current.playbackRate = speed;
     }
   }, [speed]);
@@ -185,7 +317,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   }, [playing, chrome]);
 
   const togglePlay = () => {
-    if (videoElRef.current) {
+    if (isWeb && videoElRef.current) {
       if (videoElRef.current.paused) {
         if (videoElRef.current.currentTime >= duration - 0.5) {
           videoElRef.current.currentTime = 0;
@@ -198,6 +330,18 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
         videoElRef.current.pause();
         setPlaying(false);
       }
+    } else if (!isWeb && nativePlayerRef.current) {
+      if (playing) {
+        nativePlayerRef.current.pause();
+        setPlaying(false);
+      } else {
+        if (t >= duration - 0.5) {
+          nativePlayerRef.current.seek(0);
+          setT(0);
+        }
+        nativePlayerRef.current.play();
+        setPlaying(true);
+      }
     } else {
       setPlaying((p) => !p);
     }
@@ -206,8 +350,10 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   const seek = (d: number) => {
     const nextT = Math.max(0, Math.min(Math.max(1, duration - 0.5), t + d));
     setT(nextT);
-    if (videoElRef.current) {
+    if (isWeb && videoElRef.current) {
       videoElRef.current.currentTime = nextT;
+    } else if (!isWeb && nativePlayerRef.current) {
+      nativePlayerRef.current.seek(nextT);
     }
   };
 
@@ -243,8 +389,10 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
     }
     const nextT = Math.max(0, Math.min(Math.max(1, duration - 0.5), Math.max(0, Math.min(1, ratio)) * duration));
     setT(nextT);
-    if (videoElRef.current) {
+    if (isWeb && videoElRef.current) {
       videoElRef.current.currentTime = nextT;
+    } else if (!isWeb && nativePlayerRef.current) {
+      nativePlayerRef.current.seek(nextT);
     }
   };
 
@@ -270,7 +418,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
             allowFullScreen
           />
         </View>
-      ) : hasRealVideo ? (
+      ) : isWeb && hasRealVideo ? (
         <video
           ref={videoElRef}
           src={videoSource}
@@ -302,6 +450,29 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
           }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
+          onError={() => {
+            if (videoSource !== DEFAULT_SAMPLE_VIDEO) {
+              setResolvedMediaUrl(DEFAULT_SAMPLE_VIDEO);
+            } else {
+              setHasVideoError(true);
+            }
+          }}
+        />
+      ) : !isWeb && hasRealVideo ? (
+        <NativeVideoPlayer
+          ref={nativePlayerRef}
+          source={videoSource}
+          playing={playing}
+          speed={speed}
+          startAt={startAt}
+          onTimeUpdate={(currentTime) => setT(currentTime)}
+          onDurationChange={(d) => {
+            if (d > 0) setRealDuration(d);
+          }}
+          onEnded={() => {
+            setPlaying(false);
+            onEnded();
+          }}
           onError={() => {
             if (videoSource !== DEFAULT_SAMPLE_VIDEO) {
               setResolvedMediaUrl(DEFAULT_SAMPLE_VIDEO);
