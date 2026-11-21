@@ -16,10 +16,10 @@ export function ScreenTop({ title, sub, fallback = '/educator/more', right, maxW
   maxWidth ??= frame.maxWidth;
   padX ??= frame.padX;
   return (
-    <View style={[styles.topOuter, { paddingHorizontal: padX }]}>
+    <View style={[styles.topOuter, { paddingHorizontal: padX, backgroundColor: c.ivory, borderBottomWidth: 1, borderBottomColor: c.border, zIndex: 10 }]}>
       <View style={[styles.top, { maxWidth }]}>
         <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace(fallback as never))} />
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <Txt variant="heading" numberOfLines={1}>{title}</Txt>
           {!!sub && <Txt variant="caption" color={c.muted} numberOfLines={1}>{sub}</Txt>}
         </View>
@@ -110,8 +110,8 @@ export const inr = (n: number) => `${n < 0 ? '−' : ''}₹${Math.abs(Math.round
 export const fmtDay = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 export const shared = StyleSheet.create({
-  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingBottom: 30 },
-  inner: { width: '100%', maxWidth: 720, gap: 12 },
+  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 36 },
+  inner: { width: '100%', maxWidth: 720, gap: 14 },
   row: { flexDirection: 'row', gap: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   footer: { borderTopWidth: 1, padding: 12, alignItems: 'center' },
@@ -125,8 +125,8 @@ const styles = StyleSheet.create({
   numVal: { flex: 1, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   unl: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, minHeight: 36, justifyContent: 'center' },
   // same centred 720px column as the page body, so the header lines up with the content on wide screens
-  topOuter: { alignItems: 'center', paddingHorizontal: 16 },
-  top: { width: '100%', maxWidth: 720, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  topOuter: { alignItems: 'center', width: '100%' },
+  top: { width: '100%', maxWidth: 720, flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12 },
   card: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 10 },
   stat: { flex: 1, borderWidth: 1, borderRadius: 14, padding: 10, gap: 2 },
 });
