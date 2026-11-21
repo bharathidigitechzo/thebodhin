@@ -227,11 +227,13 @@ export default function Player() {
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         {/* header */}
+        {!fullscreen && (
         <View style={styles.head}>
           <IconButton icon="chevron-back" label="Back to course" tone="filled" onPress={back} />
           <BrandLogo size="sm" />
           <IconButton icon={bookmarked ? 'bookmark' : 'bookmark-outline'} label={bookmarked ? 'Remove bookmark' : 'Bookmark lesson'} tone="filled" onPress={() => { const on = player.toggleBookmark(userId, lesson.id); setRev((r) => r + 1); flash(on ? 'Lesson bookmarked' : 'Bookmark removed'); }} />
         </View>
+        )}
 
         <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -271,6 +273,7 @@ export default function Player() {
               <DocCard lesson={lesson} onOpen={() => (lesson.type === 'quiz' ? router.push({ pathname: '/quiz/[lessonId]', params: { lessonId: lesson.id, courseId: course.id } }) : setPdfModal({ name: `${lesson.title}.pdf`, sizeMb: lesson.sizeMb }))} />
             )}
 
+            {!fullscreen && (
             <View style={styles.pad}>
               {/* title */}
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 14 }}>
@@ -350,6 +353,7 @@ export default function Player() {
                 </View>
               )}
             </View>
+            )}
           </View>
         </ScrollView>
 

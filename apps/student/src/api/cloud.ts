@@ -13,7 +13,7 @@
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { db, dbListeners, loadHooks, persistHooks } from './mockDb';
+import { db, dbListeners, loadHooks, mergeEnrollments, persistHooks } from './mockDb';
 
 const URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://pfjlpcrextppuixgriot.supabase.co';
 const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmamxwY3JleHRwcHVpeGdyaW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwNTY0NzYsImV4cCI6MjExMDYzMjQ3Nn0.GSjYJw-zQKqLbhJrhkZAARn3nX0CHZjQD1L6LkL_1rw';
@@ -57,8 +57,17 @@ const strip = (field: string, e: unknown) => {
   const { password: _pw, ...rest } = e as Record<string, unknown>;
   return rest;
 };
-const elementKey = (e: unknown, text: string) =>
-  e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string' ? `id:${(e as { id: string }).id}` : `h:${hash(text)}`;
+/**
+ * A record's row key. Records with an id use it; an enrollment is one per learner + course (it has no id, and a
+ * content-hash key changed on every progress update, so two devices saving at once left duplicate copies).
+ */
+const elementKey = (e: unknown, text: string, field?: string) => {
+  if (!e || typeof e !== 'object') return `h:${hash(text)}`;
+  const o = e as { id?: unknown; userId?: unknown; courseId?: unknown };
+  if (typeof o.id === 'string') return `id:${o.id}`;
+  if (field === 'enrollments' && typeof o.userId === 'string' && typeof o.courseId === 'string') return `e:${o.userId}:${o.courseId}`;
+  return `h:${hash(text)}`;
+};
 
 /** What was last written to / read from the cloud: row id → { text, ord }. */
 let synced = new Map<string, { text: string; ord: number }>();
@@ -71,7 +80,7 @@ function currentRows(): Map<string, Row & { text: string }> {
     const v = d[field];
     if (v === undefined) continue;
     if (Array.isArray(v)) {
-      const items = v.map((e) => { const data = strip(field, e); const text = canon(data); return { key: elementKey(data, text), data, text }; });
+      const items = v.map((e) => { const data = strip(field, e); const text = canon(data); return { key: elementKey(data, text, field), data, text }; });
       // Keep the order: known rows keep their position, new ones slot between their neighbours.
       const ords: (number | null)[] = items.map((it) => synced.get(rid(field, it.key))?.ord ?? null);
       for (let i = 0; i < ords.length; i++) {
@@ -175,6 +184,8 @@ export async function pull(): Promise<void> {
     else d[field] = list.map((r) => r.data);
     for (const r of list) synced.set(rid(r.field, r.key), { text: canon(r.data), ord: r.ord });
   }
+  // Merge duplicate enrollments already in the store; the next flush rewrites them under one key and deletes the copies.
+  if (Array.isArray(d.enrollments)) d.enrollments = mergeEnrollments(d.enrollments as never);
   // A field only this (newer) build has: an empty array/map in the cloud has no rows, so empty it here too.
   for (const field of Object.keys(d)) {
     if (fields.has(field)) continue;

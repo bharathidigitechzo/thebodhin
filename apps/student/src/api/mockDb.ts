@@ -532,7 +532,35 @@ function load(): Db {
   return s;
 }
 
+/**
+ * One enrollment per learner per course. Copies can pile up when two devices change the same enrollment at once
+ * (older builds synced it under a content hash); merge them: every completed lesson, the latest activity, the
+ * earliest enrolment date and the longest access.
+ */
+export function mergeEnrollments(list: Enrollment[]): Enrollment[] {
+  const out: Enrollment[] = [];
+  const at = new Map<string, number>();
+  for (const e of list) {
+    if (!e || !e.userId || !e.courseId) continue;
+    const k = `${e.userId}:${e.courseId}`;
+    const i = at.get(k);
+    if (i == null) { at.set(k, out.length); out.push({ ...e, completedLessonIds: [...new Set(e.completedLessonIds ?? [])] }); continue; }
+    const a = out[i];
+    const newer = (e.lastActiveAt ?? '') > (a.lastActiveAt ?? '');
+    out[i] = {
+      ...(newer ? { ...a, ...e } : { ...e, ...a }),
+      completedLessonIds: [...new Set([...(a.completedLessonIds ?? []), ...(e.completedLessonIds ?? [])])],
+      enrolledAt: [a.enrolledAt, e.enrolledAt].filter(Boolean).sort()[0] ?? a.enrolledAt,
+      validTill: [a.validTill, e.validTill].filter(Boolean).sort().pop(),
+      lastActiveAt: [a.lastActiveAt, e.lastActiveAt].filter(Boolean).sort().pop(),
+      lastLessonId: newer ? e.lastLessonId ?? a.lastLessonId : a.lastLessonId ?? e.lastLessonId,
+    };
+  }
+  return out;
+}
+
 export const db: Db = load();
+db.enrollments = mergeEnrollments(db.enrollments ?? []);
 
 /** Run after every save (api/cloud.ts pushes the change to the shared Postgres store). */
 export const persistHooks: (() => void)[] = [];
@@ -566,6 +594,7 @@ if (canPersist && typeof window.addEventListener === 'function') {
     try {
       const next = JSON.parse(e.newValue) as Record<string, unknown>;
       Object.assign(db as unknown as Record<string, unknown>, next);
+      db.enrollments = mergeEnrollments(db.enrollments ?? []);
       emitDbChanged();
     } catch {
       /* ignore a half-written value */

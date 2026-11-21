@@ -742,7 +742,8 @@ export const learning = {
       })
       .filter((x): x is NonNullable<typeof x> => !!x)
       .filter((x) => !tenantId || x.course.tenantId === tenantId)
-      .sort((a, b) => (b.enrollment.lastActiveAt ?? '').localeCompare(a.enrollment.lastActiveAt ?? ''));
+      .sort((a, b) => (b.enrollment.lastActiveAt ?? '').localeCompare(a.enrollment.lastActiveAt ?? ''))
+      .filter((x, i, all) => all.findIndex((y) => y.course.id === x.course.id) === i); // one card per course
 
     const inProgress = mine.filter((m) => m.progress.pct < 100);
     const lessonsDone = mine.reduce((s, m) => s + m.progress.done, 0);

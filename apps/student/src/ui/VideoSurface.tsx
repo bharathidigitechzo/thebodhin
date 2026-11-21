@@ -3,7 +3,7 @@
  * Supports real HTML5 video playback, YouTube embeds, and sample fallback video.
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { GestureResponderEvent, LayoutChangeEvent, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Dimensions, GestureResponderEvent, LayoutChangeEvent, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -174,12 +174,55 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
   const videoElRef = useRef<HTMLVideoElement | null>(null);
   const nativePlayerRef = useRef<NativeVideoHandle | null>(null);
   const barRef = useRef<any>(null); // the bar's DOM node on web (for mouse-accurate seeking)
+  const boxRef = useRef<any>(null); // the player's DOM node on web (browser full screen)
+  const fullscreenRef = useRef(fullscreen);
+  fullscreenRef.current = fullscreen;
+  const onFullscreenRef = useRef(onFullscreen);
+  onFullscreenRef.current = onFullscreen;
 
   const rawUrl = lesson.videoUrl || (lesson as any).videoUri || course.intro?.uri;
   const ytEmbed = getYouTubeEmbedUrl(rawUrl);
 
   const videoSource = resolvedMediaUrl || rawUrl || DEFAULT_SAMPLE_VIDEO;
   const isWeb = Platform.OS === 'web';
+
+  // Web: real browser full screen on the player itself (the same <video> keeps playing, no remount).
+  // Esc / the browser's own exit also updates the screen's state.
+  useEffect(() => {
+    if (!isWeb || typeof document === 'undefined') return;
+    const onChange = () => {
+      const d = document as any;
+      const isFs = !!(d.fullscreenElement || d.webkitFullscreenElement) && (d.fullscreenElement || d.webkitFullscreenElement) === boxRef.current;
+      if (isFs !== fullscreenRef.current) onFullscreenRef.current();
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+      const d = document as any;
+      if (d.fullscreenElement && d.fullscreenElement === boxRef.current) d.exitFullscreen?.().catch?.(() => {});
+    };
+  }, [isWeb]);
+
+  const toggleFullscreen = () => {
+    if (!isWeb || typeof document === 'undefined') return onFullscreen();
+    const d = document as any;
+    const el = boxRef.current as any;
+    if (d.fullscreenElement || d.webkitFullscreenElement) {
+      (d.exitFullscreen ?? d.webkitExitFullscreen)?.call(d);
+      return;
+    }
+    const req = el?.requestFullscreen ?? el?.webkitRequestFullscreen;
+    if (req) {
+      Promise.resolve(req.call(el)).catch(() => onFullscreen());
+      return; // state follows the fullscreenchange event
+    }
+    // iPhone Safari: only the <video> itself can go full screen.
+    const v = videoElRef.current as any;
+    if (v?.webkitEnterFullscreen) v.webkitEnterFullscreen();
+    else onFullscreen();
+  };
   const hasRealVideo = !hasVideoError;
 
   // Resolve persistent media from IndexedDB if uploaded previously
@@ -400,7 +443,9 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
 
   return (
     <View
-      style={[styles.box, fullscreen ? styles.full : { aspectRatio: 16 / 9 }]}
+      ref={boxRef}
+      // Web: covers the whole window (inside browser full screen, or on its own where the browser blocks it). Apps: window height.
+      style={[styles.box, fullscreen ? (isWeb ? ({ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', zIndex: 1000 } as any) : { height: Dimensions.get('window').height }) : { aspectRatio: 16 / 9 }]}
       onLayout={(e: LayoutChangeEvent) => (width.current = e.nativeEvent.layout.width)}
       accessibilityLabel={`Video: ${lesson.title}`}
     >
@@ -550,7 +595,7 @@ export function VideoSurface({ course, lesson, label, startAt, speed, fullscreen
               <Txt variant="caption" color="#fff" style={{ fontVariant: ['tabular-nums'] }}>
                 {fmt(t)} / {fmt(duration)}
               </Txt>
-              <Pressable onPress={onFullscreen} hitSlop={10} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }} accessibilityRole="button" accessibilityLabel={fullscreen ? 'Exit full screen' : 'Full screen'}>
+              <Pressable onPress={toggleFullscreen} hitSlop={10} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }} accessibilityRole="button" accessibilityLabel={fullscreen ? 'Exit full screen' : 'Full screen'}>
                 <Ionicons name={fullscreen ? 'contract' : 'expand'} size={22} color="#fff" />
               </Pressable>
             </View>

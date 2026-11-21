@@ -84,6 +84,19 @@ const rv = await api.reviews.list('c_unrated_test');
 ok(Number.isFinite(rv.avg) && rv.avg === 0 && rv.count === 0, 'unrated course: no NaN', rv.avg);
 db.courses = db.courses.filter((c) => c.id !== 'c_unrated_test');
 
+// Duplicate enrollments (two devices saving at once) merge into one card with everything kept.
+const { mergeEnrollments } = await import('@/api/mockDb');
+const dupA = { ...eA, completedLessonIds: [allLessons(cA)[0].id], lastActiveAt: '2026-01-01T00:00:00Z', lastLessonId: 'old' };
+const dupB = { ...eA, completedLessonIds: [allLessons(cA)[1].id], lastActiveAt: '2026-02-01T00:00:00Z', lastLessonId: 'new' };
+const merged = mergeEnrollments([dupA, dupB, eB]);
+ok(merged.length === 2, 'duplicates merged to one per course', merged.length);
+const m = merged.find((x) => x.courseId === eA.courseId);
+ok(m.completedLessonIds.length === 2 && m.lastLessonId === 'new' && m.lastActiveAt === '2026-02-01T00:00:00Z', 'merge keeps all completed lessons and the latest activity', m);
+db.enrollments.push({ ...eB });
+const home3 = await api.learning.home(U, null);
+ok(home3.enrolled.filter((x) => x.course.id === eB.courseId).length === 1, 'My Learning shows a course once even if the db has a copy');
+db.enrollments = mergeEnrollments(db.enrollments);
+
 console.log(`\nwatch-progress: ${pass} passed, ${fail} failed`);
 if (fail) { console.log(fails.map((f) => '  ✗ ' + f).join('\n')); process.exit(1); }
 })();
