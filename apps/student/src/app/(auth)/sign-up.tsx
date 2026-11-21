@@ -52,19 +52,16 @@ export default function SignUp() {
   return (
     <Screen
       footer={
-        <>
-          <Button title={role === 'tutor' ? 'Continue as Educator' : 'Create Account'} iconRight="arrow-forward" loading={busy} onPress={submit} />
-          <View style={styles.footRow}>
-            <Txt color={c.inkSoft}>Already have an account?</Txt>
-            <Link href="/sign-in" replace asChild>
-              <Pressable hitSlop={12} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}>
-                <Txt variant="bodyStrong" color={c.primary}>
-                  Sign In
-                </Txt>
-              </Pressable>
-            </Link>
-          </View>
-        </>
+        <View style={styles.footRow}>
+          <Txt color={c.inkSoft}>Already have an account?</Txt>
+          <Link href="/sign-in" replace asChild>
+            <Pressable hitSlop={12} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}>
+              <Txt variant="bodyStrong" color={c.primary}>
+                Sign In
+              </Txt>
+            </Pressable>
+          </Link>
+        </View>
       }
     >
       <View style={styles.top}>
@@ -141,6 +138,8 @@ export default function SignUp() {
             </Txt>
           )}
         </View>
+
+        <Button title={role === 'tutor' ? 'Continue as Educator' : 'Create Account'} iconRight="arrow-forward" loading={busy} onPress={submit} />
       </View>
     </Screen>
   );

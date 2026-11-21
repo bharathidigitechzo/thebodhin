@@ -71,7 +71,6 @@ export default function SignIn() {
     <Screen
       footer={
         <>
-          <Button title="Sign In" iconRight="arrow-forward" loading={busy === 'form'} disabled={!!busy && busy !== 'form'} onPress={submit} />
           <View style={styles.footRow}>
             <Txt color={c.inkSoft}>Don't have an account?</Txt>
             <Link href="/sign-up" replace asChild>
@@ -162,6 +161,8 @@ export default function SignIn() {
             </Pressable>
           </Link>
         </View>
+
+        <Button title="Sign In" iconRight="arrow-forward" loading={busy === 'form'} disabled={!!busy && busy !== 'form'} onPress={submit} />
 
         <Divider label="or continue with" />
         <View style={styles.social}>

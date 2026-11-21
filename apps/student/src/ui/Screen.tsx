@@ -29,21 +29,35 @@ export function Screen({ children, footer, maxWidth = layout.authMaxWidth, scrol
   const { isDesktop } = useLayout();
   // Auth-sized screens (sign-in, sign-up, OTP, apply…) get a brand panel on the left on desktop.
   const split = isDesktop && maxWidth <= layout.authMaxWidth;
-  // Desktop: primary actions sit inline under the content (no pinned bottom bar).
-  const inlineFooter = isDesktop && !!footer;
+  // Always render footer inline inside the scroll area when scroll is enabled (or on desktop)
+  // so mobile virtual keypads never cover or trap primary action buttons (Sign In, Submit, etc.).
+  const inlineFooter = (scroll || isDesktop) && !!footer;
   const body = (
     <View style={[styles.inner, { maxWidth }, contentStyle]}>
-      {children}
-      {inlineFooter && <View style={[styles.footer, { marginTop: space.xl }]}>{footer}</View>}
+      <View style={styles.contentWrap}>{children}</View>
+      {inlineFooter && (
+        <View style={[styles.footer, { marginTop: space.xl, paddingBottom: space.xxl }]}>
+          {footer}
+        </View>
+      )}
     </View>
   );
   const page = (
     <View style={[styles.root, { backgroundColor: c.ivory }]}>
       {decor && <Waves />}
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          style={styles.root}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+        >
           {scroll ? (
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              contentContainerStyle={styles.scroll}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
               {body}
             </ScrollView>
           ) : (
@@ -87,8 +101,9 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   brand: { flex: 1, justifyContent: 'center', paddingHorizontal: 64 },
   brandIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
-  scroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.xl },
+  scroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.xxl },
   inner: { width: '100%', flexGrow: 1 },
+  contentWrap: { width: '100%', flexGrow: 1 },
   footerWrap: { alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.sm, paddingBottom: space.md },
   footer: { width: '100%', gap: space.md },
 });
