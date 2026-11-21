@@ -1,10 +1,11 @@
 /** Notifications: grouped by day, unread highlighted, tap opens the related screen. */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { notifications } from '@/api/client';
+import { dbListeners } from '@/api/mockDb';
 import { dayLabel } from '@/core/time';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -35,6 +36,16 @@ export default function Notifications() {
   const userId = session?.user.id ?? '';
   const [list, setList] = useState(() => notifications.list(userId));
   useFocusEffect(useCallback(() => setList(notifications.list(userId)), [userId]));
+
+  useEffect(() => {
+    if (!userId) return;
+    const onDbChange = () => setList(notifications.list(userId));
+    dbListeners.add(onDbChange);
+    return () => {
+      dbListeners.delete(onDbChange);
+    };
+  }, [userId]);
+
   const unread = list.filter((n) => !n.read).length;
 
   const groups = list.reduce<[string, typeof list][]>((acc, n) => {
@@ -55,6 +66,16 @@ export default function Notifications() {
     if (n.link) router.push(n.link as any);
   };
 
+  const toggleStatus = (e: any, n: (typeof list)[number]) => {
+    e?.stopPropagation?.();
+    if (n.read) {
+      notifications.markUnread(userId, n.id);
+    } else {
+      notifications.markRead(userId, n.id);
+    }
+    setList(notifications.list(userId));
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: c.ivory }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
@@ -62,10 +83,22 @@ export default function Notifications() {
           <View style={styles.inner}>
             <View style={styles.top}>
               <IconButton icon="chevron-back" label="Go back" tone="filled" onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} />
-              {unread > 0 && (
-                <Pressable onPress={() => { notifications.markRead(userId); setList(notifications.list(userId)); }} hitSlop={10} style={styles.markAll} accessibilityRole="button">
-                  <Ionicons name="checkmark-done" size={18} color={c.primary} />
-                  <Txt variant="label" color={c.primary}>Mark all read</Txt>
+              {list.length > 0 && (
+                <Pressable
+                  onPress={() => {
+                    if (unread > 0) {
+                      notifications.markRead(userId);
+                      setList(notifications.list(userId));
+                    }
+                  }}
+                  disabled={unread === 0}
+                  hitSlop={10}
+                  style={[styles.markAll, unread === 0 && { opacity: 0.5 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mark all as read"
+                >
+                  <Ionicons name="checkmark-done" size={18} color={unread > 0 ? c.primary : c.muted} />
+                  <Txt variant="label" color={unread > 0 ? c.primary : c.muted}>Mark all read</Txt>
                 </Pressable>
               )}
             </View>
@@ -94,7 +127,9 @@ export default function Notifications() {
                         <Txt variant="label" color={c.inkSoft} style={{ fontWeight: '400' }}>{n.body}</Txt>
                         <Txt variant="caption" color={c.muted}>{ago(n.at)}</Txt>
                       </View>
-                      {!n.read && <View style={[styles.dot, { backgroundColor: c.primary }]} />}
+                      <Pressable onPress={(e) => toggleStatus(e, n)} hitSlop={10} style={{ padding: 4, justifyContent: 'center' }} accessibilityRole="button" accessibilityLabel={n.read ? "Mark as unread" : "Mark as read"}>
+                        <Ionicons name={n.read ? "ellipse-outline" : "ellipse"} size={14} color={n.read ? c.borderStrong : c.primary} />
+                      </Pressable>
                     </Pressable>
                   );
                 })}

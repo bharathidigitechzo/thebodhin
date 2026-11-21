@@ -793,6 +793,30 @@ export const communityApi = {
     const role = memberRole(userId, ch.tenantId)!;
     const staff = role !== 'student';
     const all = g().posts.filter((p) => p.channelId === ch.id && (staff || !p.hidden));
+
+    // Ensure each user has at most one reaction per post (clean up any legacy multi-reactions)
+    let dirty = false;
+    for (const post of all) {
+      if (!post.reactions) continue;
+      const seenUsers = new Set<string>();
+      for (const [key, uids] of Object.entries(post.reactions)) {
+        const filtered = uids.filter((uid) => {
+          if (seenUsers.has(uid)) return false;
+          seenUsers.add(uid);
+          return true;
+        });
+        if (filtered.length !== uids.length) {
+          dirty = true;
+          if (filtered.length) {
+            post.reactions[key] = filtered;
+          } else {
+            delete post.reactions[key];
+          }
+        }
+      }
+    }
+    if (dirty) persist();
+
     const top = all.filter((p) => !p.parentId).sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.at.localeCompare(a.at));
     return { ch, role, staff, canPost: staff || !ch.announce, academy: tenantById(ch.tenantId)!.branding.displayName, posts: top.map((p) => ({ p, replies: all.filter((r) => r.parentId === p.id).sort((a, b) => a.at.localeCompare(b.at)) })) };
   },
@@ -820,10 +844,24 @@ export const communityApi = {
     const p = g().posts.find((x) => x.id === postId);
     if (!p) return;
     communityApi.channel(userId, p.channelId);
-    const list = (p.reactions[emoji] ??= []);
-    const i = list.indexOf(userId);
-    i >= 0 ? list.splice(i, 1) : list.push(userId);
-    if (!list.length) delete p.reactions[emoji];
+    p.reactions ??= {};
+
+    const alreadyReactedSame = (p.reactions[emoji] ?? []).includes(userId);
+
+    // Remove user from all reaction emojis on this post (single-reaction WhatsApp model)
+    for (const key of Object.keys(p.reactions)) {
+      p.reactions[key] = p.reactions[key].filter((id) => id !== userId);
+      if (!p.reactions[key].length) {
+        delete p.reactions[key];
+      }
+    }
+
+    // If they were not already reacting with this emoji, add the new reaction
+    // (If they were already reacting with it, it acts as an unreact / toggle off)
+    if (!alreadyReactedSame) {
+      const list = (p.reactions[emoji] ??= []);
+      list.push(userId);
+    }
     persist();
   },
   report(userId: string, postId: string) {

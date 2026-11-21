@@ -2,13 +2,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, touch } from '@/theme/tokens';
 import { useAuth } from '@/store/auth';
 import { notifications } from '@/api/client';
+import { dbListeners } from '@/api/mockDb';
 import { BrandLogo } from './Brand';
 import { Txt } from './Txt';
 import { haptic } from './haptics';
@@ -67,6 +68,25 @@ export function AppHeader({ profileHref = '/profile', action }: { profileHref?: 
   const { session } = useAuth();
   const { width } = useWindowDimensions();
   const educatorArea = profileHref !== '/profile';
+  const userId = session?.user.id ?? '';
+  const [unreadCount, setUnreadCount] = useState(() => (userId ? notifications.unread(userId) : 0));
+
+  useFocusEffect(
+    useCallback(() => {
+      if (userId) setUnreadCount(notifications.unread(userId));
+    }, [userId])
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+    setUnreadCount(notifications.unread(userId));
+    const onDbChange = () => setUnreadCount(notifications.unread(userId));
+    dbListeners.add(onDbChange);
+    return () => {
+      dbListeners.delete(onDbChange);
+    };
+  }, [userId]);
+
   return (
     <View style={styles.header}>
       {width >= 1024 && educatorArea ? (
@@ -87,7 +107,12 @@ export function AppHeader({ profileHref = '/profile', action }: { profileHref?: 
         </View>
       )}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <IconButton icon="notifications-outline" label="Notifications" dot={!!session && notifications.unread(session.user.id) > 0} onPress={() => router.push('/notifications')} />
+        <IconButton
+          icon="notifications-outline"
+          label="Notifications"
+          badge={unreadCount}
+          onPress={() => router.push('/notifications')}
+        />
         <Pressable onPress={() => router.navigate(profileHref as any)} accessibilityRole="button" accessibilityLabel="Your profile" hitSlop={6}>
           <Avatar name={session?.user.name ?? 'You'} uri={session?.user.avatarUrl} size={42} color={c.primaryDeep} />
         </Pressable>
@@ -96,8 +121,9 @@ export function AppHeader({ profileHref = '/profile', action }: { profileHref?: 
   );
 }
 
-export function IconButton({ icon, label, onPress, dot, tone = 'plain' }: { icon: IconName; label: string; onPress: () => void; dot?: boolean; tone?: 'plain' | 'filled' }) {
+export function IconButton({ icon, label, onPress, dot, badge, tone = 'plain' }: { icon: IconName; label: string; onPress: () => void; dot?: boolean; badge?: number; tone?: 'plain' | 'filled' }) {
   const { c } = useTheme();
+  const showBadge = badge != null && badge > 0;
   return (
     <Pressable
       onPress={() => { haptic('tap'); onPress(); }}
@@ -107,7 +133,15 @@ export function IconButton({ icon, label, onPress, dot, tone = 'plain' }: { icon
       style={({ pressed }) => [styles.iconBtn, tone === 'filled' && { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }, pressed && { opacity: 0.7, transform: [{ scale: 0.92 }] }]}
     >
       <Ionicons name={icon} size={24} color={c.ink} />
-      {dot && <View style={[styles.dot, { backgroundColor: c.live, borderColor: c.ivory }]} />}
+      {showBadge ? (
+        <View style={[styles.badge, { backgroundColor: c.live }]}>
+          <Txt variant="caption" color="#fff" style={{ fontSize: 10, lineHeight: 14, fontWeight: '700' }}>
+            {badge > 99 ? '99+' : badge}
+          </Txt>
+        </View>
+      ) : dot ? (
+        <View style={[styles.dot, { backgroundColor: c.live, borderColor: c.ivory }]} />
+      ) : null}
     </Pressable>
   );
 }
@@ -328,6 +362,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 6 },
   iconBtn: { width: touch.min, height: touch.min, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   dot: { position: 'absolute', top: 11, right: 12, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
+  badge: { position: 'absolute', top: 2, right: 2, minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   section: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 26, marginBottom: 12 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 4 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.pill, alignSelf: 'flex-start', maxWidth: '100%' },
