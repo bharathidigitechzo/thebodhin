@@ -22,9 +22,10 @@ interface Props {
   scroll?: boolean;
   contentStyle?: ViewStyle;
   decor?: boolean;
+  padded?: boolean;
 }
 
-export function Screen({ children, footer, maxWidth = layout.authMaxWidth, scroll = true, contentStyle, decor = true }: Props) {
+export function Screen({ children, footer, maxWidth = layout.authMaxWidth, scroll = true, contentStyle, decor = true, padded = true }: Props) {
   const { c, brand, tenant } = useTheme();
   const { isDesktop } = useLayout();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -81,10 +82,10 @@ export function Screen({ children, footer, maxWidth = layout.authMaxWidth, scrol
               {body}
             </ScrollView>
           ) : (
-            <View style={[styles.root, styles.nonScroll]}>{body}</View>
+            <View style={[styles.root, styles.nonScroll, !padded && { paddingHorizontal: 0 }]}>{body}</View>
           )}
           {footer && !inlineFooter && (
-            <View style={styles.footerWrap}>
+            <View style={[styles.footerWrap, !padded && { paddingHorizontal: space.xl }]}>
               <View style={[styles.footer, { maxWidth }]}>{footer}</View>
             </View>
           )}
