@@ -102,7 +102,7 @@ export function seedPlatform() {
   const buyers = ['Harish V.', 'Sowmiya K.', 'Ravi Teja', 'Anitha M.', 'Kiran B.', 'Pavithra S.', 'Dinesh K.'];
   const ownOrders = buyers.map((b, i) => ({
     id: i === 0 ? 'o_bod_9' : `o_bod_${10 + i}`, userId: `u_buyer_bod_${i}`, courseId: 'c_career', amountInr: i === 3 ? 2699 : 2999, discountInr: i === 3 ? 300 : 0, coupon: i === 3 ? 'BODHIN10' : undefined,
-    method: (i % 2 ? 'upi' : 'card') as 'upi' | 'card', status: 'paid' as const, createdAt: hrs(6 + i * 17), invoiceNo: `BOD-INV-2026-${String(520 + i).padStart(5, '0')}`, source: 'direct' as const,
+    method: (i % 2 ? 'upi' : 'card') as 'upi' | 'card', status: 'paid' as const, createdAt: hrs(i === 0 ? 40 : 6 + i * 17), invoiceNo: `BOD-INV-2026-${String(520 + i).padStart(5, '0')}`, source: 'direct' as const,
     commissionInr: 0, educatorShareInr: 0, channel: 'bodhin_own' as const, collector: 'bodhin' as const, sellerTenantId: 't_bodhin', gatewayFeeInr: Math.round(2999 * 0.02), payoutStatus: 'not_applicable' as const, buyerName: b,
   }));
   return { users, memberships, tenants, stats, usage, applications, pendingCourses: pending, reports, refunds, audit, history, ownOrders };

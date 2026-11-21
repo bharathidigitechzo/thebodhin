@@ -23,7 +23,7 @@ const SLIDES: Slide[] = [
 export default function Onboarding() {
   const { c } = useTheme();
   const { markOnboarded } = useAuth();
-  const { width: winW } = useWindowDimensions();
+  const { width: winW, height: winH } = useWindowDimensions();
   const width = Math.min(winW, layout.authMaxWidth + 40);
   const [index, setIndex] = useState(0);
   const list = useRef<FlatList<Slide>>(null);
@@ -33,16 +33,31 @@ export default function Onboarding() {
     router.replace(path);
   };
 
+  const isSmallDevice = winH < 720;
+
   return (
     <Screen
       scroll={false}
-      contentStyle={{ alignItems: 'center' }}
+      contentStyle={{ alignItems: 'center', justifyContent: 'center', flexGrow: 1 }}
       footer={
         <>
           <View style={styles.dots} accessibilityRole="tablist">
             {SLIDES.map((s, i) => (
-              <Pressable key={s.key} onPress={() => list.current?.scrollToIndex({ index: i })} hitSlop={10} style={{ minWidth: 32, minHeight: 32, alignItems: 'center', justifyContent: 'center' }} accessibilityRole="tab" accessibilityState={{ selected: i === index }} accessibilityLabel={`Slide ${i + 1}`}>
-                <View style={[styles.dot, { backgroundColor: i === index ? c.primary : c.borderStrong, width: i === index ? 22 : 8 }]} />
+              <Pressable
+                key={s.key}
+                onPress={() => list.current?.scrollToIndex({ index: i, animated: true })}
+                hitSlop={10}
+                style={{ minWidth: 32, minHeight: 32, alignItems: 'center', justifyContent: 'center' }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: i === index }}
+                accessibilityLabel={`Slide ${i + 1}`}
+              >
+                <View
+                  style={[
+                    styles.dot,
+                    { backgroundColor: i === index ? c.primary : c.borderStrong, width: i === index ? 22 : 8 },
+                  ]}
+                />
               </Pressable>
             ))}
           </View>
@@ -66,12 +81,12 @@ export default function Onboarding() {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        style={{ width, flexGrow: 0, marginHorizontal: -20 }}
+        style={{ width, flexGrow: 0, marginHorizontal: -20, marginTop: isSmallDevice ? 6 : 24 }}
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
         onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
         onScroll={(e) => {
           const i = Math.round(e.nativeEvent.contentOffset.x / width);
-          if (i !== index) setIndex(i);
+          if (i !== index && i >= 0 && i < SLIDES.length) setIndex(i);
         }}
         scrollEventThrottle={32}
         renderItem={({ item }) => (
@@ -94,7 +109,14 @@ export default function Onboarding() {
                   </View>
                 </View>
               ) : (
-                <Image source={hero} style={styles.hero} resizeMode="contain" accessibilityLabel="Students learning on Bodhin" />
+                <View style={styles.heroWrap}>
+                  <Image
+                    source={hero}
+                    style={styles.hero}
+                    resizeMode="cover"
+                    accessibilityLabel="Students learning on Bodhin"
+                  />
+                </View>
               )}
             </View>
           </View>
@@ -107,12 +129,13 @@ export default function Onboarding() {
 const styles = StyleSheet.create({
   top: { width: '100%', alignItems: 'center', paddingVertical: 12 },
   skip: { position: 'absolute', right: 0, top: 16, minHeight: 44, minWidth: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  slide: { paddingHorizontal: 20, paddingTop: 18, alignItems: 'center' },
-  art: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', marginTop: 16, minHeight: 240 },
-  hero: { width: '100%', aspectRatio: 800 / 524 },
-  iconStage: { width: 240, height: 240, borderRadius: 120, alignItems: 'center', justifyContent: 'center' },
-  bigIcon: { width: 128, height: 128, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
-  chip: { position: 'absolute', width: 64, height: 64, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B2A55', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  slide: { paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
+  art: { width: '100%', alignItems: 'center', justifyContent: 'center', marginTop: 22, minHeight: 240 },
+  heroWrap: { width: '100%', maxWidth: 320, height: 210, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#E4E8EF' },
+  hero: { width: '100%', height: '100%' },
+  iconStage: { width: 230, height: 230, borderRadius: 115, alignItems: 'center', justifyContent: 'center' },
+  bigIcon: { width: 120, height: 120, borderRadius: 34, alignItems: 'center', justifyContent: 'center' },
+  chip: { position: 'absolute', width: 60, height: 60, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B2A55', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
   dots: { flexDirection: 'row', gap: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
   dot: { height: 8, borderRadius: 4 },
 });

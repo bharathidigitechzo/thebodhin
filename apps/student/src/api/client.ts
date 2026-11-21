@@ -491,6 +491,8 @@ export const auth = {
       throw new ApiError('already', 'You already teach on Bodhin. Use “Switch to Educator” in your profile.');
     }
     let app = db.applications.find((a) => a.userId === userId);
+    // While Bodhin is reviewing, the application can't be overwritten (the reviewer would be judging a moving target).
+    if (app && ['submitted', 'under_review'].includes(app.status)) throw new ApiError('pending', 'You’ve already submitted your application. Our team is reviewing it and will notify you.');
     if (!app && db.users.some((u) => u.id === userId)) {
       app = { id: uid('app'), userId, status: 'draft' };
       db.applications.push(app);

@@ -28,7 +28,7 @@ export const DEFAULT_PLATFORM_CONFIG: PlatformConfig = {
   gatewayFeeRate: 0.02,
   refundHoldDays: 7,
   payoutWeekday: 1,
-  trialDays: 14,
+  trialDays: 10,
   trialPlan: 'growth',
   bodhinTenantId: 't_bodhin',
 };

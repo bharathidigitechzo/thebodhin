@@ -107,14 +107,13 @@ const seed = (): Db => mergeExtras({
     },
     { id: 'u_rajesh', name: 'Rajesh Kumar', email: 'rajesh@demo.in', phone: '+919840012345', phoneVerified: true, password: 'demo123', createdAt: '2025-11-02T10:00:00Z' },
     { id: 'u_meera', name: 'Meera Iyer', email: 'meera@demo.in', phone: '+919841122334', phoneVerified: true, password: 'demo123', createdAt: '2026-03-10T10:00:00Z' },
-    { id: 'u_admin', name: 'Admin Bodhin', email: 'admin@demo.in', phone: '+919800000000', phoneVerified: true, password: 'demo123', createdAt: '2025-10-01T10:00:00Z' },
   ],
   memberships: [
     { userId: 'u_arjun', tenantId: 't_bodhin', role: 'student' },
     { userId: 'u_rajesh', tenantId: 't_rajesh', role: 'owner' },
     { userId: 'u_rajesh', tenantId: 't_bodhin', role: 'student' },
     { userId: 'u_meera', tenantId: 't_rajesh', role: 'tutor' },
-    { userId: 'u_admin', tenantId: 't_bodhin', role: 'super_admin' },
+    // Super Admin (u_admin) comes from adminSeed.ts — seed it only once.
   ],
   applications: [],
   tenants: [
@@ -511,7 +510,9 @@ function load(): Db {
         parsed.sessionStatus['ls_1'] = 'live';
         parsed.liveMeta = parsed.liveMeta || {};
         parsed.liveMeta['ls_1'] = parsed.liveMeta['ls_1'] || { hostId: 'u_rajesh', hostName: 'Rajesh Kumar', startedAt: new Date(Date.now() - 150000).toISOString() };
-        return fixSavedCertificates({ ...initial, ...parsed, users: mergedUsers, memberships: mergedMemberships });
+        const users = mergedUsers.filter((u, i, all) => all.findIndex((x) => x.id === u.id) === i);
+        const memberships = mergedMemberships.filter((m, i, all) => all.findIndex((x) => x.userId === m.userId && x.tenantId === m.tenantId && x.role === m.role) === i);
+        return fixSavedCertificates({ ...initial, ...parsed, users, memberships });
       }
     } catch {
       /* storage blocked → fall back to seed */

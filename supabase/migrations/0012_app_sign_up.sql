@@ -11,7 +11,9 @@ returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
   v_id uuid := gen_random_uuid();
-  v_email text := lower(trim(coalesce(p_email, '')));
+  v_email text := lower(trim(coalesce(p_email, 
+  
+  '')));
   -- Only display fields; never anything that decides identity or roles.
   v_meta jsonb := jsonb_strip_nulls(jsonb_build_object(
     'name', left(trim(p_meta->>'name'), 80),

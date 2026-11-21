@@ -53,7 +53,9 @@ async function main() {
   ok(c1.rating === 0 && c1.students === 0 && c1.ratingCount === 0, 'educator cannot fake rating/students');
   ok(c1.status === 'draft', 'educator cannot publish by editing status (must pass checklist)');
   await throws(() => api.courseAdmin.publish(s.userId, cid), 'publish blocked without content', /content/i);
-  const m = c1.modules[0];
+  // Courses start empty; the builder asks for the first module's name (Nov 18 change).
+  if (!c1.modules.length) api.courseAdmin.addModule(s.userId, cid, 'Module 1');
+  const m = seedCourses.find((x) => x.id === cid)!.modules[0];
   api.courseAdmin.saveLesson(s.userId, cid, m.id, { title: 'Welcome & syllabus', type: 'video', durationSec: 420, preview: true });
   // private paid course: needs own gateway
   await throws(() => api.courseAdmin.publish(s.userId, cid), 'private paid course needs gateway', /payments/i);
