@@ -4,7 +4,7 @@
  * body of each function with a fetch() to the real backend. Signatures stay the same,
  * so no screen code changes.
  */
-import { db, loadHooks, persist, uid } from './mockDb';
+import { db, emitDbChanged, loadHooks, persist, uid } from './mockDb';
 import { cloud } from './cloud';
 import { categories as seedCategories, courses as seedCourses, liveSessions as seedLive, seedReviews, tutors as seedTutors } from './catalogSeed';
 import { ASSESSMENTS, QUESTIONS } from './assessSeed';
@@ -1648,6 +1648,14 @@ export const notifications = {
       if (n.userId === userId && (!id || n.id === id)) n.read = true;
     });
     persist();
+    emitDbChanged();
+  },
+  markUnread(userId: string, id?: string) {
+    db.notifications.forEach((n) => {
+      if (n.userId === userId && (!id || n.id === id)) n.read = false;
+    });
+    persist();
+    emitDbChanged();
   },
 };
 
@@ -4120,6 +4128,8 @@ export const afterPaidHooks: ((o: Order) => void)[] = [];
 
 export function notifyUser(userId: string, kind: 'system' | 'course', title: string, body: string, link?: { pathname: string; params?: Record<string, string> }) {
   db.notifications.push({ id: uid('n'), userId, kind, title, body, at: new Date().toISOString(), read: false, link });
+  persist();
+  emitDbChanged();
 }
 
 export type InboxTab = 'educators' | 'courses' | 'reports';
