@@ -279,6 +279,19 @@ export default function ApplicationStatus() {
           />
         ) : null}
 
+        {!isApproved && !isRejected && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={[styles.editBtn, { backgroundColor: c.surface, borderColor: c.border }]}
+            onPress={() => router.push('/apply')}
+          >
+            <Ionicons name="create-outline" size={17} color={c.ink} />
+            <Txt style={{ color: c.ink, fontWeight: '600', fontSize: 14 }}>
+              Edit application details
+            </Txt>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           activeOpacity={0.7}
           style={[styles.refreshBtn, { backgroundColor: c.surface, borderColor: c.border }]}
@@ -432,6 +445,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 44,
     borderRadius: 14,
     borderWidth: 1,
   },

@@ -33,7 +33,10 @@ export function homePath(session: Session | null, mode: Mode | null) {
   if (edu) return '/educator/home'; // educators always open the Educator portal
   try {
     const app = auth.getApplication(session.user.id);
-    if (app && ['draft', 'submitted', 'under_review', 'rejected', 'changes_requested'].includes(app.status)) {
+    if (app && app.status === 'draft') {
+      return '/apply';
+    }
+    if (app && ['submitted', 'under_review', 'rejected', 'changes_requested'].includes(app.status)) {
       return '/application-status';
     }
   } catch {}

@@ -23,13 +23,6 @@ export default function Apply() {
   const userId = session?.user.id ?? '';
   const existing = useMemo(() => (userId ? auth.getApplication(userId) : null), [userId]);
 
-  // If application is already submitted or under review, redirect directly to /application-status
-  React.useEffect(() => {
-    if (existing && ['submitted', 'under_review'].includes(existing.status)) {
-      router.replace('/application-status');
-    }
-  }, [existing?.status]);
-
   const [f, setF] = useState({
     workspaceName: existing?.workspaceName ?? '',
     subjects: existing?.subjects?.join(', ') ?? '',
@@ -70,10 +63,6 @@ export default function Apply() {
       router.replace('/application-status');
     } catch (e) {
       const err = e as ApiError;
-      if (err.code === 'pending') {
-        router.replace('/application-status');
-        return;
-      }
       if (err.field) setErrors((x) => ({ ...x, [err.field!]: err.message }));
       else setError(err.message);
     } finally {
@@ -86,9 +75,6 @@ export default function Apply() {
     return null;
   }
 
-  if (existing && ['submitted', 'under_review'].includes(existing.status)) {
-    return <Redirect href="/application-status" />;
-  }
   return (
     <Screen scroll footer={<Button title={existing?.status === 'changes_requested' || existing?.status === 'rejected' ? 'Resubmit application' : 'Submit application'} iconRight="arrow-forward" loading={busy} onPress={submit} />}>
       <BrandLogo size="sm" />
