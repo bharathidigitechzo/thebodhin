@@ -20,6 +20,7 @@ export default function Verify() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const timer = useResendTimer();
+  const isEmail = to.includes('@');
 
   async function submit(value = code) {
     if (value.length < 6) return setError('Enter the 6-digit code.');
@@ -37,6 +38,15 @@ export default function Verify() {
     }
   }
 
+  async function handleResend() {
+    timer.restart();
+    try {
+      await auth.sendOtp(to);
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
   useEffect(() => {
     if (code.length === 6) submit(code);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -49,7 +59,7 @@ export default function Verify() {
           <Button title="Verify & Continue" iconRight="arrow-forward" loading={busy} disabled={code.length < 6} onPress={() => submit()} />
           <Pressable onPress={() => router.back()} hitSlop={10} style={styles.change} accessibilityRole="button">
             <Txt variant="label" color={c.primary}>
-              Change mobile number
+              {isEmail ? 'Change email / details' : 'Change mobile number'}
             </Txt>
           </Pressable>
         </>
@@ -58,9 +68,9 @@ export default function Verify() {
       <BackButton fallback="/sign-up" />
       <View style={styles.head}>
         <View style={[styles.icon, { backgroundColor: c.primarySoft }]}>
-          <Ionicons name="phone-portrait-outline" size={34} color={c.primary} />
+          <Ionicons name={isEmail ? 'mail-outline' : 'phone-portrait-outline'} size={34} color={c.primary} />
         </View>
-        <TwoTone lead="Verify your" accent="number" variant="title" center />
+        <TwoTone lead="Verify your" accent={isEmail ? 'email' : 'number'} variant="title" center />
         <Txt center color={c.inkSoft}>
           Enter the 6-digit code we sent to{'\n'}
           <Txt variant="bodyStrong">{maskTarget(to)}</Txt>
@@ -74,7 +84,7 @@ export default function Verify() {
       )}
       <View style={styles.resend}>
         {timer.canResend ? (
-          <Pressable onPress={timer.restart} hitSlop={10} accessibilityRole="button">
+          <Pressable onPress={handleResend} hitSlop={10} accessibilityRole="button">
             <Txt variant="bodyStrong" color={c.primary}>
               Resend code
             </Txt>

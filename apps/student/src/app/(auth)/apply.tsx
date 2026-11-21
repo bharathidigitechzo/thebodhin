@@ -3,10 +3,10 @@
  * A bare tutor sign-up creates only a draft; THIS form is what reaches the Super Admin inbox,
  * so the reviewer has real details (academy, subjects, experience) to verify.
  */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { ApiError, auth } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { Banner } from '@/ui/misc';
@@ -22,6 +22,8 @@ export default function Apply() {
   const { session, signOut } = useAuth();
   const userId = session?.user.id ?? '';
   const existing = useMemo(() => (userId ? auth.getApplication(userId) : null), [userId]);
+  const isPendingReview = existing && ['submitted', 'under_review'].includes(existing.status);
+
   const [f, setF] = useState({
     workspaceName: existing?.workspaceName ?? '',
     subjects: existing?.subjects?.join(', ') ?? '',
@@ -35,9 +37,19 @@ export default function Apply() {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => { setF((x) => ({ ...x, [k]: v })); setErrors((e) => ({ ...e, [k]: null })); setError(null); };
   const refs = { subjects: useRef<any>(null), experience: useRef<any>(null), city: useRef<any>(null), students: useRef<any>(null), sample: useRef<any>(null) };
+
+  // If application is already submitted or under review, redirect to application status page
+  useEffect(() => {
+    if (isPendingReview || existing?.status === 'approved') {
+      router.replace('/application-status');
+    }
+  }, [isPendingReview, existing?.status]);
+
+  if (isPendingReview || existing?.status === 'approved') {
+    return <Redirect href="/application-status" />;
+  }
 
   /** POC: simulates DigiLocker/Aadhaar verification. Production: real DigiLocker flow; we never store ID numbers. */
   const verifyId = async () => {
@@ -60,7 +72,7 @@ export default function Apply() {
         sampleUrl: f.sampleUrl || undefined,
         idVerified,
       });
-      setSubmitted(true);
+      router.replace('/application-status');
     } catch (e) {
       const err = e as ApiError;
       if (err.field) setErrors((x) => ({ ...x, [err.field!]: err.message }));
@@ -105,76 +117,6 @@ export default function Apply() {
         </View>
         {!idVerified && <Button title="Verify" variant="ghost" loading={idBusy} onPress={verifyId} />}
       </View>
-
-      {/* Success Modal */}
-      <Modal visible={submitted} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-            <View style={[styles.successIconBadge, { backgroundColor: '#e6f4ea' }]}>
-              <Ionicons name="checkmark-circle" size={54} color={c.success} />
-            </View>
-
-            <Txt variant="title" center style={{ fontSize: 22, fontWeight: '700' }}>
-              Application Submitted! 🎉
-            </Txt>
-            <Txt variant="body" color={c.inkSoft} center style={{ marginTop: 4 }}>
-              Your educator application for <Txt variant="bodyStrong">{f.workspaceName || 'your academy'}</Txt> has been submitted successfully.
-            </Txt>
-
-            <View style={[styles.infoBox, { backgroundColor: c.surfaceMuted, borderColor: c.border }]}>
-              <View style={styles.infoRow}>
-                <Ionicons name="time-outline" size={22} color={c.primary} />
-                <View style={{ flex: 1 }}>
-                  <Txt variant="bodyStrong">Under Review</Txt>
-                  <Txt variant="caption" color={c.muted}>
-                    Our team reviews educator applications within 1–2 business days.
-                  </Txt>
-                </View>
-              </View>
-
-              <View style={styles.infoRow}>
-                <Ionicons name="mail-outline" size={22} color={c.primary} />
-                <View style={{ flex: 1 }}>
-                  <Txt variant="bodyStrong">Gmail Notification</Txt>
-                  <Txt variant="caption" color={c.muted}>
-                    An official approval email will be sent to <Txt variant="caption" style={{ fontWeight: '600', color: c.ink }}>{session?.user?.email}</Txt> once verified by Admin.
-                  </Txt>
-                </View>
-              </View>
-
-              <View style={styles.infoRow}>
-                <Ionicons name="key-outline" size={22} color={c.primary} />
-                <View style={{ flex: 1 }}>
-                  <Txt variant="bodyStrong">Educator Login</Txt>
-                  <Txt variant="caption" color={c.muted}>
-                    You can log in to your Educator Dashboard immediately after receiving the confirmation email.
-                  </Txt>
-                </View>
-              </View>
-            </View>
-
-            <View style={{ width: '100%', gap: 10, marginTop: 8 }}>
-              <Button
-                title="Track Application Status"
-                iconRight="arrow-forward"
-                onPress={() => {
-                  setSubmitted(false);
-                  router.replace('/application-status');
-                }}
-              />
-              <Button
-                title="Done & Sign Out"
-                variant="ghost"
-                onPress={() => {
-                  setSubmitted(false);
-                  signOut();
-                  router.replace('/sign-in');
-                }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </Screen>
   );
 }
@@ -183,46 +125,4 @@ const styles = StyleSheet.create({
   head: { alignItems: 'center', gap: 10, paddingVertical: 20 },
   row: { flexDirection: 'row', gap: 12 },
   idCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 18, padding: 14, marginTop: 4 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 480,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 8,
-  },
-  successIconBadge: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  infoBox: {
-    width: '100%',
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    gap: 14,
-    marginTop: 18,
-    marginBottom: 10,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
 });

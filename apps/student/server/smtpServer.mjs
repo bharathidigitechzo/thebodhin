@@ -253,6 +253,76 @@ thebodhin@gmail.com
   `.trim();
 }
 
+export function buildSignupOtpEmailHtml({ userName, userEmail, otpCode, role }) {
+  const roleLabel = role === 'tutor' ? 'Educator' : 'Student';
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Your Bodhin Verification Code</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FBF7F0; margin: 0; padding: 24px; color: #1E293B; }
+    .card { max-width: 540px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(11, 59, 115, 0.06); }
+    .header { background: linear-gradient(135deg, #0B3B73 0%, #071F44 100%); padding: 32px 24px; text-align: center; color: #FFFFFF; }
+    .header h1 { margin: 8px 0 0; font-size: 22px; font-weight: 700; }
+    .header p { margin: 0; color: #D99A1E; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+    .content { padding: 32px 28px; line-height: 1.6; font-size: 15px; }
+    .otp-box { background: #F8FAFC; border: 2px dashed #0B3B73; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0; }
+    .otp-code { font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #0B3B73; font-family: 'Courier New', Courier, monospace; margin: 8px 0; }
+    .footer { text-align: center; padding: 20px; font-size: 12px; color: #64748B; border-top: 1px solid #E2E8F0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <p>Bodhin Platform</p>
+      <h1>Verify Your Email</h1>
+    </div>
+    <div class="content">
+      <p>Hello <strong>${userName}</strong>,</p>
+      <p>Welcome to Bodhin! Please use the 6-digit verification code below to verify your email address (<strong>${userEmail}</strong>) for your ${roleLabel} account:</p>
+      
+      <div class="otp-box">
+        <div style="font-size: 12px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Email Verification Code</div>
+        <div class="otp-code">${otpCode}</div>
+        <div style="font-size: 12px; color: #D99A1E; font-weight: 600;">⏱️ Valid for 10 minutes</div>
+      </div>
+
+      <p>Enter this 6-digit code on the Bodhin verification screen to continue.</p>
+
+      <p style="margin-top: 24px; font-size: 13px; color: #64748B;">If you did not initiate this request, you can safely ignore this email.</p>
+      <p style="font-size: 13px; color: #64748B;">Need help? Contact us at <a href="mailto:thebodhin@gmail.com" style="color: #0B3B73;">thebodhin@gmail.com</a>.</p>
+      
+      <p style="margin-top: 20px;">Warm regards,<br><strong>The Bodhin Team</strong></p>
+    </div>
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} Bodhin Platform &bull; Sent from thebodhin@gmail.com to ${userEmail}
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+export function buildSignupOtpEmailText({ userName, userEmail, otpCode, role }) {
+  const roleLabel = role === 'tutor' ? 'Educator' : 'Student';
+  return `
+Hello ${userName},
+
+Welcome to Bodhin!
+
+Your 6-digit verification code for your ${roleLabel} account (${userEmail}) is:
+${otpCode} (Valid for 10 minutes)
+
+Enter this code on the Bodhin verification screen to complete your registration.
+
+Warm regards,
+The Bodhin Team
+thebodhin@gmail.com
+  `.trim();
+}
+
 async function sendEmail({ to, subject, html, text, cc, bcc }) {
   const transporter = createTransporter();
   const mailRecord = {
@@ -386,6 +456,45 @@ const server = http.createServer(async (req, res) => {
           adminBcc: SMTP_CONFIG.adminCopy,
           subject
         }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/api/send-signup-otp' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const email = payload.email || payload.to;
+        const name = payload.name || 'User';
+        const otp = payload.otp || '123456';
+        const role = payload.role || 'student';
+
+        if (!email) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'email is required' }));
+          return;
+        }
+
+        const subject = `✨ ${otp} is your Bodhin verification code`;
+        const html = buildSignupOtpEmailHtml({ userName: name, userEmail: email, otpCode: otp, role });
+        const text = buildSignupOtpEmailText({ userName: name, userEmail: email, otpCode: otp, role });
+
+        const result = await sendEmail({
+          to: email,
+          bcc: SMTP_CONFIG.adminCopy,
+          subject,
+          html,
+          text
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, result, sentTo: email, otp }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: err.message }));

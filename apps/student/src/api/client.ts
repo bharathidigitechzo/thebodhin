@@ -21,7 +21,7 @@ import { LIVE_SCALE, seatMode } from '@/live/scale';
 import { roomName } from '@/live/protocol';
 import { findClash, instructorClashIds, slotClashes, spanOf, weekDays, weekStart, type Clash } from '@/core/timetable';
 import { MAX_CODE_TESTS, rubricOf, score as scoreQuiz, type Assessment, type AssessStatus, type Attempt, type Question, type Submission } from '@/core/assess';
-import { sendEducatorApprovalEmail, sendPasswordResetOtpEmail } from './mailer';
+import { sendEducatorApprovalEmail, sendPasswordResetOtpEmail, sendSignupOtpEmail } from './mailer';
 
 /** Apply educator-created/edited courses on top of the demo catalogue (in place, so every reader sees them). */
 function syncCourses() {
@@ -428,8 +428,24 @@ export const auth = {
         idVerified: false
       });
     }
+
+    // Generate real 6-digit OTP code and record in resetStore
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+    resetStore.set(user.id, { code, expiresAt, userId: user.id });
+    resetStore.set(user.email.toLowerCase(), { code, expiresAt, userId: user.id });
+    if (user.phone) resetStore.set(user.phone.replace(/\D/g, ''), { code, expiresAt, userId: user.id });
+
+    // Dispatch verification code to user's email via Bodhin SMTP service
+    sendSignupOtpEmail({
+      email: user.email,
+      name: user.name,
+      otp: code,
+      role: input.role,
+    }).catch((e) => console.warn('Could not dispatch signup OTP email:', e));
+
     persist();
-    return { userId: user.id, otpSentTo: phone };
+    return { userId: user.id, otpSentTo: user.email };
   },
 
   /** In-memory reset store for active OTPs */
@@ -457,12 +473,11 @@ export const auth = {
 
     // Send real email via Bodhin SMTP (thebodhin@gmail.com)
     if (u.email) {
-      sendPasswordResetOtpEmail({
+      sendSignupOtpEmail({
         email: u.email,
         name: u.name,
         otp: code,
-        resetLink: `http://localhost:8081/forgot-password?identifier=${encodeURIComponent(u.email)}&code=${code}`,
-      }).catch((e) => console.warn('Could not dispatch reset email:', e));
+      }).catch((e) => console.warn('Could not dispatch OTP email:', e));
     }
 
     return { sentTo: target.includes('@') ? u.email : (u.email || u.phone), otp: code };
@@ -470,9 +485,17 @@ export const auth = {
 
   async verifySignupOtp(userId: string, code: string): Promise<Session> {
     await wait();
-    if (code !== DEMO_OTP) throw new ApiError('bad_otp', 'That code is not correct. Check the SMS and try again.', 'code');
     const u = db.users.find((x) => x.id === userId);
     if (!u) throw new ApiError('not_found', 'Account not found.');
+
+    const entry = resetStore.get(userId) || resetStore.get(u.email.toLowerCase()) || (u.phone ? resetStore.get(u.phone.replace(/\D/g, '')) : null);
+    const matchesLive = entry && entry.code === code.trim() && entry.expiresAt > Date.now();
+    const matchesDemo = code.trim() === DEMO_OTP;
+
+    if (!matchesLive && !matchesDemo) {
+      throw new ApiError('bad_otp', 'That code is not correct. Check your email and try again.', 'code');
+    }
+
     u.phoneVerified = true;
     // A tutor's application stays 'draft' until they complete the academy-details form (/apply).
     persist();
