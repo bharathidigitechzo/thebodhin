@@ -21,7 +21,7 @@ import { LIVE_SCALE, seatMode } from '@/live/scale';
 import { roomName } from '@/live/protocol';
 import { findClash, instructorClashIds, slotClashes, spanOf, weekDays, weekStart, type Clash } from '@/core/timetable';
 import { MAX_CODE_TESTS, rubricOf, score as scoreQuiz, type Assessment, type AssessStatus, type Attempt, type Question, type Submission } from '@/core/assess';
-import { sendEducatorApprovalEmail, sendPasswordResetOtpEmail, sendSignupOtpEmail } from './mailer';
+import { sendEducatorApprovalEmail, sendPasswordResetOtpEmail } from './mailer';
 
 /** Apply educator-created/edited courses on top of the demo catalogue (in place, so every reader sees them). */
 function syncCourses() {
@@ -295,20 +295,15 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
   const app = db.applications.find((a) => a.userId === u.id);
   const hasApprovedTenant = db.memberships.some((m) => m.userId === u.id && m.role === 'owner');
   if (app && app.status !== 'approved' && !hasApprovedTenant && !email.endsWith('@demo.in')) {
-    await cloud.signOut();
     if (app.status === 'draft' || app.status === 'submitted' || app.status === 'under_review') {
+      await cloud.signOut();
       throw new ApiError(
         'pending_approval',
         `⏳ Your educator application is waiting for Admin approval. An official confirmation email will be sent to your Gmail (${u.email}) once approved. You can sign in after receiving the approval email.`,
         'identifier'
       );
     }
-    if (app.status === 'rejected') {
-      throw new ApiError('rejected', `Your educator application was not approved. Note: ${app.note || 'Contact support@thebodhin.com'}`, 'identifier');
-    }
-    if (app.status === 'changes_requested') {
-      throw new ApiError('changes_requested', `Bodhin asked for changes on your application: ${app.note || 'Please review and resubmit'}.`, 'identifier');
-    }
+    // Note: If app.status === 'rejected' or 'changes_requested', we ALLOW sign in so they can view the rejection reason and re-apply!
   }
 
   return sessionFor(u.id);
@@ -383,12 +378,7 @@ export const auth = {
           'identifier'
         );
       }
-      if (app.status === 'rejected') {
-        throw new ApiError('rejected', `Your educator application was not approved. Note: ${app.note || 'Contact support@thebodhin.com'}`, 'identifier');
-      }
-      if (app.status === 'changes_requested') {
-        throw new ApiError('changes_requested', `Bodhin asked for changes on your application: ${app.note || 'Please review and resubmit'}.`, 'identifier');
-      }
+      // Note: If app.status === 'rejected' or 'changes_requested', we ALLOW sign in so they can view the rejection reason and re-apply!
     }
 
     return sessionFor(u.id);
@@ -400,18 +390,60 @@ export const auth = {
     const phone = normPhone(input.phone);
     if (input.role === 'tutor' && !db.flags.tutorSignups) throw new ApiError('paused', 'New educator sign-ups are paused for a short while. Please try again soon.');
     if (cloud.enabled) {
-      if (await cloud.emailForPhone(phone)) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+      if (await cloud.emailForPhone(phone)) {
+        const existingUser = db.users.find((u) => u.phone === phone);
+        const existingApp = existingUser ? db.applications.find((a) => a.userId === existingUser.id) : null;
+        if (!existingApp || existingApp.status !== 'rejected') {
+          throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+        }
+      }
       const up = await cloud.signUp(email, input.password, { name: input.name.trim(), phone, role: input.role });
       if (up.error) {
-        if (up.error === 'email_exists') throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+        if (up.error === 'email_exists') {
+          const existingUser = db.users.find((u) => u.email.toLowerCase() === email);
+          const existingApp = existingUser ? db.applications.find((a) => a.userId === existingUser.id) : null;
+          if (existingApp && existingApp.status === 'rejected') {
+            existingApp.status = 'draft';
+            existingApp.workspaceName = `${input.name.trim()} Academy`;
+            existingApp.note = undefined;
+            existingApp.reviewedAt = undefined;
+            existingApp.reviewedBy = undefined;
+            if (existingUser) {
+              existingUser.name = input.name.trim();
+              existingUser.password = input.password;
+            }
+            persist();
+            return { userId: existingUser?.id || uid('u'), otpSentTo: phone };
+          }
+          throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+        }
         if (up.error === 'busy') throw new ApiError('busy', BUSY, 'email');
         throw new ApiError('signup', up.message || 'Could not create your account. Try again.');
       }
       const user = await ensureAppUser(up.user ?? { email, user_metadata: { name: input.name.trim(), phone, role: input.role } }, input.password);
       return { userId: user.id, otpSentTo: phone };
     }
-    if (db.users.some((u) => u.email === email)) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
-    if (db.users.some((u) => u.phone === phone)) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+    const existing = db.users.find((u) => u.email.toLowerCase() === email || (phone && u.phone === phone));
+    if (existing) {
+      const existingApp = db.applications.find((a) => a.userId === existing.id);
+      // If educator's previous application was rejected by admin, allow them to re-sign up with the same Gmail!
+      if (existingApp && existingApp.status === 'rejected') {
+        existing.name = input.name.trim();
+        existing.password = input.password;
+        if (phone) existing.phone = phone;
+        existing.phoneVerified = false;
+        // Reset application back to draft so they can fill fresh details and re-apply
+        existingApp.status = 'draft';
+        existingApp.workspaceName = `${input.name.trim()} Academy`;
+        existingApp.note = undefined;
+        existingApp.reviewedAt = undefined;
+        existingApp.reviewedBy = undefined;
+        persist();
+        return { userId: existing.id, otpSentTo: phone };
+      }
+      if (existing.email.toLowerCase() === email) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+      if (phone && existing.phone === phone) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+    }
     const user = { id: uid('u'), name: input.name.trim(), email, phone, phoneVerified: false, password: input.password, createdAt: new Date().toISOString() };
     db.users.push(user);
     const activeTenantId = input.tenantId || 't_bodhin';
@@ -428,24 +460,8 @@ export const auth = {
         idVerified: false
       });
     }
-
-    // Generate real 6-digit OTP code and record in resetStore
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000;
-    resetStore.set(user.id, { code, expiresAt, userId: user.id });
-    resetStore.set(user.email.toLowerCase(), { code, expiresAt, userId: user.id });
-    if (user.phone) resetStore.set(user.phone.replace(/\D/g, ''), { code, expiresAt, userId: user.id });
-
-    // Dispatch verification code to user's email via Bodhin SMTP service
-    sendSignupOtpEmail({
-      email: user.email,
-      name: user.name,
-      otp: code,
-      role: input.role,
-    }).catch((e) => console.warn('Could not dispatch signup OTP email:', e));
-
     persist();
-    return { userId: user.id, otpSentTo: user.email };
+    return { userId: user.id, otpSentTo: phone };
   },
 
   /** In-memory reset store for active OTPs */
@@ -473,11 +489,12 @@ export const auth = {
 
     // Send real email via Bodhin SMTP (thebodhin@gmail.com)
     if (u.email) {
-      sendSignupOtpEmail({
+      sendPasswordResetOtpEmail({
         email: u.email,
         name: u.name,
         otp: code,
-      }).catch((e) => console.warn('Could not dispatch OTP email:', e));
+        resetLink: `http://localhost:8081/forgot-password?identifier=${encodeURIComponent(u.email)}&code=${code}`,
+      }).catch((e) => console.warn('Could not dispatch reset email:', e));
     }
 
     return { sentTo: target.includes('@') ? u.email : (u.email || u.phone), otp: code };
@@ -485,17 +502,9 @@ export const auth = {
 
   async verifySignupOtp(userId: string, code: string): Promise<Session> {
     await wait();
+    if (code !== DEMO_OTP) throw new ApiError('bad_otp', 'That code is not correct. Check the SMS and try again.', 'code');
     const u = db.users.find((x) => x.id === userId);
     if (!u) throw new ApiError('not_found', 'Account not found.');
-
-    const entry = resetStore.get(userId) || resetStore.get(u.email.toLowerCase()) || (u.phone ? resetStore.get(u.phone.replace(/\D/g, '')) : null);
-    const matchesLive = entry && entry.code === code.trim() && entry.expiresAt > Date.now();
-    const matchesDemo = code.trim() === DEMO_OTP;
-
-    if (!matchesLive && !matchesDemo) {
-      throw new ApiError('bad_otp', 'That code is not correct. Check your email and try again.', 'code');
-    }
-
     u.phoneVerified = true;
     // A tutor's application stays 'draft' until they complete the academy-details form (/apply).
     persist();

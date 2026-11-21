@@ -90,13 +90,18 @@ export default function Apply() {
     return <Redirect href="/application-status" />;
   }
   return (
-    <Screen scroll footer={<Button title={existing?.status === 'changes_requested' ? 'Resubmit application' : 'Submit application'} iconRight="arrow-forward" loading={busy} onPress={submit} />}>
+    <Screen scroll footer={<Button title={existing?.status === 'changes_requested' || existing?.status === 'rejected' ? 'Resubmit application' : 'Submit application'} iconRight="arrow-forward" loading={busy} onPress={submit} />}>
       <BrandLogo size="sm" />
       <View style={styles.head}>
-        <TwoTone lead="Tell us about your" accent="academy" variant="title" center />
-        <Txt center color={c.inkSoft}>Our team reviews every educator within 1–2 working days. These details are what we verify.</Txt>
+        <TwoTone lead={existing?.status === 'rejected' ? "Update your" : "Tell us about your"} accent="academy" variant="title" center />
+        <Txt center color={c.inkSoft}>
+          {existing?.status === 'rejected'
+            ? 'Review the admin note below, update your academy information, and resubmit for review.'
+            : 'Our team reviews every educator within 1–2 working days. These details are what we verify.'}
+        </Txt>
       </View>
       {existing?.status === 'changes_requested' && existing.note && <Banner tone="info" text={`Bodhin asked for changes: ${existing.note}`} />}
+      {existing?.status === 'rejected' && existing.note && <Banner tone="danger" text={`Previous application was not approved: ${existing.note}. Update your details below to resubmit.`} />}
       {error && <Banner tone="danger" text={error} />}
       <TextField label="Academy name" icon="business-outline" placeholder="e.g. Udhay Maths Academy" value={f.workspaceName} onChangeText={set('workspaceName')} error={errors.workspaceName} returnKeyType="next" onSubmitEditing={() => refs.subjects.current?.focus()} hint="Shown to students. Your web address comes after approval." />
       <TextField ref={refs.subjects} label="Subjects you teach" icon="book-outline" placeholder="e.g. Maths, Physics" value={f.subjects} onChangeText={set('subjects')} error={errors.subjects} returnKeyType="next" onSubmitEditing={() => refs.experience.current?.focus()} hint="Separate with commas." />

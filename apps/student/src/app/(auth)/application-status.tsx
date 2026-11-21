@@ -45,6 +45,8 @@ export default function ApplicationStatus() {
   };
 
   const isApproved = app?.status === 'approved';
+  const isRejected = app?.status === 'rejected';
+  const isChangesRequested = app?.status === 'changes_requested';
   const isUnderReview = app?.status === 'under_review';
   const isSubmitted = app?.status === 'submitted' || !app?.status;
 
@@ -55,32 +57,72 @@ export default function ApplicationStatus() {
     <Screen scroll>
       <BrandLogo size="sm" />
       <View style={styles.head}>
-        <TwoTone lead="Thanks," accent={session?.user.name.split(' ')[0] ?? 'there'} variant="title" center />
+        <TwoTone
+          lead={isRejected ? "Application," : isApproved ? "Welcome," : "Thanks,"}
+          accent={isRejected ? "Not Approved" : (session?.user.name.split(' ')[0] ?? 'there')}
+          variant="title"
+          center
+        />
         <Txt center color={c.inkSoft} style={{ fontSize: 14, lineHeight: 21, marginTop: 4 }}>
-          Your educator application for <Txt variant="bodyStrong">{academyName}</Txt> is submitted and is currently in review. Once approved by Admin, an official approval email will be sent to your Gmail ({userEmail}).
+          {isRejected
+            ? `Your educator application for ${academyName} was reviewed and not approved. Review the admin's note below to update your details and re-apply.`
+            : `Your educator application for ${academyName} is submitted and is currently in review. Once approved by Admin, an official approval email will be sent to your Gmail (${userEmail}).`}
         </Txt>
       </View>
 
       {/* Changes requested or rejected notice */}
-      {app?.note && (app.status === 'changes_requested' || app.status === 'rejected') && (
+      {app?.note && (isChangesRequested || isRejected) && (
         <Banner
-          tone={app.status === 'rejected' ? 'danger' : 'info'}
-          text={`${app.status === 'rejected' ? 'Not approved' : 'Bodhin asked for changes'}: ${app.note}`}
+          tone={isRejected ? 'danger' : 'info'}
+          text={`${isRejected ? 'Admin decision' : 'Bodhin asked for changes'}: ${app.note}`}
         />
       )}
 
       {/* Review Status Banner Card */}
-      <View style={[styles.reviewBanner, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
-        <View style={styles.reviewBannerIcon}>
-          <Ionicons name="time-outline" size={24} color="#0284C7" />
+      <View
+        style={[
+          styles.reviewBanner,
+          {
+            backgroundColor: isRejected ? '#FEF2F2' : '#F0F9FF',
+            borderColor: isRejected ? '#FECACA' : '#BAE6FD',
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.reviewBannerIcon,
+            { backgroundColor: isRejected ? '#FEE2E2' : '#E0F2FE' },
+          ]}
+        >
+          <Ionicons
+            name={isRejected ? 'close-circle-outline' : 'time-outline'}
+            size={24}
+            color={isRejected ? '#DC2626' : '#0284C7'}
+          />
         </View>
         <View style={{ flex: 1 }}>
-          <Txt style={styles.reviewBannerTitle}>
-            {isApproved ? 'Application Approved! 🎉' : 'Application Under Review ⏳'}
+          <Txt
+            style={[
+              styles.reviewBannerTitle,
+              isRejected ? { color: '#991B1B' } : undefined,
+            ]}
+          >
+            {isApproved
+              ? 'Application Approved! 🎉'
+              : isRejected
+              ? 'Application Not Approved ❌'
+              : 'Application Under Review ⏳'}
           </Txt>
-          <Txt style={styles.reviewBannerSubtitle}>
+          <Txt
+            style={[
+              styles.reviewBannerSubtitle,
+              isRejected ? { color: '#7F1D1D' } : undefined,
+            ]}
+          >
             {isApproved
               ? 'Your educator workspace is activated. You can now configure your academy and start launching courses.'
+              : isRejected
+              ? `Reason: ${app?.note || 'Incomplete details'}. You can update your details and re-apply.`
               : `Submitted details are queued for Super Admin review. You will receive an approval email at ${userEmail}.`}
           </Txt>
         </View>
@@ -95,7 +137,7 @@ export default function ApplicationStatus() {
         {/* Step 1: Application submitted */}
         <View style={styles.stageRow}>
           <View style={styles.stageIndicatorCol}>
-            {isUnderReview || isApproved ? (
+            {isUnderReview || isApproved || isRejected ? (
               <View style={[styles.circleFilled, { backgroundColor: c.success, borderColor: c.success }]}>
                 <Ionicons name="checkmark" size={14} color="#FFFFFF" />
               </View>
@@ -104,7 +146,7 @@ export default function ApplicationStatus() {
                 <View style={[styles.radioInner, { backgroundColor: c.primary }]} />
               </View>
             )}
-            <View style={[styles.stageLine, { backgroundColor: isUnderReview || isApproved ? c.success : '#E2E8F0' }]} />
+            <View style={[styles.stageLine, { backgroundColor: isUnderReview || isApproved || isRejected ? c.success : '#E2E8F0' }]} />
           </View>
           <View style={styles.stageContent}>
             <Txt variant="bodyStrong" color={c.ink} style={styles.stageTitle}>
@@ -123,6 +165,10 @@ export default function ApplicationStatus() {
               <View style={[styles.circleFilled, { backgroundColor: c.success, borderColor: c.success }]}>
                 <Ionicons name="checkmark" size={14} color="#FFFFFF" />
               </View>
+            ) : isRejected ? (
+              <View style={[styles.circleFilled, { backgroundColor: '#DC2626', borderColor: '#DC2626' }]}>
+                <Ionicons name="close" size={14} color="#FFFFFF" />
+              </View>
             ) : isUnderReview ? (
               <View style={[styles.radioOuter, { borderColor: c.primary, backgroundColor: '#EFF6FF' }]}>
                 <View style={[styles.radioInner, { backgroundColor: c.primary }]} />
@@ -135,12 +181,17 @@ export default function ApplicationStatus() {
           <View style={styles.stageContent}>
             <Txt
               variant="bodyStrong"
-              style={[styles.stageTitle, { color: isUnderReview ? c.ink : '#334155' }]}
+              style={[
+                styles.stageTitle,
+                { color: isRejected ? '#DC2626' : isUnderReview ? c.ink : '#334155' },
+              ]}
             >
-              Under review by Admin
+              {isRejected ? 'Application not approved' : 'Under review by Admin'}
             </Txt>
             <Txt variant="caption" color={c.muted} style={styles.stageSub}>
-              Our team verifies educator details within 1–2 business days.
+              {isRejected
+                ? (app?.note ? `Admin note: "${app.note}"` : 'Details need updates to meet educator criteria.')
+                : 'Our team verifies educator details within 1–2 business days.'}
             </Txt>
           </View>
         </View>
@@ -220,9 +271,9 @@ export default function ApplicationStatus() {
               router.replace('/educator/home');
             }}
           />
-        ) : app?.status === 'changes_requested' ? (
+        ) : isRejected || app?.status === 'changes_requested' ? (
           <Button
-            title="Edit & resubmit application"
+            title="Re-apply with updated details"
             iconRight="create-outline"
             onPress={() => router.push('/apply')}
           />
