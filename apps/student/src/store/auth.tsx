@@ -110,42 +110,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           /* corrupted → signed out */
         }
       }
-      // STU-AUTH-19: if the user did NOT check "Remember me", clear the session on every cold start.
+      // STU-AUTH-19: if the user explicitly unchecked "Remember me", clear the session on cold start.
       const remembered = await read(REMEMBER_KEY);
       if (saved && remembered === '0') {
         saved = null;
         await write(KEY, null);
         await write(REMEMBER_KEY, null);
-        // Also clear the Supabase Auth session so the cloud layer doesn't restore it.
         if (cloud.enabled) await cloud.signOut().catch(() => {});
       }
-      // Shared database: load the latest data before showing any screen. A saved session without a cloud
-      // sign-in (e.g. from an older offline build) is dropped so the user signs in once and gets their data.
+
+      // Restore cloud session and sync data in background without dropping the user's saved session
       if (cloud.enabled) {
-        const online = await cloud.restore().catch(() => false);
-        if (!online) saved = null;
-        else if (saved) {
-          const u = auth.findUserById(saved.user.id);
-          if (!u) {
-            await cloud.signOut().catch(() => {});
-            saved = null;
-          } else {
-            saved = auth.refreshSession(saved.user.id) ?? saved;
-          }
-        }
-        if (!saved) await write(KEY, null);
-        else await write(KEY, JSON.stringify(saved));
-      } else if (saved) {
-        const u = auth.findUserById(saved.user.id);
-        if (!u) {
-          saved = null;
-          await write(KEY, null);
+        try {
+          await cloud.restore();
+        } catch (e) {
+          console.warn('[auth] cloud restore skipped:', e);
         }
       }
+
+      // If we have a saved session, refresh memberships from local/synced db if available
+      if (saved) {
+        try {
+          const refreshed = auth.refreshSession(saved.user.id);
+          if (refreshed) saved = refreshed;
+        } catch {
+          /* keep current saved session if refresh fails */
+        }
+        await write(KEY, JSON.stringify(saved));
+      }
+
       if (!alive) return;
       setSessionState(saved);
+      // If user has an active session, they are definitely onboarded!
       const onb = await read('bodhin.onboarded');
-      setOnboarded(onb === '1');
+      const isOnboarded = onb === '1' || Boolean(saved);
+      setOnboarded(isOnboarded);
+      if (saved && onb !== '1') {
+        await write('bodhin.onboarded', '1');
+      }
       const mod = await read('bodhin.mode');
       setModeState((mod as Mode | null) ?? null);
       setReady(true);
@@ -181,6 +183,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     write(KEY, s ? JSON.stringify(s) : null);
     // Persist the "remember me" preference so we can check it on next cold start.
     write(REMEMBER_KEY, s ? (remember ? '1' : '0') : null);
+    if (s) {
+      setOnboarded(true);
+      write('bodhin.onboarded', '1');
+    }
   }, []);
 
   const markOnboarded = useCallback(() => {

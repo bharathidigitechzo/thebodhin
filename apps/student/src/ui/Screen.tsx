@@ -81,7 +81,7 @@ export function Screen({ children, footer, maxWidth = layout.authMaxWidth, scrol
               {body}
             </ScrollView>
           ) : (
-            <View style={[styles.root, styles.scroll]}>{body}</View>
+            <View style={[styles.root, styles.nonScroll]}>{body}</View>
           )}
           {footer && !inlineFooter && (
             <View style={styles.footerWrap}>
@@ -122,6 +122,7 @@ const styles = StyleSheet.create({
   brand: { flex: 1, justifyContent: 'center', paddingHorizontal: 64 },
   brandIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
   scroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.xxl },
+  nonScroll: { flex: 1, alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.xs },
   inner: { width: '100%', flexGrow: 1 },
   contentWrap: { width: '100%', flexGrow: 1 },
   footerWrap: { alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.sm, paddingBottom: space.md },

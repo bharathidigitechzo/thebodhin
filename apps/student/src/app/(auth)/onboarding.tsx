@@ -82,8 +82,8 @@ export default function Onboarding() {
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          style={{ width, flexGrow: 0 }}
-          contentContainerStyle={{ alignItems: 'center' }}
+          style={{ width, flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}
           getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
           onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
           onScroll={(e) => {
@@ -133,13 +133,13 @@ const styles = StyleSheet.create({
   top: { width: '100%', alignItems: 'center', paddingTop: 4, paddingBottom: 6 },
   skip: { position: 'absolute', right: 0, top: 0, minHeight: 44, minWidth: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
   carouselWrap: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
-  slide: { paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
-  art: { width: '100%', alignItems: 'center', justifyContent: 'center', marginTop: 18, minHeight: 230 },
-  heroWrap: { width: '100%', maxWidth: 320, height: 210, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#E4E8EF' },
+  slide: { paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', flex: 1 },
+  art: { width: '100%', alignItems: 'center', justifyContent: 'center', marginTop: 18, minHeight: 220 },
+  heroWrap: { width: '100%', maxWidth: 330, height: 216, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#E4E8EF', shadowColor: '#0B2A55', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
   hero: { width: '100%', height: '100%' },
   iconStage: { width: 220, height: 220, borderRadius: 110, alignItems: 'center', justifyContent: 'center' },
   bigIcon: { width: 110, height: 110, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
   chip: { position: 'absolute', width: 56, height: 56, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B2A55', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
-  dots: { flexDirection: 'row', gap: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  dots: { flexDirection: 'row', gap: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   dot: { height: 8, borderRadius: 4 },
 });
