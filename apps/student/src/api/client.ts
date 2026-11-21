@@ -312,6 +312,10 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
 const resetStore = new Map<string, { code: string; expiresAt: number; userId: string }>();
 
 export const auth = {
+  findUserById(userId: string): User | null {
+    const u = db.users.find((x) => x.id === userId);
+    return u ? publicUser(u) : null;
+  },
   /** Current roles for a signed-in user (real: refresh the JWT so new claims, e.g. "approved educator", apply at once). */
   refreshMemberships: (userId: string) => (db.users.some((u) => u.id === userId) ? sessionFor(userId).memberships : null),
   async setInitialPassword(userId: string, next: string): Promise<Session> {

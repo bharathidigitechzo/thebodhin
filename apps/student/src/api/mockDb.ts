@@ -476,7 +476,7 @@ function seedEnrollment(courseId: string, done: number, enrolledAt: string, hour
   };
 }
 
-const KEY = 'bodhin.mockdb.v28';
+const KEY = 'bodhin.mockdb.v29';
 
 /** Demo data saved by older builds linked Arjun's earlier certificates to c_dm_ai (see the seed). Unlink them once. */
 const UNLINKED_SEED_CERTS = ['BODHIN-DM-AI-2026-0487', 'BODHIN-SEO-2026-0412'];
@@ -487,6 +487,15 @@ function fixSavedCertificates(d: Db): Db {
 const canPersist = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
 function load(): Db {
+  if (canPersist) {
+    try {
+      for (let i = 0; i < 29; i++) {
+        window.localStorage.removeItem(`bodhin.mockdb.v${i}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   const s = seed();
   if (canPersist) {
     try {

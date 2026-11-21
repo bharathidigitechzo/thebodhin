@@ -5,8 +5,15 @@ import { AppState } from 'react-native';
 import { auth } from '@/api/client';
 import { cloud, pulledListeners, refreshIfStale } from '@/api/cloud';
 
-const KEY = 'bodhin.session.v1';
+const KEY = 'bodhin.session.v2';
 const web = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+if (web) {
+  try {
+    window.localStorage.removeItem('bodhin.session.v1');
+  } catch {
+    /* ignore */
+  }
+}
 
 export type Mode = 'learner' | 'educator';
 
@@ -97,9 +104,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (cloud.enabled) {
         const online = await cloud.restore().catch(() => false);
         if (!online) saved = null;
-        else if (saved) saved = auth.refreshSession(saved.user.id) ?? saved;
+        else if (saved) {
+          const u = auth.findUserById(saved.user.id);
+          if (!u) {
+            await cloud.signOut().catch(() => {});
+            saved = null;
+          } else {
+            saved = auth.refreshSession(saved.user.id) ?? saved;
+          }
+        }
         if (!saved) write(KEY, null);
         else write(KEY, JSON.stringify(saved));
+      } else if (saved) {
+        const u = auth.findUserById(saved.user.id);
+        if (!u) {
+          saved = null;
+          write(KEY, null);
+        }
       }
       if (!alive) return;
       setSessionState(saved);
