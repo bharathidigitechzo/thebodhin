@@ -127,8 +127,8 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  top: { width: '100%', alignItems: 'center', paddingVertical: 12 },
-  skip: { position: 'absolute', right: 0, top: 16, minHeight: 44, minWidth: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
+  top: { width: '100%', alignItems: 'center', paddingTop: 0, paddingBottom: 6, marginTop: -8 },
+  skip: { position: 'absolute', right: 0, top: 0, minHeight: 44, minWidth: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
   slide: { paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
   art: { width: '100%', alignItems: 'center', justifyContent: 'center', marginTop: 22, minHeight: 240 },
   heroWrap: { width: '100%', maxWidth: 320, height: 210, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#E4E8EF' },
