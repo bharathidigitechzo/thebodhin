@@ -4,8 +4,8 @@
  *  - `footer` (primary actions) is pinned to the bottom, inside the thumb zone
  *  - centred with a max width on tablet/web so phone layouts don't stretch
  */
-import React from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { layout, space } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -27,6 +27,23 @@ interface Props {
 export function Screen({ children, footer, maxWidth = layout.authMaxWidth, scroll = true, contentStyle, decor = true }: Props) {
   const { c, brand, tenant } = useTheme();
   const { isDesktop } = useLayout();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   // Auth-sized screens (sign-in, sign-up, OTP, apply…) get a brand panel on the left on desktop.
   const split = isDesktop && maxWidth <= layout.authMaxWidth;
   // Always render footer inline inside the scroll area when scroll is enabled (or on desktop)
@@ -53,7 +70,10 @@ export function Screen({ children, footer, maxWidth = layout.authMaxWidth, scrol
         >
           {scroll ? (
             <ScrollView
-              contentContainerStyle={styles.scroll}
+              contentContainerStyle={[
+                styles.scroll,
+                { paddingBottom: Math.max(space.xxl, keyboardHeight + space.xl) },
+              ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}

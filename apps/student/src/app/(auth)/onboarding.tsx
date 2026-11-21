@@ -75,67 +75,71 @@ export default function Onboarding() {
         </Pressable>
       </View>
 
-      <FlatList
-        ref={list}
-        data={SLIDES}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        style={{ width, flexGrow: 0, marginHorizontal: -20, marginTop: isSmallDevice ? 6 : 24 }}
-        getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
-        onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
-        onScroll={(e) => {
-          const i = Math.round(e.nativeEvent.contentOffset.x / width);
-          if (i !== index && i >= 0 && i < SLIDES.length) setIndex(i);
-        }}
-        scrollEventThrottle={32}
-        renderItem={({ item }) => (
-          <View style={[styles.slide, { width }]}>
-            <TwoTone lead={item.lead} accent={item.accent} center />
-            <Txt center color={c.inkSoft} style={{ marginTop: 10, maxWidth: 340 }}>
-              {item.body}
-            </Txt>
-            <View style={styles.art}>
-              {item.icons ? (
-                <View style={[styles.iconStage, { backgroundColor: c.primarySoft }]}>
-                  <View style={[styles.bigIcon, { backgroundColor: c.primary }]}>
-                    <Ionicons name={item.icons[0]} size={64} color="#fff" />
+      <View style={styles.carouselWrap}>
+        <FlatList
+          ref={list}
+          data={SLIDES}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          style={{ width, flexGrow: 0 }}
+          contentContainerStyle={{ alignItems: 'center' }}
+          getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
+          onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
+          onScroll={(e) => {
+            const i = Math.round(e.nativeEvent.contentOffset.x / width);
+            if (i !== index && i >= 0 && i < SLIDES.length) setIndex(i);
+          }}
+          scrollEventThrottle={32}
+          renderItem={({ item }) => (
+            <View style={[styles.slide, { width }]}>
+              <TwoTone lead={item.lead} accent={item.accent} center />
+              <Txt center color={c.inkSoft} style={{ marginTop: 8, maxWidth: 340 }}>
+                {item.body}
+              </Txt>
+              <View style={styles.art}>
+                {item.icons ? (
+                  <View style={[styles.iconStage, { backgroundColor: c.primarySoft }]}>
+                    <View style={[styles.bigIcon, { backgroundColor: c.primary }]}>
+                      <Ionicons name={item.icons[0]} size={64} color="#fff" />
+                    </View>
+                    <View style={[styles.chip, { top: 18, left: 8, backgroundColor: c.surface }]}>
+                      <Ionicons name={item.icons[1]} size={28} color={c.accent} />
+                    </View>
+                    <View style={[styles.chip, { bottom: 18, right: 8, backgroundColor: c.surface }]}>
+                      <Ionicons name={item.icons[2]} size={28} color={c.primary} />
+                    </View>
                   </View>
-                  <View style={[styles.chip, { top: 18, left: 8, backgroundColor: c.surface }]}>
-                    <Ionicons name={item.icons[1]} size={28} color={c.accent} />
+                ) : (
+                  <View style={styles.heroWrap}>
+                    <Image
+                      source={hero}
+                      style={styles.hero}
+                      resizeMode="cover"
+                      accessibilityLabel="Students learning on Bodhin"
+                    />
                   </View>
-                  <View style={[styles.chip, { bottom: 18, right: 8, backgroundColor: c.surface }]}>
-                    <Ionicons name={item.icons[2]} size={28} color={c.primary} />
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.heroWrap}>
-                  <Image
-                    source={hero}
-                    style={styles.hero}
-                    resizeMode="cover"
-                    accessibilityLabel="Students learning on Bodhin"
-                  />
-                </View>
-              )}
+                )}
+              </View>
             </View>
-          </View>
-        )}
-      />
+          )}
+        />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  top: { width: '100%', alignItems: 'center', paddingTop: 0, paddingBottom: 6, marginTop: -8 },
+  top: { width: '100%', alignItems: 'center', paddingTop: 4, paddingBottom: 6 },
   skip: { position: 'absolute', right: 0, top: 0, minHeight: 44, minWidth: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  slide: { paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
-  art: { width: '100%', alignItems: 'center', justifyContent: 'center', marginTop: 22, minHeight: 240 },
+  carouselWrap: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
+  slide: { paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
+  art: { width: '100%', alignItems: 'center', justifyContent: 'center', marginTop: 18, minHeight: 230 },
   heroWrap: { width: '100%', maxWidth: 320, height: 210, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#E4E8EF' },
   hero: { width: '100%', height: '100%' },
-  iconStage: { width: 230, height: 230, borderRadius: 115, alignItems: 'center', justifyContent: 'center' },
-  bigIcon: { width: 120, height: 120, borderRadius: 34, alignItems: 'center', justifyContent: 'center' },
-  chip: { position: 'absolute', width: 60, height: 60, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B2A55', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  iconStage: { width: 220, height: 220, borderRadius: 110, alignItems: 'center', justifyContent: 'center' },
+  bigIcon: { width: 110, height: 110, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  chip: { position: 'absolute', width: 56, height: 56, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B2A55', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
   dots: { flexDirection: 'row', gap: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
   dot: { height: 8, borderRadius: 4 },
 });

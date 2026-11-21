@@ -2,6 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { Session } from '@/core/types';
 import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '@/api/client';
 import { cloud, pulledListeners, refreshIfStale } from '@/api/cloud';
 
@@ -66,17 +67,26 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 
-const read = (k: string) => {
+const read = async (k: string): Promise<string | null> => {
   try {
-    return web ? window.localStorage.getItem(k) : null;
+    const val = await AsyncStorage.getItem(k);
+    if (val != null) return val;
+    if (web) return window.localStorage.getItem(k);
+    return null;
   } catch {
     return null;
   }
 };
-const write = (k: string, v: string | null) => {
+
+const write = async (k: string, v: string | null): Promise<void> => {
   try {
-    if (!web) return;
-    v == null ? window.localStorage.removeItem(k) : window.localStorage.setItem(k, v);
+    if (v == null) {
+      await AsyncStorage.removeItem(k);
+      if (web) window.localStorage.removeItem(k);
+    } else {
+      await AsyncStorage.setItem(k, v);
+      if (web) window.localStorage.setItem(k, v);
+    }
   } catch {
     /* ignore */
   }
@@ -92,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     (async () => {
       let saved: Session | null = null;
-      const raw = read(KEY);
+      const raw = await read(KEY);
       if (raw) {
         try {
           saved = JSON.parse(raw);
@@ -101,11 +111,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
       // STU-AUTH-19: if the user did NOT check "Remember me", clear the session on every cold start.
-      const remembered = read(REMEMBER_KEY);
+      const remembered = await read(REMEMBER_KEY);
       if (saved && remembered === '0') {
         saved = null;
-        write(KEY, null);
-        write(REMEMBER_KEY, null);
+        await write(KEY, null);
+        await write(REMEMBER_KEY, null);
         // Also clear the Supabase Auth session so the cloud layer doesn't restore it.
         if (cloud.enabled) await cloud.signOut().catch(() => {});
       }
@@ -123,19 +133,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             saved = auth.refreshSession(saved.user.id) ?? saved;
           }
         }
-        if (!saved) write(KEY, null);
-        else write(KEY, JSON.stringify(saved));
+        if (!saved) await write(KEY, null);
+        else await write(KEY, JSON.stringify(saved));
       } else if (saved) {
         const u = auth.findUserById(saved.user.id);
         if (!u) {
           saved = null;
-          write(KEY, null);
+          await write(KEY, null);
         }
       }
       if (!alive) return;
       setSessionState(saved);
-      setOnboarded(read('bodhin.onboarded') === '1');
-      setModeState((read('bodhin.mode') as Mode | null) ?? null);
+      const onb = await read('bodhin.onboarded');
+      setOnboarded(onb === '1');
+      const mod = await read('bodhin.mode');
+      setModeState((mod as Mode | null) ?? null);
       setReady(true);
     })();
     // Coming back to the app: pick up changes made on other devices.

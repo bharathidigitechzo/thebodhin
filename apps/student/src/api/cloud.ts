@@ -12,19 +12,25 @@
  * EXPO_PUBLIC_CLOUD=off to run on local demo data only.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db, dbListeners, loadHooks, persistHooks } from './mockDb';
 
 const URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://pfjlpcrextppuixgriot.supabase.co';
 const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmamxwY3JleHRwcHVpeGdyaW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwNTY0NzYsImV4cCI6MjExMDYzMjQ3Nn0.GSjYJw-zQKqLbhJrhkZAARn3nX0CHZjQD1L6LkL_1rw';
 export const cloudEnabled = process.env.EXPO_PUBLIC_CLOUD !== 'off';
 
-const web = typeof document !== 'undefined' && typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
-
 /** Created on first use, after the root layout has loaded the URL polyfill (native). */
 let client: SupabaseClient | null = null;
 export function sb(): SupabaseClient | null {
   if (!cloudEnabled) return null;
-  return (client ??= createClient(URL, KEY, { auth: { persistSession: web, autoRefreshToken: true, detectSessionInUrl: false } }));
+  return (client ??= createClient(URL, KEY, {
+    auth: {
+      storage: AsyncStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+    },
+  }));
 }
 
 /** Map-like fields: one row per entry. Every other non-array field is stored as a single row. */
