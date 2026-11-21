@@ -34,7 +34,7 @@ export function sb(): SupabaseClient | null {
 }
 
 /** Map-like fields: one row per entry. Every other non-array field is stored as a single row. */
-const MAP_FIELDS = new Set(['recentSearches', 'positions', 'calendarSync', 'playgroundUsage', 'settings', 'usage', 'tenantStats', 'adminVerified', 'payoutHolds', 'userLocks', 'sessionSummaries', 'sessionStatus', 'liveMeta']);
+const MAP_FIELDS = new Set(['recentSearches', 'positions', 'lessonSecs', 'calendarSync', 'playgroundUsage', 'settings', 'usage', 'tenantStats', 'adminVerified', 'payoutHolds', 'userLocks', 'sessionSummaries', 'sessionStatus', 'liveMeta']);
 const SINGLE = '_';
 
 type Row = { field: string; key: string; ord: number; data: unknown };

@@ -134,13 +134,56 @@ export const COLLECTIONS = [
 
 export const allLessons = (c: Course) => c.modules.flatMap((m) => m.lessons);
 export const lessonCount = (c: Course) => allLessons(c).length;
-export const totalHours = (c: Course) => Math.round(allLessons(c).reduce((s, l) => s + (l.durationSec ?? 0), 0) / 3600);
+/**
+ * What the player has seen, filled in by api/client: where each learner stopped (`userId:lessonId` → sec)
+ * and the real length of videos whose duration the educator didn't enter.
+ */
+let watchSource: { position: (key: string) => number; seconds: (lessonId: string) => number } = { position: () => 0, seconds: () => 0 };
+export function setWatchSource(s: typeof watchSource) {
+  watchSource = s;
+}
+/** A lesson's length in seconds: the entered duration, else the length measured when it was played. */
+export const lessonSec = (l: Lesson) => l.durationSec || watchSource.seconds(l.id) || 0;
+export const totalSec = (c: Course) => allLessons(c).reduce((s, l) => s + lessonSec(l), 0);
+export const totalHours = (c: Course) => Math.round(totalSec(c) / 3600);
+/** "2h 15m", "45m", or "" when no lesson has a known length. */
+export function contentLength(c: Course) {
+  const m = Math.round(totalSec(c) / 60);
+  if (!m) return '';
+  const h = Math.floor(m / 60);
+  return h ? (m % 60 ? `${h}h ${m % 60}m` : `${h}h`) : `${m}m`;
+}
+/** Seconds this learner has watched of a lesson (their saved position). */
+export const watchedSec = (userId: string, lessonId: string) => watchSource.position(`${userId}:${lessonId}`);
 
 export function progressOf(c: Course, e?: Enrollment) {
-  const total = lessonCount(c);
-  const done = e ? e.completedLessonIds.filter((id) => allLessons(c).some((l) => l.id === id)).length : 0;
-  const modulesDone = c.modules.filter((m) => e && m.lessons.every((l) => e.completedLessonIds.includes(l.id))).length;
-  return { done, total, pct: total ? Math.round((done / total) * 100) : 0, modulesDone };
+  const lessons = allLessons(c);
+  const total = lessons.length;
+  const doneIds = new Set(e?.completedLessonIds ?? []);
+  const done = e ? lessons.filter((l) => doneIds.has(l.id)).length : 0;
+  const modulesDone = c.modules.filter((m) => e && m.lessons.every((l) => doneIds.has(l.id))).length;
+  // Part-watched videos count too, so the % moves while the learner watches (not only when a lesson completes).
+  let partial = 0;
+  if (e) {
+    for (const l of lessons) {
+      if (doneIds.has(l.id) || l.type !== 'video') continue;
+      const len = lessonSec(l);
+      const at = watchedSec(e.userId, l.id);
+      if (len > 0 && at > 0) partial += Math.min(at / len, 0.95);
+    }
+  }
+  let pct = total ? Math.round(((done + partial) / total) * 100) : 0;
+  if (partial > 0 && pct === 0) pct = 1; // a few seconds in a long course still shows it has started
+  if (done < total) pct = Math.min(pct, 99); // 100% only once every lesson is complete (certificates rely on it)
+  return { done, total, pct, modulesDone, started: done > 0 || partial > 0 };
+}
+
+/** Where "Continue" should take the learner: the lesson they were last watching (if not finished), else the next one. */
+export function resumeLesson(c: Course, e?: Enrollment) {
+  if (e?.lastLessonId && !e.completedLessonIds.includes(e.lastLessonId)) {
+    for (const m of c.modules) for (const l of m.lessons) if (l.id === e.lastLessonId) return { module: m, lesson: l };
+  }
+  return nextLesson(c, e);
 }
 
 /** The lesson a learner should open next, with its module. */

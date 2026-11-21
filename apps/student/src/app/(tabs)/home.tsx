@@ -28,10 +28,14 @@ export default function Home() {
   const answers = questions.answeredFor(userId);
   const openDoubts = questions.openCount(userId);
 
+  const firstFocus = React.useRef(true);
   useFocusEffect(
     React.useCallback(() => {
       setNotifRev((r) => r + 1);
-    }, [])
+      // Back from the player → refresh progress and "Continue Learning".
+      if (firstFocus.current) firstFocus.current = false;
+      else reload();
+    }, [reload])
   );
 
   const quick = [
@@ -223,7 +227,7 @@ export default function Home() {
                 {cont ? (
                   <>
                     <SectionHeader title="Continue Learning" action="View all" onAction={() => router.navigate('/learning')} />
-                    <Pressable onPress={() => openCourse(cont.course.id)} accessibilityRole="button" accessibilityLabel={`Continue ${cont.course.title}`} style={({ pressed }) => [styles.cont, { backgroundColor: c.surface, borderColor: c.border }, pressed && { opacity: 0.92 }]}>
+                    <Pressable onPress={() => router.push({ pathname: '/learn/[courseId]', params: { courseId: cont.course.id, lesson: cont.next.lesson.id } })} accessibilityRole="button" accessibilityLabel={`Continue ${cont.course.title}`} style={({ pressed }) => [styles.cont, { backgroundColor: c.surface, borderColor: c.border }, pressed && { opacity: 0.92 }]}>
                       <View style={{ width: 112 }}>
                         <CourseArt course={cont.course} height={96} rounded={radius.md} />
                       </View>
@@ -232,7 +236,7 @@ export default function Home() {
                           {cont.course.title}
                         </Txt>
                         <Txt variant="caption" color={c.muted} numberOfLines={1}>
-                          Next: {cont.next.lesson.title}
+                          {cont.resumeAt > 5 ? `Resume ${cont.next.lesson.title} at ${Math.floor(cont.resumeAt / 60)}:${String(cont.resumeAt % 60).padStart(2, '0')}` : `Next: ${cont.next.lesson.title}`}
                         </Txt>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
                           <ProgressBar pct={cont.progress.pct} />
