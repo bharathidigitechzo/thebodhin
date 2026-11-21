@@ -26,6 +26,7 @@ interface Db {
   orders: Order[];
   liveRegistrations: { userId: string; sessionId: string }[];
   positions: Record<string, number>; // `${userId}:${lessonId}` → seconds watched
+  lessonSecs: Record<string, number>; // lessonId → real video length measured by the player
   notes: { id: string; userId: string; courseId: string; lessonId: string; atSec: number; text: string; createdAt: string }[];
   questions: { id: string; courseId: string; lessonId: string; userId: string; userName: string; text: string; createdAt: string; personId?: string; answer?: { by: string; text: string; at: string } }[];
   downloads: { userId: string; courseId: string; lessonId: string; sizeMb: number; quality: 'sd' | 'hd'; savedAt: string }[];
@@ -159,6 +160,7 @@ const seed = (): Db => mergeExtras({
     { userId: 'u_arjun', sessionId: 'ls_2' },
   ],
   positions: {},
+  lessonSecs: {},
   notes: [],
   questions: [
     { id: 'q1', courseId: 'c_dm_ai', lessonId: 'dm_m1_l1', userId: 'u_x1', userName: 'Kavya R.', text: 'Is digital marketing still a good career for freshers in 2026?', createdAt: '2026-10-28T09:00:00Z', answer: { by: 'Rajesh Kumar', text: 'Yes — especially if you can show real campaigns. The capstone in Module 6 is built for your portfolio.', at: '2026-10-28T12:00:00Z' } },
@@ -476,7 +478,7 @@ function seedEnrollment(courseId: string, done: number, enrolledAt: string, hour
   };
 }
 
-const KEY = 'bodhin.mockdb.v28';
+const KEY = 'bodhin.mockdb.v29';
 
 /** Demo data saved by older builds linked Arjun's earlier certificates to c_dm_ai (see the seed). Unlink them once. */
 const UNLINKED_SEED_CERTS = ['BODHIN-DM-AI-2026-0487', 'BODHIN-SEO-2026-0412'];
@@ -487,6 +489,15 @@ function fixSavedCertificates(d: Db): Db {
 const canPersist = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
 function load(): Db {
+  if (canPersist) {
+    try {
+      for (let i = 0; i < 29; i++) {
+        window.localStorage.removeItem(`bodhin.mockdb.v${i}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   const s = seed();
   if (canPersist) {
     try {

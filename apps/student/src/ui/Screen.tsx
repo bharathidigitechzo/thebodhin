@@ -4,8 +4,8 @@
  *  - `footer` (primary actions) is pinned to the bottom, inside the thumb zone
  *  - centred with a max width on tablet/web so phone layouts don't stretch
  */
-import React from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { layout, space } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -27,27 +27,61 @@ interface Props {
 export function Screen({ children, footer, maxWidth = layout.authMaxWidth, scroll = true, contentStyle, decor = true }: Props) {
   const { c, brand, tenant } = useTheme();
   const { isDesktop } = useLayout();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   // Auth-sized screens (sign-in, sign-up, OTP, apply…) get a brand panel on the left on desktop.
   const split = isDesktop && maxWidth <= layout.authMaxWidth;
-  // Desktop: primary actions sit inline under the content (no pinned bottom bar).
-  const inlineFooter = isDesktop && !!footer;
+  // Always render footer inline inside the scroll area when scroll is enabled (or on desktop)
+  // so mobile virtual keypads never cover or trap primary action buttons (Sign In, Submit, etc.).
+  const inlineFooter = (scroll || isDesktop) && !!footer;
   const body = (
     <View style={[styles.inner, { maxWidth }, contentStyle]}>
-      {children}
-      {inlineFooter && <View style={[styles.footer, { marginTop: space.xl }]}>{footer}</View>}
+      <View style={styles.contentWrap}>{children}</View>
+      {inlineFooter && (
+        <View style={[styles.footer, { marginTop: space.xl, paddingBottom: space.xxl }]}>
+          {footer}
+        </View>
+      )}
     </View>
   );
   const page = (
     <View style={[styles.root, { backgroundColor: c.ivory }]}>
       {decor && <Waves />}
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          style={styles.root}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+        >
           {scroll ? (
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              contentContainerStyle={[
+                styles.scroll,
+                { paddingBottom: Math.max(space.xxl, keyboardHeight + space.xl) },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
               {body}
             </ScrollView>
           ) : (
-            <View style={[styles.root, styles.scroll]}>{body}</View>
+            <View style={[styles.root, styles.nonScroll]}>{body}</View>
           )}
           {footer && !inlineFooter && (
             <View style={styles.footerWrap}>
@@ -87,8 +121,10 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   brand: { flex: 1, justifyContent: 'center', paddingHorizontal: 64 },
   brandIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
-  scroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.xl },
+  scroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.xxl },
+  nonScroll: { flex: 1, alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.xs },
   inner: { width: '100%', flexGrow: 1 },
+  contentWrap: { width: '100%', flexGrow: 1 },
   footerWrap: { alignItems: 'center', paddingHorizontal: space.xl, paddingTop: space.sm, paddingBottom: space.md },
   footer: { width: '100%', gap: space.md },
 });

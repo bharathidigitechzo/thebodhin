@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PAGE, useLayout } from '@/ui/responsive';
 import { catalog, commerce, courseAdmin, enrollment as enrollmentApi, live as liveApi, reviews as reviewsApi } from '@/api/client';
 import { affiliatesApi, bundlesApi, track } from '@/api/growth2';
-import { FORMAT_LABEL, LEVEL_LABEL, compact, lessonCount, nextLesson, priceDisplay, progressOf, totalHours, type Course, type Enrollment, type Lesson, type Order } from '@/core/catalog';
+import { FORMAT_LABEL, LEVEL_LABEL, compact, contentLength, lessonCount, lessonSec, priceDisplay, progressOf, resumeLesson, type Course, type Enrollment, type Lesson, type Order } from '@/core/catalog';
 import { dateParts, dayLabel, sessionStatus, timeRange } from '@/core/time';
 import { tenantUrl } from '@/core/tenant';
 import { adminMembership, educatorMembership, useAuth } from '@/store/auth';
@@ -59,7 +59,8 @@ export default function CoursePage() {
   // Re-read enrollment when coming back from checkout or the player.
   useFocusEffect(
     useCallback(() => {
-      setEnr(enrollmentApi.get(userId, id));
+      const e = enrollmentApi.get(userId, id);
+      setEnr(e ? { ...e } : null); // new object → progress re-renders after watching
     }, [userId, id]),
   );
 
@@ -78,7 +79,7 @@ export default function CoursePage() {
   const { course, tutor } = data;
   const enrolled = !!enr;
   const prog = progressOf(course, enr ?? undefined);
-  const next = nextLesson(course, enr ?? undefined);
+  const next = resumeLesson(course, enr ?? undefined);
   const source: Order['source'] = ref === 'campaign' ? 'bodhin_campaign' : tenant ? 'direct' : 'bodhin_referral';
   const isManager = courseAdmin.canManage(userId, course.id) != null || course.tutorId === userId || adminMembership(session) != null || educatorMembership(session) != null;
 
@@ -257,7 +258,7 @@ export default function CoursePage() {
                           <Txt variant="bodyStrong" numberOfLines={2}>{next.lesson.title}</Txt>
                         </View>
                       </View>
-                      <Button title={prog.done ? 'Continue learning' : 'Start learning'} iconRight="play" onPress={() => openLesson(next.lesson)} />
+                      <Button title={prog.started ? 'Continue learning' : 'Start learning'} iconRight="play" onPress={() => openLesson(next.lesson)} />
                     </>
                   ) : (
                     <>
@@ -269,7 +270,7 @@ export default function CoursePage() {
                   <View style={[styles.includes, { borderTopColor: c.border }]}>
                     <Txt variant="label">This course includes</Txt>
                     {[
-                      ['play-circle-outline', `${lessonCount(course)} lessons · ${totalHours(course)} of content`],
+                      ['play-circle-outline', `${lessonCount(course)} lessons${contentLength(course) ? ` · ${contentLength(course)} of content` : ''}`],
                       ['layers-outline', `${course.modules.length} modules`],
                       ['time-outline', course.accessMonths ? `${course.accessMonths} months access` : 'Lifetime access'],
                       ...(course.certificate ? [['ribbon-outline', 'Certificate of completion']] : []),
@@ -425,7 +426,7 @@ export default function CoursePage() {
                     {next.lesson.title}
                   </Txt>
                 </View>
-                <Button title={prog.done ? 'Continue' : 'Start'} iconRight="play" style={{ minWidth: 150 }} onPress={() => openLesson(next.lesson)} />
+                <Button title={prog.started ? 'Continue' : 'Start'} iconRight="play" style={{ minWidth: 150 }} onPress={() => openLesson(next.lesson)} />
               </>
             ) : isManager ? (
               <>
@@ -479,7 +480,7 @@ function Overview({ course }: { course: Course }) {
   const stats = [
     { icon: 'layers-outline', v: String(course.modules.length), l: 'Modules' },
     { icon: 'play-circle-outline', v: String(lessonCount(course)), l: 'Lessons' },
-    { icon: 'time-outline', v: `${Math.max(1, totalHours(course))}h`, l: 'Content' },
+    { icon: 'time-outline', v: contentLength(course) || '—', l: 'Content' },
     { icon: 'construct-outline', v: String(course.projects), l: 'Projects' },
     { icon: course.certificate ? 'ribbon-outline' : 'remove-circle-outline', v: course.certificate ? 'Yes' : 'No', l: 'Certificate' },
   ] as const;
@@ -546,13 +547,13 @@ function Curriculum({ course, enr, nextId, onOpen, isManager }: { course: Course
   return (
     <View style={{ gap: 10 }}>
       <Txt variant="label" color={c.muted}>
-        {course.modules.length} modules · {lessonCount(course)} lessons · {Math.max(1, totalHours(course))}h total
+        {course.modules.length} modules · {lessonCount(course)} lessons{contentLength(course) ? ` · ${contentLength(course)} total` : ''}
       </Txt>
       {course.modules.map((m, mi) => {
         const isOpen = open.has(m.id);
         const mDone = m.lessons.filter((l) => done.has(l.id)).length;
         const complete = enr && mDone === m.lessons.length;
-        const mins = Math.round(m.lessons.reduce((s, l) => s + (l.durationSec ?? 0), 0) / 60);
+        const mins = Math.round(m.lessons.reduce((s, l) => s + lessonSec(l), 0) / 60);
         return (
           <View key={m.id} style={[styles.module, { backgroundColor: c.surface, borderColor: c.border }]}>
             <Pressable onPress={() => setOpen((s) => { const n = new Set(s); n.has(m.id) ? n.delete(m.id) : n.add(m.id); return n; })} style={styles.moduleHead} accessibilityRole="button" accessibilityState={{ expanded: isOpen }}>
@@ -584,7 +585,7 @@ function Curriculum({ course, enr, nextId, onOpen, isManager }: { course: Course
                         {li + 1}. {l.title}
                       </Txt>
                       <Txt variant="caption" color={c.muted}>
-                        {l.type === 'video' ? `Video · ${fmtDur(l.durationSec)}` : l.type === 'pdf' ? `PDF · ${l.sizeMb} MB` : `Quiz · ${l.questions} questions`}
+                        {l.type === 'video' ? (fmtDur(lessonSec(l)) ? `Video · ${fmtDur(lessonSec(l))}` : 'Video') : l.type === 'pdf' ? `PDF · ${l.sizeMb} MB` : `Quiz · ${l.questions} questions`}
                         {l.preview && !enr ? ' · Free preview' : isManager && !enr ? ' · Preview mode' : ''}
                       </Txt>
                     </View>

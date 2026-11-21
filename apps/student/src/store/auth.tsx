@@ -2,11 +2,20 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { Session } from '@/core/types';
 import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '@/api/client';
 import { cloud, pulledListeners, refreshIfStale } from '@/api/cloud';
 
-const KEY = 'bodhin.session.v1';
+const KEY = 'bodhin.session.v2';
+const REMEMBER_KEY = 'bodhin.remember';
 const web = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+if (web) {
+  try {
+    window.localStorage.removeItem('bodhin.session.v1');
+  } catch {
+    /* ignore */
+  }
+}
 
 export type Mode = 'learner' | 'educator';
 
@@ -30,7 +39,17 @@ export function homePath(session: Session | null, mode: Mode | null) {
   if (!session) return '/sign-in';
   if (adminMembership(session) && mode !== 'learner') return '/admin';
   const edu = educatorMembership(session);
-  return edu ? '/educator/home' : '/home'; // educators always open the Educator portal
+  if (edu) return '/educator/home'; // educators always open the Educator portal
+  try {
+    const app = auth.getApplication(session.user.id);
+    if (app && app.status === 'draft') {
+      return '/apply';
+    }
+    if (app && ['submitted', 'under_review', 'rejected', 'changes_requested'].includes(app.status)) {
+      return '/application-status';
+    }
+  } catch {}
+  return '/home';
 }
 
 interface AuthState {
@@ -39,7 +58,7 @@ interface AuthState {
   onboarded: boolean;
   mode: Mode | null;
   setMode: (m: Mode) => void;
-  setSession: (s: Session | null) => void;
+  setSession: (s: Session | null, remember?: boolean) => void;
   markOnboarded: () => void;
   signOut: () => void;
   /** Re-read roles (e.g. just approved as an educator) without signing out. */
@@ -48,17 +67,26 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 
-const read = (k: string) => {
+const read = async (k: string): Promise<string | null> => {
   try {
-    return web ? window.localStorage.getItem(k) : null;
+    const val = await AsyncStorage.getItem(k);
+    if (val != null) return val;
+    if (web) return window.localStorage.getItem(k);
+    return null;
   } catch {
     return null;
   }
 };
-const write = (k: string, v: string | null) => {
+
+const write = async (k: string, v: string | null): Promise<void> => {
   try {
-    if (!web) return;
-    v == null ? window.localStorage.removeItem(k) : window.localStorage.setItem(k, v);
+    if (v == null) {
+      await AsyncStorage.removeItem(k);
+      if (web) window.localStorage.removeItem(k);
+    } else {
+      await AsyncStorage.setItem(k, v);
+      if (web) window.localStorage.setItem(k, v);
+    }
   } catch {
     /* ignore */
   }
@@ -74,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     (async () => {
       let saved: Session | null = null;
-      const raw = read(KEY);
+      const raw = await read(KEY);
       if (raw) {
         try {
           saved = JSON.parse(raw);
@@ -82,19 +110,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           /* corrupted → signed out */
         }
       }
-      // Shared database: load the latest data before showing any screen. A saved session without a cloud
-      // sign-in (e.g. from an older offline build) is dropped so the user signs in once and gets their data.
-      if (cloud.enabled) {
-        const online = await cloud.restore().catch(() => false);
-        if (!online) saved = null;
-        else if (saved) saved = auth.refreshSession(saved.user.id) ?? saved;
-        if (!saved) write(KEY, null);
-        else write(KEY, JSON.stringify(saved));
+      // STU-AUTH-19: if the user explicitly unchecked "Remember me", clear the session on cold start.
+      const remembered = await read(REMEMBER_KEY);
+      if (saved && remembered === '0') {
+        saved = null;
+        await write(KEY, null);
+        await write(REMEMBER_KEY, null);
+        if (cloud.enabled) await cloud.signOut().catch(() => {});
       }
+
+      // Restore cloud session and sync data in background without dropping the user's saved session
+      if (cloud.enabled) {
+        try {
+          await cloud.restore();
+        } catch (e) {
+          console.warn('[auth] cloud restore skipped:', e);
+        }
+      }
+
+      // If we have a saved session, refresh memberships from local/synced db if available
+      if (saved) {
+        try {
+          const refreshed = auth.refreshSession(saved.user.id);
+          if (refreshed) saved = refreshed;
+        } catch {
+          /* keep current saved session if refresh fails */
+        }
+        await write(KEY, JSON.stringify(saved));
+      }
+
       if (!alive) return;
       setSessionState(saved);
-      setOnboarded(read('bodhin.onboarded') === '1');
-      setModeState((read('bodhin.mode') as Mode | null) ?? null);
+      // If user has an active session, they are definitely onboarded!
+      const onb = await read('bodhin.onboarded');
+      const isOnboarded = onb === '1' || Boolean(saved);
+      setOnboarded(isOnboarded);
+      if (saved && onb !== '1') {
+        await write('bodhin.onboarded', '1');
+      }
+      const mod = await read('bodhin.mode');
+      setModeState((mod as Mode | null) ?? null);
       setReady(true);
     })();
     // Coming back to the app: pick up changes made on other devices.
@@ -123,9 +178,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { pulledListeners.delete(onPulled); };
   }, []);
 
-  const setSession = useCallback((s: Session | null) => {
+  const setSession = useCallback((s: Session | null, remember = true) => {
     setSessionState(s);
     write(KEY, s ? JSON.stringify(s) : null);
+    // Persist the "remember me" preference so we can check it on next cold start.
+    write(REMEMBER_KEY, s ? (remember ? '1' : '0') : null);
+    if (s) {
+      setOnboarded(true);
+      write('bodhin.onboarded', '1');
+    }
   }, []);
 
   const markOnboarded = useCallback(() => {

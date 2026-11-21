@@ -30,7 +30,7 @@ export default function SignIn() {
     setBusy('form');
     try {
       const sess = await auth.signIn(identifier, password);
-      setSession(sess);
+      setSession(sess, remember);
       router.replace(homePath(sess, null) as any);
     } catch (err) {
       const a = err as ApiError;
@@ -47,7 +47,7 @@ export default function SignIn() {
     setBusy('form');
     try {
       const sess = await auth.signIn(id, 'demo123');
-      setSession(sess);
+      setSession(sess, true); // demo logins always persist
       router.replace(homePath(sess, null) as any);
     } catch (err) {
       const a = err as ApiError;
@@ -71,7 +71,6 @@ export default function SignIn() {
     <Screen
       footer={
         <>
-          <Button title="Sign In" iconRight="arrow-forward" loading={busy === 'form'} disabled={!!busy && busy !== 'form'} onPress={submit} />
           <View style={styles.footRow}>
             <Txt color={c.inkSoft}>Don't have an account?</Txt>
             <Link href="/sign-up" replace asChild>
@@ -162,6 +161,8 @@ export default function SignIn() {
             </Pressable>
           </Link>
         </View>
+
+        <Button title="Sign In" iconRight="arrow-forward" loading={busy === 'form'} disabled={!!busy && busy !== 'form'} onPress={submit} />
 
         <Divider label="or continue with" />
         <View style={styles.social}>

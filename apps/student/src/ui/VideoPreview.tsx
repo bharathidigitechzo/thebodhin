@@ -8,7 +8,7 @@ import { Txt } from './Txt';
 
 export function VideoPreview({ uri, name, sizeMb }: { uri: string; name: string; sizeMb?: number }) {
   const { c } = useTheme();
-  const validUri = uri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+  const validUri = uri || 'https://vjs.zencdn.net/v/oceans.mp4';
   const playable = Platform.OS === 'web' && /^(blob:|data:|https?:)/.test(validUri);
 
   useEffect(() => {

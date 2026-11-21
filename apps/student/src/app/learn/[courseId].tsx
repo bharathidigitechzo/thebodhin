@@ -53,6 +53,8 @@ export default function Player() {
   const lastSaved = useRef(0);
   const nowRef = useRef(0);
   nowRef.current = now;
+  const durRef = useRef(0);
+  const courseRef = useRef(courseId);
   const currentLessonId = useRef(lessonId);
   currentLessonId.current = lessonId;
   const resumedRef = useRef<string | null>(null);
@@ -67,9 +69,23 @@ export default function Player() {
 
   // Persist position when leaving or unmounting
   useEffect(() => {
-    return () => {
+    const save = () => {
       if (nowRef.current > 0 && currentLessonId.current) {
-        player.savePosition(userId, currentLessonId.current, nowRef.current);
+        player.savePosition(userId, currentLessonId.current, nowRef.current, durRef.current, courseRef.current);
+      }
+    };
+    // Web: closing the tab, switching tabs or signing out mid-video still keeps the spot.
+    const onHide = () => { if (typeof document === 'undefined' || document.visibilityState === 'hidden') save(); };
+    const web = typeof window !== 'undefined' && typeof window.addEventListener === 'function';
+    if (web) {
+      window.addEventListener('pagehide', save);
+      document.addEventListener?.('visibilitychange', onHide);
+    }
+    return () => {
+      save();
+      if (web) {
+        window.removeEventListener('pagehide', save);
+        document.removeEventListener?.('visibilitychange', onHide);
       }
     };
   }, [userId]);
@@ -90,8 +106,10 @@ export default function Player() {
   const go = useCallback((l: Lesson | null) => {
     if (!l) return;
     if (nowRef.current > 0 && currentLessonId.current) {
-      player.savePosition(userId, currentLessonId.current, nowRef.current);
+      player.savePosition(userId, currentLessonId.current, nowRef.current, durRef.current, courseRef.current);
     }
+    durRef.current = 0;
+    lastSaved.current = 0;
     setUpNext(null);
     setLessonId(l.id);
     setNow(0);
@@ -110,6 +128,9 @@ export default function Player() {
   }, [upNext]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentCourseId = data.ok ? data.course.id : '';
+  if (currentCourseId) courseRef.current = currentCourseId;
+  // Opened without ?lesson= (e.g. from Continue) → keep the lesson the API resumed, so saves go to it.
+  if (data.ok && !currentLessonId.current) currentLessonId.current = data.lesson.id;
   const activeLessonId = data.ok ? data.lesson.id : '';
 
   const markLessonDone = useCallback(() => {
@@ -145,8 +166,11 @@ export default function Player() {
 
   const onTime = (t: number, duration: number) => {
     setNow(t);
-    if (Math.abs(t - lastSaved.current) >= 3) {
-      player.savePosition(userId, lesson.id, t);
+    if (duration > 0) durRef.current = duration;
+    currentLessonId.current = lesson.id;
+    // Every ~5s of playback: remember the spot, so progress % grows and Continue resumes here (even after sign-out).
+    if (Math.abs(t - lastSaved.current) >= 5) {
+      player.savePosition(userId, lesson.id, t, duration, course.id);
       lastSaved.current = t;
     }
     if (!isDone && duration > 0 && (t / duration >= 0.85 || duration - t <= 6)) {

@@ -82,18 +82,64 @@ export function Assessments({ data, error, reload, only }: { data: AsData | null
             : r.status === 'scheduled' ? `Opens ${new Date(r.a.opensAt!).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : `${r.a.questionIds?.length} questions · ${r.a.durationMin} min${r.best ? ` · Best ${r.best.scorePct}%` : ''}`;
         const cta = { pending: r.a.kind === 'assignment' ? 'Submit' : r.a.kind === 'exam' ? 'Start exam' : 'Start quiz', in_progress: 'Continue', overdue: 'Submit late', scheduled: 'View', submitted: 'View', graded: 'Feedback', completed: 'Result' }[r.status];
         return (
-          <Pressable key={r.a.id} onPress={() => open(r)} style={({ pressed }) => [styles.as, { backgroundColor: c.surface, borderColor: r.status === 'overdue' ? c.danger : c.border }, pressed && { opacity: 0.92 }]} accessibilityRole="button" accessibilityLabel={`${r.a.title}, ${st.label}`}>
+          <Pressable
+            key={r.a.id}
+            onPress={() => open(r)}
+            style={({ pressed }) => [
+              styles.as,
+              {
+                backgroundColor: c.surface,
+                borderColor: r.status === 'overdue' ? c.danger : c.border,
+                cursor: 'pointer' as any,
+              },
+              pressed && { opacity: 0.92, transform: [{ scale: 0.995 }] },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`${r.a.title}, ${st.label}`}
+          >
             <View style={[styles.asIcon, { backgroundColor: tint[0] }]}>
               <Ionicons name={icon} size={24} color={tint[1]} />
             </View>
-            <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-              <Pill text={st.label} tone={st.tone} />
-              <Txt variant="bodyStrong" numberOfLines={2}>{r.a.title}</Txt>
-              <Txt variant="caption" color={c.muted} numberOfLines={1}>{r.course.title}</Txt>
-              <Txt variant="caption" color={r.status === 'overdue' ? c.danger : c.inkSoft} numberOfLines={1} style={{ fontWeight: '600' }}>{meta}</Txt>
+            <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Pill text={st.label} tone={st.tone} />
+                <Txt variant="caption" color={c.muted} numberOfLines={1} style={{ fontWeight: '500' }}>
+                  {r.course.title}
+                </Txt>
+              </View>
+              <Txt variant="heading" style={{ fontSize: 16, lineHeight: 22 }} numberOfLines={2}>
+                {r.a.title}
+              </Txt>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                <View style={[styles.metaChip, { backgroundColor: c.surfaceMuted, borderColor: c.borderSoft }]}>
+                  <Ionicons name="time-outline" size={13} color={c.muted} />
+                  <Txt variant="caption" color={r.status === 'overdue' ? c.danger : c.inkSoft} style={{ fontWeight: '600' }}>
+                    {meta}
+                  </Txt>
+                </View>
+              </View>
             </View>
-            <View style={[styles.cta, { backgroundColor: ['pending', 'in_progress', 'overdue'].includes(r.status) ? c.primary : c.surfaceMuted }]}>
-              <Txt variant="caption" color={['pending', 'in_progress', 'overdue'].includes(r.status) ? '#fff' : c.primary} style={{ fontWeight: '700' }}>{cta}</Txt>
+            <View
+              style={[
+                styles.cta,
+                {
+                  backgroundColor: ['pending', 'in_progress', 'overdue'].includes(r.status) ? c.primary : c.surfaceMuted,
+                  borderColor: ['pending', 'in_progress', 'overdue'].includes(r.status) ? c.primary : c.border,
+                },
+              ]}
+            >
+              <Txt
+                variant="caption"
+                color={['pending', 'in_progress', 'overdue'].includes(r.status) ? '#fff' : c.primary}
+                style={{ fontWeight: '700', fontSize: 13 }}
+              >
+                {cta}
+              </Txt>
+              <Ionicons
+                name="arrow-forward"
+                size={14}
+                color={['pending', 'in_progress', 'overdue'].includes(r.status) ? '#fff' : c.primary}
+              />
             </View>
           </Pressable>
         );
@@ -103,8 +149,9 @@ export function Assessments({ data, error, reload, only }: { data: AsData | null
 }
 
 const styles = StyleSheet.create({
-  stats: { flexDirection: 'row', paddingVertical: 14, borderRadius: radius.lg, borderWidth: 1 },
-  as: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.lg, borderWidth: 1.2 },
-  asIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  cta: { paddingHorizontal: 12, minHeight: 36, borderRadius: radius.pill, justifyContent: 'center' },
+  stats: { flexDirection: 'row', paddingVertical: 16, paddingHorizontal: 8, borderRadius: radius.lg, borderWidth: 1, maxWidth: 960, width: '100%', alignSelf: 'center' },
+  as: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16, borderRadius: radius.lg, borderWidth: 1.2, maxWidth: 960, width: '100%', alignSelf: 'center' },
+  asIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill, borderWidth: 1 },
+  cta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, minHeight: 40, borderRadius: radius.pill, borderWidth: 1, justifyContent: 'center' },
 });

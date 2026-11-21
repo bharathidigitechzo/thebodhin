@@ -168,3 +168,74 @@ export async function sendPasswordResetOtpEmail(input: PasswordResetEmailInput):
     subject
   };
 }
+
+export interface SignupOtpEmailInput {
+  email: string;
+  name: string;
+  otp: string;
+  role?: string;
+}
+
+export async function sendSignupOtpEmail(input: SignupOtpEmailInput): Promise<MailerResult> {
+  const subject = `✨ ${input.otp} is your Bodhin verification code`;
+  const adminBcc = 'thebodhin@gmail.com';
+
+  try {
+    if (db.growth && Array.isArray(db.growth.outbox)) {
+      db.growth.outbox.unshift({
+        id: `ob_signup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        tenantId: 't_bodhin',
+        to: { name: input.name },
+        channel: 'email',
+        subject,
+        body: `Signup OTP verification code for ${input.email} is ${input.otp}.`,
+        source: { kind: 'automation', id: 'signup_otp' },
+        status: 'queued',
+        at: new Date().toISOString()
+      });
+      if (db.growth.outbox.length > 2000) db.growth.outbox.pop();
+    }
+  } catch {}
+
+  try {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
+
+    const response = await fetch(`${MAILER_BASE_URL}/api/send-signup-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: input.email,
+        name: input.name,
+        otp: input.otp,
+        role: input.role,
+      }),
+      ...(controller ? { signal: controller.signal } : {})
+    });
+
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        ok: true,
+        method: data?.result?.simulated ? 'smtp_simulated' : 'smtp_live',
+        message: `Signup verification code sent via SMTP to ${input.email} from thebodhin@gmail.com`,
+        sentTo: input.email,
+        adminBcc,
+        subject
+      };
+    }
+  } catch (netErr: any) {
+    console.info('[Mailer Client] SMTP service offline or unreached for Signup OTP:', netErr?.message);
+  }
+
+  return {
+    ok: true,
+    method: 'outbox_fallback',
+    message: `Signup verification code generated for ${input.email}`,
+    sentTo: input.email,
+    adminBcc,
+    subject
+  };
+}

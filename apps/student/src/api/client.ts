@@ -12,7 +12,7 @@ import type { Coupon, EducatorApplication, Role, Session, Tenant, User } from '@
 import { ROLE_PERMS, isAdminRole, type AdminPerm, type AdminRole, type AuditEntry } from '@/core/admin';
 import type { Category } from '@/core/catalog';
 import { resolveHost } from '@/core/tenant';
-import { COUPONS, allLessons, isPublished, onMarketplace, onWorkspace, matchesQuery, nextLesson, progressOf, ratingSplit, sortCourses, type Course, type CourseQuery, type Enrollment, type Lesson, type Module, type Order, type PaymentMethod, type Review, type Tutor } from '@/core/catalog';
+import { COUPONS, allLessons, isPublished, onMarketplace, onWorkspace, matchesQuery, nextLesson, progressOf, ratingSplit, resumeLesson, setWatchSource, sortCourses, type Course, type CourseQuery, type Enrollment, type Lesson, type Module, type Order, type PaymentMethod, type Review, type Tutor } from '@/core/catalog';
 import { ADDON_CATALOG, ADDON_SIZES, MODULES, PLAN_FEATURES, daysLeft, entitlements, paymentRoute, payoutDateFor, planBlockers, splitOrder, subGate, usageReport, type Feature, type SubGate, type TenantSubscription } from '@/core/business';
 import { PLANS, type Plan, type PlanId } from '@/core/plans';
 import { attendancePct, batchStatus, generateSessions, weeksBetween, type Announcement, type AttendanceMark, type Batch, type Mark, type MemberStatus, type Person } from '@/core/batch';
@@ -295,20 +295,15 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
   const app = db.applications.find((a) => a.userId === u.id);
   const hasApprovedTenant = db.memberships.some((m) => m.userId === u.id && m.role === 'owner');
   if (app && app.status !== 'approved' && !hasApprovedTenant && !email.endsWith('@demo.in')) {
-    await cloud.signOut();
     if (app.status === 'draft' || app.status === 'submitted' || app.status === 'under_review') {
+      await cloud.signOut();
       throw new ApiError(
         'pending_approval',
         `⏳ Your educator application is waiting for Admin approval. An official confirmation email will be sent to your Gmail (${u.email}) once approved. You can sign in after receiving the approval email.`,
         'identifier'
       );
     }
-    if (app.status === 'rejected') {
-      throw new ApiError('rejected', `Your educator application was not approved. Note: ${app.note || 'Contact support@thebodhin.com'}`, 'identifier');
-    }
-    if (app.status === 'changes_requested') {
-      throw new ApiError('changes_requested', `Bodhin asked for changes on your application: ${app.note || 'Please review and resubmit'}.`, 'identifier');
-    }
+    // Note: If app.status === 'rejected' or 'changes_requested', we ALLOW sign in so they can view the rejection reason and re-apply!
   }
 
   return sessionFor(u.id);
@@ -317,6 +312,10 @@ async function cloudSignIn(identifier: string, password: string): Promise<Sessio
 const resetStore = new Map<string, { code: string; expiresAt: number; userId: string }>();
 
 export const auth = {
+  findUserById(userId: string): User | null {
+    const u = db.users.find((x) => x.id === userId);
+    return u ? publicUser(u) : null;
+  },
   /** Current roles for a signed-in user (real: refresh the JWT so new claims, e.g. "approved educator", apply at once). */
   refreshMemberships: (userId: string) => (db.users.some((u) => u.id === userId) ? sessionFor(userId).memberships : null),
   async setInitialPassword(userId: string, next: string): Promise<Session> {
@@ -383,12 +382,7 @@ export const auth = {
           'identifier'
         );
       }
-      if (app.status === 'rejected') {
-        throw new ApiError('rejected', `Your educator application was not approved. Note: ${app.note || 'Contact support@thebodhin.com'}`, 'identifier');
-      }
-      if (app.status === 'changes_requested') {
-        throw new ApiError('changes_requested', `Bodhin asked for changes on your application: ${app.note || 'Please review and resubmit'}.`, 'identifier');
-      }
+      // Note: If app.status === 'rejected' or 'changes_requested', we ALLOW sign in so they can view the rejection reason and re-apply!
     }
 
     return sessionFor(u.id);
@@ -400,18 +394,60 @@ export const auth = {
     const phone = normPhone(input.phone);
     if (input.role === 'tutor' && !db.flags.tutorSignups) throw new ApiError('paused', 'New educator sign-ups are paused for a short while. Please try again soon.');
     if (cloud.enabled) {
-      if (await cloud.emailForPhone(phone)) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+      if (await cloud.emailForPhone(phone)) {
+        const existingUser = db.users.find((u) => u.phone === phone);
+        const existingApp = existingUser ? db.applications.find((a) => a.userId === existingUser.id) : null;
+        if (!existingApp || existingApp.status !== 'rejected') {
+          throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+        }
+      }
       const up = await cloud.signUp(email, input.password, { name: input.name.trim(), phone, role: input.role });
       if (up.error) {
-        if (up.error === 'email_exists') throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+        if (up.error === 'email_exists') {
+          const existingUser = db.users.find((u) => u.email.toLowerCase() === email);
+          const existingApp = existingUser ? db.applications.find((a) => a.userId === existingUser.id) : null;
+          if (existingApp && existingApp.status === 'rejected') {
+            existingApp.status = 'draft';
+            existingApp.workspaceName = `${input.name.trim()} Academy`;
+            existingApp.note = undefined;
+            existingApp.reviewedAt = undefined;
+            existingApp.reviewedBy = undefined;
+            if (existingUser) {
+              existingUser.name = input.name.trim();
+              existingUser.password = input.password;
+            }
+            persist();
+            return { userId: existingUser?.id || uid('u'), otpSentTo: phone };
+          }
+          throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+        }
         if (up.error === 'busy') throw new ApiError('busy', BUSY, 'email');
         throw new ApiError('signup', up.message || 'Could not create your account. Try again.');
       }
       const user = await ensureAppUser(up.user ?? { email, user_metadata: { name: input.name.trim(), phone, role: input.role } }, input.password);
       return { userId: user.id, otpSentTo: phone };
     }
-    if (db.users.some((u) => u.email === email)) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
-    if (db.users.some((u) => u.phone === phone)) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+    const existing = db.users.find((u) => u.email.toLowerCase() === email || (phone && u.phone === phone));
+    if (existing) {
+      const existingApp = db.applications.find((a) => a.userId === existing.id);
+      // If educator's previous application was rejected by admin, allow them to re-sign up with the same Gmail!
+      if (existingApp && existingApp.status === 'rejected') {
+        existing.name = input.name.trim();
+        existing.password = input.password;
+        if (phone) existing.phone = phone;
+        existing.phoneVerified = false;
+        // Reset application back to draft so they can fill fresh details and re-apply
+        existingApp.status = 'draft';
+        existingApp.workspaceName = `${input.name.trim()} Academy`;
+        existingApp.note = undefined;
+        existingApp.reviewedAt = undefined;
+        existingApp.reviewedBy = undefined;
+        persist();
+        return { userId: existing.id, otpSentTo: phone };
+      }
+      if (existing.email.toLowerCase() === email) throw new ApiError('email_taken', 'This email is already registered. Sign in instead.', 'email');
+      if (phone && existing.phone === phone) throw new ApiError('phone_taken', 'This mobile number is already registered.', 'phone');
+    }
     const user = { id: uid('u'), name: input.name.trim(), email, phone, phoneVerified: false, password: input.password, createdAt: new Date().toISOString() };
     db.users.push(user);
     const activeTenantId = input.tenantId || 't_bodhin';
@@ -491,8 +527,6 @@ export const auth = {
       throw new ApiError('already', 'You already teach on Bodhin. Use “Switch to Educator” in your profile.');
     }
     let app = db.applications.find((a) => a.userId === userId);
-    // While Bodhin is reviewing, the application can't be overwritten (the reviewer would be judging a moving target).
-    if (app && ['submitted', 'under_review'].includes(app.status)) throw new ApiError('pending', 'You’ve already submitted your application. Our team is reviewing it and will notify you.');
     if (!app && db.users.some((u) => u.id === userId)) {
       app = { id: uid('app'), userId, status: 'draft' };
       db.applications.push(app);
@@ -685,6 +719,15 @@ export const catalog = {
   },
 };
 
+setWatchSource({ position: (k) => db.positions[k] ?? 0, seconds: (id) => db.lessonSecs?.[id] ?? 0 });
+
+/** Where a lesson resumes: the saved spot, unless it was watched to the end (then start over). */
+function resumePoint(userId: string, lesson: Lesson) {
+  const at = db.positions[`${userId}:${lesson.id}`] ?? 0;
+  const len = lesson.durationSec || db.lessonSecs?.[lesson.id] || 0;
+  return len > 0 && at >= len - 5 ? 0 : at;
+}
+
 export const learning = {
   /** Everything the Home tab needs in one call (one round-trip on slow mobile networks). */
   async home(userId: string, tenantId: string | null) {
@@ -694,7 +737,8 @@ export const learning = {
       .map((e) => {
         const course = findCourse(e.courseId);
         if (!course) return null;
-        return { enrollment: e, course, tutor: tutorOf(course), progress: progressOf(course, e), next: nextLesson(course, e) };
+        const next = resumeLesson(course, e);
+        return { enrollment: e, course, tutor: tutorOf(course), progress: progressOf(course, e), next, resumeAt: db.positions[`${userId}:${next.lesson.id}`] ?? 0 };
       })
       .filter((x): x is NonNullable<typeof x> => !!x)
       .filter((x) => !tenantId || x.course.tenantId === tenantId)
@@ -745,12 +789,15 @@ export const learning = {
 export const reviews = {
   async list(courseId: string) {
     await wait(200);
-    const c = seedCourses.find((x) => x.id === courseId)!;
+    const c = findCourse(courseId);
     const mine = db.reviews.filter((r) => r.courseId === courseId);
     const list = [...mine, ...seedReviews.filter((r) => r.courseId === courseId)].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const count = c.ratingCount + mine.length;
-    const avg = (c.rating * c.ratingCount + mine.reduce((s, r) => s + r.rating, 0)) / count;
-    return { list, avg: Math.round(avg * 10) / 10, count, split: ratingSplit(c.rating, c.ratingCount, mine) };
+    const baseRating = Number.isFinite(c?.rating) ? c!.rating : 0;
+    const baseCount = Number.isFinite(c?.ratingCount) ? c!.ratingCount : 0;
+    const count = baseCount + mine.length;
+    // No reviews yet → 0 (shown as "New"), never 0/0 = NaN.
+    const avg = count ? (baseRating * baseCount + mine.reduce((s, r) => s + r.rating, 0)) / count : 0;
+    return { list, avg: Math.round(avg * 10) / 10, count, split: ratingSplit(baseRating, baseCount, mine) };
   },
   mine: (userId: string, courseId: string) => db.reviews.find((r) => r.userId === userId && r.courseId === courseId) ?? null,
   async submit(input: Omit<Review, 'id' | 'createdAt'>) {
@@ -954,7 +1001,7 @@ export const player = {
     if (!course) throw new ApiError('not_found', 'Course not found.');
     const e = db.enrollments.find((x) => x.userId === userId && x.courseId === courseId);
     const lessons = allLessons(course);
-    const lesson = lessons.find((l) => l.id === lessonId) ?? (e ? nextLesson(course, e).lesson : lessons[0]);
+    const lesson = lessons.find((l) => l.id === lessonId) ?? (e ? resumeLesson(course, e).lesson : lessons[0]);
     if (!lesson) throw new ApiError('not_found', 'No lessons available in this course.');
     const isOwnerOrTutor = canManage(userId, courseId, true) != null || course.tutorId === userId;
     const isPlatformAdmin = !!adminRoleOf(userId) || educator.context(userId) != null;
@@ -976,13 +1023,29 @@ export const player = {
       next: lessons[i + 1] ?? null,
       enrolled: !!e,
       completed: new Set(e?.completedLessonIds ?? []),
-      position: db.positions[`${userId}:${lesson.id}`] ?? 0,
+      position: resumePoint(userId, lesson),
       streamUrl: lesson.videoUrl || lesson.videoUri || `https://media.thebodhin.com/hls/${lesson.id}/master.m3u8?sig=demo`, // placeholder
     };
   },
 
-  savePosition(userId: string, lessonId: string, sec: number) {
+  /**
+   * Called every few seconds while a video plays (and on leaving): remembers where the learner is, the video's
+   * real length (for progress % and "x of content"), and makes this the course "Continue learning" shows.
+   */
+  savePosition(userId: string, lessonId: string, sec: number, durationSec?: number, courseId?: string) {
+    if (!userId || !lessonId || !Number.isFinite(sec) || sec < 0) return;
     db.positions[`${userId}:${lessonId}`] = Math.floor(sec);
+    if (durationSec && Number.isFinite(durationSec) && durationSec > 0) {
+      db.lessonSecs = db.lessonSecs ?? {};
+      db.lessonSecs[lessonId] = Math.round(durationSec);
+    }
+    const e = courseId
+      ? db.enrollments.find((x) => x.userId === userId && x.courseId === courseId)
+      : db.enrollments.find((x) => x.userId === userId && !!findCourse(x.courseId) && allLessons(findCourse(x.courseId)!).some((l) => l.id === lessonId));
+    if (e) {
+      e.lastLessonId = lessonId;
+      e.lastActiveAt = new Date().toISOString();
+    }
     persist();
   },
 

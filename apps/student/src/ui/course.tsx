@@ -49,6 +49,12 @@ export function BadgeFor({ course }: { course: Course }) {
 export function Rating({ value, count, size = 'sm' }: { value: number; count?: number; size?: 'sm' | 'md' }) {
   const { c } = useTheme();
   return (
+    !Number.isFinite(value) || value <= 0 || count === 0 ? (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} accessibilityLabel="Not rated yet">
+        <Ionicons name="star-outline" size={size === 'sm' ? 14 : 18} color="#F5A524" />
+        <Txt variant={size === 'sm' ? 'label' : 'bodyStrong'}>New</Txt>
+      </View>
+    ) : (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} accessibilityLabel={`Rated ${value} out of 5${count ? ` by ${count} learners` : ''}`}>
       <Ionicons name="star" size={size === 'sm' ? 14 : 18} color="#F5A524" />
       <Txt variant={size === 'sm' ? 'label' : 'bodyStrong'}>{value.toFixed(1)}</Txt>
@@ -58,6 +64,7 @@ export function Rating({ value, count, size = 'sm' }: { value: number; count?: n
         </Txt>
       )}
     </View>
+    )
   );
 }
 

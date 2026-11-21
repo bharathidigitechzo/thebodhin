@@ -216,7 +216,7 @@ export function CourseReview({ id, userId, onDone }: { id: string; userId: strin
           <View style={{ gap: 14 }}>
             {previewLesson.type === 'video' ? (
               <VideoPreview
-                uri={previewLesson.videoUri || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+                uri={previewLesson.videoUri || 'https://vjs.zencdn.net/v/oceans.mp4'}
                 name={previewLesson.title}
                 sizeMb={previewLesson.sizeMb}
               />

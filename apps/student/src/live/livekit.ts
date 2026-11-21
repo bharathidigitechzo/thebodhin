@@ -104,7 +104,7 @@ export class LiveKitRoom implements LiveRoom {
   }
 
   send(m: RoomMsg) {
-    void this.room.localParticipant.publishData(encodeMsg(m), { reliable: m.t !== 'stroke' }).catch(() => {});
+    void this.room.localParticipant.publishData(encodeMsg(m) as any, { reliable: m.t !== 'stroke' }).catch(() => {});
   }
 
   private async toggle(fn: () => Promise<unknown>, what: 'camera' | 'microphone' | 'screen') {
