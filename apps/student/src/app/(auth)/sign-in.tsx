@@ -30,7 +30,7 @@ export default function SignIn() {
     setBusy('form');
     try {
       const sess = await auth.signIn(identifier, password);
-      setSession(sess);
+      setSession(sess, remember);
       router.replace(homePath(sess, null) as any);
     } catch (err) {
       const a = err as ApiError;
@@ -47,7 +47,7 @@ export default function SignIn() {
     setBusy('form');
     try {
       const sess = await auth.signIn(id, 'demo123');
-      setSession(sess);
+      setSession(sess, true); // demo logins always persist
       router.replace(homePath(sess, null) as any);
     } catch (err) {
       const a = err as ApiError;

@@ -6,6 +6,7 @@ import { auth } from '@/api/client';
 import { cloud, pulledListeners, refreshIfStale } from '@/api/cloud';
 
 const KEY = 'bodhin.session.v2';
+const REMEMBER_KEY = 'bodhin.remember';
 const web = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 if (web) {
   try {
@@ -56,7 +57,7 @@ interface AuthState {
   onboarded: boolean;
   mode: Mode | null;
   setMode: (m: Mode) => void;
-  setSession: (s: Session | null) => void;
+  setSession: (s: Session | null, remember?: boolean) => void;
   markOnboarded: () => void;
   signOut: () => void;
   /** Re-read roles (e.g. just approved as an educator) without signing out. */
@@ -98,6 +99,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {
           /* corrupted → signed out */
         }
+      }
+      // STU-AUTH-19: if the user did NOT check "Remember me", clear the session on every cold start.
+      const remembered = read(REMEMBER_KEY);
+      if (saved && remembered === '0') {
+        saved = null;
+        write(KEY, null);
+        write(REMEMBER_KEY, null);
+        // Also clear the Supabase Auth session so the cloud layer doesn't restore it.
+        if (cloud.enabled) await cloud.signOut().catch(() => {});
       }
       // Shared database: load the latest data before showing any screen. A saved session without a cloud
       // sign-in (e.g. from an older offline build) is dropped so the user signs in once and gets their data.
@@ -154,9 +164,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { pulledListeners.delete(onPulled); };
   }, []);
 
-  const setSession = useCallback((s: Session | null) => {
+  const setSession = useCallback((s: Session | null, remember = true) => {
     setSessionState(s);
     write(KEY, s ? JSON.stringify(s) : null);
+    // Persist the "remember me" preference so we can check it on next cold start.
+    write(REMEMBER_KEY, s ? (remember ? '1' : '0') : null);
   }, []);
 
   const markOnboarded = useCallback(() => {
