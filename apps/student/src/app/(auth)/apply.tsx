@@ -3,10 +3,10 @@
  * A bare tutor sign-up creates only a draft; THIS form is what reaches the Super Admin inbox,
  * so the reviewer has real details (academy, subjects, experience) to verify.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Redirect, router } from 'expo-router';
+import { router, Redirect } from 'expo-router';
 import { ApiError, auth } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { Banner } from '@/ui/misc';
@@ -22,7 +22,13 @@ export default function Apply() {
   const { session, signOut } = useAuth();
   const userId = session?.user.id ?? '';
   const existing = useMemo(() => (userId ? auth.getApplication(userId) : null), [userId]);
-  const isPendingReview = existing && ['submitted', 'under_review'].includes(existing.status);
+
+  // If application is already submitted or under review, redirect directly to /application-status
+  React.useEffect(() => {
+    if (existing && ['submitted', 'under_review'].includes(existing.status)) {
+      router.replace('/application-status');
+    }
+  }, [existing?.status]);
 
   const [f, setF] = useState({
     workspaceName: existing?.workspaceName ?? '',
@@ -39,17 +45,6 @@ export default function Apply() {
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => { setF((x) => ({ ...x, [k]: v })); setErrors((e) => ({ ...e, [k]: null })); setError(null); };
   const refs = { subjects: useRef<any>(null), experience: useRef<any>(null), city: useRef<any>(null), students: useRef<any>(null), sample: useRef<any>(null) };
-
-  // If application is already submitted or under review, redirect to application status page
-  useEffect(() => {
-    if (isPendingReview || existing?.status === 'approved') {
-      router.replace('/application-status');
-    }
-  }, [isPendingReview, existing?.status]);
-
-  if (isPendingReview || existing?.status === 'approved') {
-    return <Redirect href="/application-status" />;
-  }
 
   /** POC: simulates DigiLocker/Aadhaar verification. Production: real DigiLocker flow; we never store ID numbers. */
   const verifyId = async () => {
@@ -75,6 +70,10 @@ export default function Apply() {
       router.replace('/application-status');
     } catch (e) {
       const err = e as ApiError;
+      if (err.code === 'pending') {
+        router.replace('/application-status');
+        return;
+      }
       if (err.field) setErrors((x) => ({ ...x, [err.field!]: err.message }));
       else setError(err.message);
     } finally {
@@ -85,6 +84,10 @@ export default function Apply() {
   if (!session) {
     router.replace('/sign-in');
     return null;
+  }
+
+  if (existing && ['submitted', 'under_review'].includes(existing.status)) {
+    return <Redirect href="/application-status" />;
   }
   return (
     <Screen scroll footer={<Button title={existing?.status === 'changes_requested' ? 'Resubmit application' : 'Submit application'} iconRight="arrow-forward" loading={busy} onPress={submit} />}>

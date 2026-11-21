@@ -1,9 +1,11 @@
-/** Tutor sign-up lands here: educator application status (blueprint: Draft → Submitted → Under review → Decision). */
+/**
+ * Tutor sign-up lands here: educator application status
+ * (blueprint: Draft → Submitted → Under review → Approved).
+ */
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { Redirect } from 'expo-router';
+import { router, Redirect } from 'expo-router';
 import { auth } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { Banner } from '@/ui/misc';
@@ -13,191 +15,382 @@ import { BrandLogo } from '@/ui/Brand';
 import { TwoTone, Txt } from '@/ui/Txt';
 import { Button } from '@/ui/Button';
 
-const STAGES = [
-  { key: 'submitted', title: 'Application submitted', sub: 'Your details have been received successfully.' },
-  { key: 'under_review', title: 'Under review by Admin', sub: 'Our team verifies educator details within 1–2 business days.' },
-  { key: 'approved', title: 'Workspace approved & activated', sub: 'Approval notification sent to your email with your portal link.' },
-];
-
 export default function ApplicationStatus() {
   const { c } = useTheme();
   const { session, signOut, setSession, setMode } = useAuth();
-  const [tick, setTick] = useState(0);
-  const app = session ? auth.getApplication(session.user.id) : null;
-  const current = Math.max(0, STAGES.findIndex((s) => s.key === app?.status));
-  const isApproved = app?.status === 'approved';
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // A draft never reaches the Super Admin — send the tutor to the form instead of a misleading "submitted" timeline.
+  const app = session ? auth.getApplication(session.user.id) : null;
+
+  // A draft never reaches the Super Admin — send the tutor to the form instead
   React.useEffect(() => {
-    if (app?.status === 'draft') router.replace('/apply');
+    if (app?.status === 'draft') {
+      router.replace('/apply');
+    }
   }, [app?.status]);
+
   if (app?.status === 'draft') return <Redirect href="/apply" />;
 
-  const handleRefresh = () => {
-    setTick((t) => t + 1);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (session?.user?.id) {
+        auth.refreshSession(session.user.id);
+        setRefreshKey((k) => k + 1);
+      }
+    } finally {
+      setTimeout(() => setRefreshing(false), 400);
+    }
   };
 
+  const isApproved = app?.status === 'approved';
+  const isUnderReview = app?.status === 'under_review';
+  const isSubmitted = app?.status === 'submitted' || !app?.status;
+
+  const academyName = app?.workspaceName || (session?.user?.name ? `${session.user.name} Academy` : 'Uno Academy');
+  const userEmail = session?.user?.email || 'your email';
+
   return (
-    <Screen
-      footer={
-        <>
-          {isApproved ? (
-            <Button
-              title="Open my educator workspace"
-              iconRight="arrow-forward"
-              onPress={() => {
-                setSession(auth.refreshSession(session!.user.id));
-                setMode('educator');
-                router.replace('/educator/home');
-              }}
-            />
-          ) : app?.status === 'changes_requested' ? (
-            <Button title="Edit & resubmit application" iconRight="create-outline" onPress={() => router.push('/apply')} />
-          ) : (
-            <>
-              <Button title="Refresh Status" variant="outline" iconLeft="refresh" onPress={handleRefresh} />
-              <Button title="Explore Bodhin as a learner" variant="soft" iconRight="arrow-forward" onPress={() => router.replace('/home')} />
-            </>
-          )}
-          <Button title="Sign out" variant="ghost" onPress={() => { signOut(); router.replace('/sign-in'); }} />
-        </>
-      }
-    >
+    <Screen scroll>
       <BrandLogo size="sm" />
       <View style={styles.head}>
-        <TwoTone lead={isApproved ? "Welcome," : "Thanks,"} accent={session?.user.name.split(' ')[0] ?? 'there'} variant="title" center />
-        <Txt center color={c.inkSoft}>
-          {isApproved
-            ? `Your educator workspace for ${app?.workspaceName || 'your academy'} is live! An approval email has been delivered to ${session?.user?.email}.`
-            : `Your educator application for ${app?.workspaceName || 'your academy'} has been submitted and is currently in review. Once approved by Admin, an official approval email will be sent to your Gmail (${session?.user?.email}).`}
+        <TwoTone lead="Thanks," accent={session?.user.name.split(' ')[0] ?? 'there'} variant="title" center />
+        <Txt center color={c.inkSoft} style={{ fontSize: 14, lineHeight: 21, marginTop: 4 }}>
+          Your educator application for <Txt variant="bodyStrong">{academyName}</Txt> is submitted and is currently in review. Once approved by Admin, an official approval email will be sent to your Gmail ({userEmail}).
         </Txt>
       </View>
 
-      {/* Status Highlights */}
-      {isApproved ? (
-        <View style={[styles.approvedBadge, { backgroundColor: '#e6f4ea', borderColor: c.success }]}>
-          <Ionicons name="checkmark-circle" size={28} color={c.success} />
-          <View style={{ flex: 1 }}>
-            <Txt variant="bodyStrong" color={c.success}>Application Approved! 🎉</Txt>
-            <Txt variant="caption" color={c.inkSoft}>
-              Your academy workspace has been created. Click below to enter your Educator Dashboard.
-            </Txt>
-          </View>
-        </View>
-      ) : (
-        <View style={[styles.pendingBadge, { backgroundColor: c.primarySoft, borderColor: c.primary }]}>
-          <Ionicons name="time-outline" size={26} color={c.primary} />
-          <View style={{ flex: 1 }}>
-            <Txt variant="bodyStrong" color={c.primary}>Application Under Review ⏳</Txt>
-            <Txt variant="caption" color={c.inkSoft}>
-              Submitted details are queued for Super Admin review. You will receive an approval email at <Txt variant="caption" style={{ fontWeight: '600', color: c.ink }}>{session?.user?.email}</Txt>.
-            </Txt>
-          </View>
-        </View>
-      )}
-
+      {/* Changes requested or rejected notice */}
       {app?.note && (app.status === 'changes_requested' || app.status === 'rejected') && (
-        <Banner tone={app.status === 'rejected' ? 'danger' : 'info'} text={`${app.status === 'rejected' ? 'Not approved' : 'Bodhin asked for changes'}: ${app.note}`} />
+        <Banner
+          tone={app.status === 'rejected' ? 'danger' : 'info'}
+          text={`${app.status === 'rejected' ? 'Not approved' : 'Bodhin asked for changes'}: ${app.note}`}
+        />
       )}
 
-      {/* Stage Tracker */}
-      <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, marginTop: 12 }]}>
-        <Txt variant="label" color={c.muted} style={{ marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-          Application Progress
-        </Txt>
-        {STAGES.map((s, i) => {
-          const done = i < current || (i === current && s.key === 'approved');
-          const active = i === current;
-          const color = done ? c.success : active ? c.primary : c.borderStrong;
-          return (
-            <View key={s.key} style={styles.stage}>
-              <View style={{ alignItems: 'center' }}>
-                <View style={[styles.node, { borderColor: color, backgroundColor: done ? c.success : active ? c.primarySoft : c.surface }]}>
-                  {done ? <Ionicons name="checkmark" size={16} color="#fff" /> : active ? <View style={[styles.pulse, { backgroundColor: c.primary }]} /> : null}
-                </View>
-                {i < STAGES.length - 1 && <View style={[styles.line, { backgroundColor: i < current ? c.success : c.border }]} />}
-              </View>
-              <View style={{ flex: 1, paddingBottom: 18 }}>
-                <Txt variant="bodyStrong" color={active || done ? c.ink : c.muted}>
-                  {s.title}
-                </Txt>
-                <Txt variant="label" color={c.muted} style={{ fontWeight: '400', marginTop: 2 }}>
-                  {s.sub}
-                </Txt>
-              </View>
-            </View>
-          );
-        })}
+      {/* Review Status Banner Card */}
+      <View style={[styles.reviewBanner, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
+        <View style={styles.reviewBannerIcon}>
+          <Ionicons name="time-outline" size={24} color="#0284C7" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Txt style={styles.reviewBannerTitle}>
+            {isApproved ? 'Application Approved! 🎉' : 'Application Under Review ⏳'}
+          </Txt>
+          <Txt style={styles.reviewBannerSubtitle}>
+            {isApproved
+              ? 'Your educator workspace is activated. You can now configure your academy and start launching courses.'
+              : `Submitted details are queued for Super Admin review. You will receive an approval email at ${userEmail}.`}
+          </Txt>
+        </View>
       </View>
 
-      {/* Summary of submitted details */}
-      {app && (
-        <View style={[styles.summaryCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <Txt variant="label" color={c.muted} style={{ marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-            Submitted Academy Information
-          </Txt>
-          <View style={styles.detailRow}>
-            <Txt variant="label" color={c.muted}>Academy Name:</Txt>
-            <Txt variant="bodyStrong">{app.workspaceName || 'Not specified'}</Txt>
+      {/* Application Progress Stepper Card */}
+      <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+        <Txt variant="caption" color={c.muted} style={styles.cardHeader}>
+          APPLICATION PROGRESS
+        </Txt>
+
+        {/* Step 1: Application submitted */}
+        <View style={styles.stageRow}>
+          <View style={styles.stageIndicatorCol}>
+            {isUnderReview || isApproved ? (
+              <View style={[styles.circleFilled, { backgroundColor: c.success, borderColor: c.success }]}>
+                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+              </View>
+            ) : (
+              <View style={[styles.radioOuter, { borderColor: c.primary, backgroundColor: '#EFF6FF' }]}>
+                <View style={[styles.radioInner, { backgroundColor: c.primary }]} />
+              </View>
+            )}
+            <View style={[styles.stageLine, { backgroundColor: isUnderReview || isApproved ? c.success : '#E2E8F0' }]} />
           </View>
-          {app.subjects && app.subjects.length > 0 && (
-            <View style={styles.detailRow}>
-              <Txt variant="label" color={c.muted}>Subjects:</Txt>
-              <Txt variant="bodyStrong">{app.subjects.join(', ')}</Txt>
-            </View>
-          )}
-          {app.city && (
-            <View style={styles.detailRow}>
-              <Txt variant="label" color={c.muted}>City / Location:</Txt>
-              <Txt variant="body">{app.city}</Txt>
-            </View>
-          )}
-          {app.experienceYears != null && (
-            <View style={styles.detailRow}>
-              <Txt variant="label" color={c.muted}>Experience:</Txt>
-              <Txt variant="body">{app.experienceYears} Years</Txt>
-            </View>
-          )}
-          <View style={styles.detailRow}>
-            <Txt variant="label" color={c.muted}>Identity Verification:</Txt>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name={app.idVerified ? 'shield-checkmark' : 'shield-outline'} size={16} color={app.idVerified ? c.success : c.warning} />
-              <Txt variant="bodyStrong" color={app.idVerified ? c.success : c.warning}>
-                {app.idVerified ? 'Government ID Verified' : 'Self-declared'}
-              </Txt>
-            </View>
+          <View style={styles.stageContent}>
+            <Txt variant="bodyStrong" color={c.ink} style={styles.stageTitle}>
+              Application submitted
+            </Txt>
+            <Txt variant="caption" color={c.muted} style={styles.stageSub}>
+              Your details have been received successfully.
+            </Txt>
           </View>
         </View>
-      )}
+
+        {/* Step 2: Under review by Admin */}
+        <View style={styles.stageRow}>
+          <View style={styles.stageIndicatorCol}>
+            {isApproved ? (
+              <View style={[styles.circleFilled, { backgroundColor: c.success, borderColor: c.success }]}>
+                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+              </View>
+            ) : isUnderReview ? (
+              <View style={[styles.radioOuter, { borderColor: c.primary, backgroundColor: '#EFF6FF' }]}>
+                <View style={[styles.radioInner, { backgroundColor: c.primary }]} />
+              </View>
+            ) : (
+              <View style={[styles.circleOutline, { borderColor: '#CBD5E1' }]} />
+            )}
+            <View style={[styles.stageLine, { backgroundColor: isApproved ? c.success : '#E2E8F0' }]} />
+          </View>
+          <View style={styles.stageContent}>
+            <Txt
+              variant="bodyStrong"
+              style={[styles.stageTitle, { color: isUnderReview ? c.ink : '#334155' }]}
+            >
+              Under review by Admin
+            </Txt>
+            <Txt variant="caption" color={c.muted} style={styles.stageSub}>
+              Our team verifies educator details within 1–2 business days.
+            </Txt>
+          </View>
+        </View>
+
+        {/* Step 3: Workspace approved & activated */}
+        <View style={[styles.stageRow, { marginBottom: 0 }]}>
+          <View style={styles.stageIndicatorCol}>
+            {isApproved ? (
+              <View style={[styles.circleFilled, { backgroundColor: c.success, borderColor: c.success }]}>
+                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+              </View>
+            ) : (
+              <View style={[styles.circleOutline, { borderColor: '#CBD5E1' }]} />
+            )}
+          </View>
+          <View style={styles.stageContent}>
+            <Txt
+              variant="bodyStrong"
+              style={[styles.stageTitle, { color: isApproved ? c.ink : '#334155' }]}
+            >
+              Workspace approved &amp; activated
+            </Txt>
+            <Txt variant="caption" color={c.muted} style={styles.stageSub}>
+              Approval notification sent to your email with your portal link.
+            </Txt>
+          </View>
+        </View>
+      </View>
+
+      {/* Submitted Academy Information Card */}
+      <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+        <Txt variant="caption" color={c.muted} style={styles.cardHeader}>
+          SUBMITTED ACADEMY INFORMATION
+        </Txt>
+
+        <View style={styles.infoRow}>
+          <Txt variant="body" color={c.muted} style={{ fontSize: 13.5 }}>
+            Academy Name:
+          </Txt>
+          <Txt variant="bodyStrong" color={c.ink} style={{ fontSize: 14 }}>
+            {academyName}
+          </Txt>
+        </View>
+
+        <View style={[styles.infoRow, { marginTop: 14 }]}>
+          <Txt variant="body" color={c.muted} style={{ fontSize: 13.5 }}>
+            Identity Verification:
+          </Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons
+              name={app?.idVerified ? 'shield-checkmark' : 'shield-outline'}
+              size={16}
+              color={app?.idVerified ? c.success : '#D97706'}
+            />
+            <Txt
+              style={{
+                fontSize: 13.5,
+                fontWeight: '600',
+                color: app?.idVerified ? c.success : '#D97706',
+              }}
+            >
+              {app?.idVerified ? 'Verified via DigiLocker' : 'Self-declared'}
+            </Txt>
+          </View>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.actionsWrap}>
+        {isApproved ? (
+          <Button
+            title="Open my educator workspace"
+            iconRight="arrow-forward"
+            onPress={() => {
+              setSession(auth.refreshSession(session!.user.id));
+              setMode('educator');
+              router.replace('/educator/home');
+            }}
+          />
+        ) : app?.status === 'changes_requested' ? (
+          <Button
+            title="Edit & resubmit application"
+            iconRight="create-outline"
+            onPress={() => router.push('/apply')}
+          />
+        ) : null}
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={[styles.refreshBtn, { backgroundColor: c.surface, borderColor: c.border }]}
+          onPress={handleRefresh}
+        >
+          <Ionicons
+            name="refresh-outline"
+            size={18}
+            color={c.primary}
+            style={refreshing ? { transform: [{ rotate: '45deg' }] } : undefined}
+          />
+          <Txt style={{ color: c.primary, fontWeight: '700', fontSize: 15 }}>
+            {refreshing ? 'Refreshing...' : 'Refresh Status'}
+          </Txt>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={[styles.exploreBtn, { backgroundColor: '#EFF6FF', borderColor: '#DBEAFE' }]}
+          onPress={() => router.replace('/home')}
+        >
+          <Txt style={{ color: c.primary, fontWeight: '700', fontSize: 15 }}>
+            Explore Bodhin as a learner
+          </Txt>
+          <Ionicons name="arrow-forward" size={18} color={c.primary} />
+        </TouchableOpacity>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  head: { alignItems: 'center', gap: 10, paddingVertical: 18 },
-  approvedBadge: {
+  head: {
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 20,
+  },
+  reviewBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 6,
+    borderRadius: 14,
+    padding: 16,
+    gap: 14,
+    marginBottom: 18,
+    width: '100%',
   },
-  pendingBadge: {
+  reviewBannerIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E0F2FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewBannerTitle: {
+    color: '#0369A1',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  reviewBannerSubtitle: {
+    color: '#0C4A6E',
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  card: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 20,
+    marginBottom: 18,
+    width: '100%',
+  },
+  cardHeader: {
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    fontSize: 11,
+    marginBottom: 16,
+    textTransform: 'uppercase',
+  },
+  stageRow: {
+    flexDirection: 'row',
+    gap: 14,
+  },
+  stageIndicatorCol: {
+    alignItems: 'center',
+    width: 24,
+  },
+  radioOuter: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  circleFilled: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  circleOutline: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    backgroundColor: '#FFFFFF',
+  },
+  stageLine: {
+    width: 2,
+    flex: 1,
+    minHeight: 28,
+    marginVertical: 4,
+  },
+  stageContent: {
+    flex: 1,
+    paddingBottom: 20,
+  },
+  stageTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  stageSub: {
+    fontSize: 13,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  actionsWrap: {
+    width: '100%',
+    gap: 12,
+    marginTop: 4,
+    marginBottom: 32,
+  },
+  refreshBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 14,
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 6,
   },
-  card: { borderRadius: 20, borderWidth: 1, padding: 18 },
-  summaryCard: { borderRadius: 20, borderWidth: 1, padding: 18, marginTop: 14, gap: 8 },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
-  stage: { flexDirection: 'row', gap: 14 },
-  node: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  pulse: { width: 10, height: 10, borderRadius: 5 },
-  line: { width: 2, flex: 1, minHeight: 24, marginVertical: 2 },
+  exploreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
 });
