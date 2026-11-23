@@ -8,6 +8,7 @@ export const palette = {
   inkSoft: '#3A465C',
   muted: '#6B7486',
   border: '#E4E8EF',
+  borderSoft: '#EDF1F7',
   borderStrong: '#CBD3DF',
   success: '#15803D',
   successBg: '#E8F6EC',

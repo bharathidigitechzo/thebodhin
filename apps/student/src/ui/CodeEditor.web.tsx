@@ -2,6 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
+// @ts-ignore
 import { indentWithTab } from '@codemirror/commands';
 import { basicSetup } from 'codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -9,6 +10,7 @@ import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
+// @ts-ignore
 import { sql } from '@codemirror/lang-sql';
 import { java } from '@codemirror/lang-java';
 import { cpp } from '@codemirror/lang-cpp';

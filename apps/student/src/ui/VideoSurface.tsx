@@ -150,7 +150,6 @@ const NativeVideoPlayer = forwardRef<NativeVideoHandle, NativeVideoPlayerProps>(
     <VideoView
       style={StyleSheet.absoluteFill}
       player={player}
-      allowsFullscreen={false}
       showsTimecodes={false}
       nativeControls={false}
       contentFit="contain"
