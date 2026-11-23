@@ -4777,22 +4777,26 @@ export const money = {
     const open = db.orders.filter((o) => o.channel === 'bodhin_marketplace' && o.status === 'paid' && o.payoutStatus !== 'paid' && o.payoutDate);
     const due = open.filter((o) => dueBy(o.payoutDate, date));
     const later = open.filter((o) => !dueBy(o.payoutDate, date));
-    const ids = new Set([...due.map((o) => o.sellerTenantId!), ...db.tenants.filter((t) => (db.tenantStats[t.id]?.payoutDue ?? 0) > 0).map((t) => t.id)]);
-    const lines = [...ids].map((tid) => {
-      const t = db.tenants.find((x) => x.id === tid)!;
-      // Orders with an open refund request stay out of this run until the refund is decided (not deducted twice).
-      const disputed = new Set(db.refundRequests.filter((r) => r.status === 'open').map((r) => r.orderId));
-      const held = due.filter((o) => o.sellerTenantId === tid && disputed.has(o.id));
-      const mine = due.filter((o) => o.sellerTenantId === tid && !disputed.has(o.id));
-      const extra = db.tenantStats[tid]?.payoutDue ?? 0;
-      const refundHold = held.reduce((s, o) => s + o.educatorShareInr, 0);
-      const gross = mine.reduce((s, o) => s + o.amountInr, 0) + Math.round(extra / (1 - db.platformConfig.commissionRate - db.platformConfig.gatewayFeeRate));
-      const amount = mine.reduce((s, o) => s + o.educatorShareInr, 0) + extra;
-      const bank = t.payments?.payoutAccount?.verified ? `${t.payments.payoutAccount.bank} ••${t.payments.payoutAccount.last4}` : null;
-      const hold = db.payoutHolds[tid] ?? null;
-      const blocked = !bank ? 'No verified bank account' : t.status === 'suspended' ? 'Workspace suspended' : hold ? `On hold: ${hold.reason}` : null;
-      return { t, amount: Math.max(0, amount), refundHold, orderIds: mine.map((o) => o.id), gross, orders: mine.length + (extra ? Math.max(1, Math.round(extra / 2500)) : 0), bank, hold, blocked };
-    }).filter((l) => l.amount > 0).sort((a, b) => b.amount - a.amount);
+    const ids = new Set([...due.map((o) => o.sellerTenantId).filter(Boolean), ...db.tenants.filter((t) => (db.tenantStats[t.id]?.payoutDue ?? 0) > 0).map((t) => t.id)]);
+    const lines = [...ids]
+      .map((tid) => {
+        const t = db.tenants.find((x) => x.id === tid);
+        if (!t) return null;
+        // Orders with an open refund request stay out of this run until the refund is decided (not deducted twice).
+        const disputed = new Set(db.refundRequests.filter((r) => r.status === 'open').map((r) => r.orderId));
+        const held = due.filter((o) => o.sellerTenantId === tid && disputed.has(o.id));
+        const mine = due.filter((o) => o.sellerTenantId === tid && !disputed.has(o.id));
+        const extra = db.tenantStats[tid]?.payoutDue ?? 0;
+        const refundHold = held.reduce((s, o) => s + o.educatorShareInr, 0);
+        const gross = mine.reduce((s, o) => s + o.amountInr, 0) + Math.round(extra / (1 - db.platformConfig.commissionRate - db.platformConfig.gatewayFeeRate));
+        const amount = mine.reduce((s, o) => s + o.educatorShareInr, 0) + extra;
+        const bank = t.payments?.payoutAccount?.verified ? `${t.payments.payoutAccount.bank} ••${t.payments.payoutAccount.last4}` : null;
+        const hold = db.payoutHolds[tid] ?? null;
+        const blocked = !bank ? 'No verified bank account' : t.status === 'suspended' ? 'Workspace suspended' : hold ? `On hold: ${hold.reason}` : null;
+        return { t, amount: Math.max(0, amount), refundHold, orderIds: mine.map((o) => o.id), gross, orders: mine.length + (extra ? Math.max(1, Math.round(extra / 2500)) : 0), bank, hold, blocked };
+      })
+      .filter((l): l is NonNullable<typeof l> => l != null && l.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
     const ready = lines.filter((l) => !l.blocked);
     return {
       date, lines, readyTotal: ready.reduce((s, l) => s + l.amount, 0), heldTotal: lines.filter((l) => l.blocked).reduce((s, l) => s + l.amount, 0),
